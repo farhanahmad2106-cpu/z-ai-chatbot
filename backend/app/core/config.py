@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     debug: bool = Field(default=False, description="Enable debug mode — never True in prod")
 
     # ── Server ─────────────────────────────────────────────────────────────────
-    host: str = Field(default="127.0.0.1", description="Bind address — localhost only by default")
+    host: str = Field(default="0.0.0.0", description="Bind address — localhost only by default")
     port: int = Field(default=8765, description="FastAPI port")
     allowed_origins: list[str] = Field(
         default=[

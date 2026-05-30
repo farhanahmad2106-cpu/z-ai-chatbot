@@ -45,6 +45,11 @@
           "fonts": []
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "16c0707a-f2c1-4bbd-8ed6-ece6e580b16b"
+      }
+    }
   }
 }

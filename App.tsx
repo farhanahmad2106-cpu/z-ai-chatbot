@@ -21,7 +21,10 @@
 import React from 'react';
 import { StatusBar } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { ConvexProvider, ConvexReactClient } from 'convex/react';
+import { CONVEX_URL } from './convex/convex';
+
+const convex = new ConvexReactClient(CONVEX_URL);
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createDrawerNavigator } from '@react-navigation/drawer';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';

@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
@@ -287,10 +287,10 @@ async def unlock(body: UnlockRequest) -> TokenResponse:
         return TokenResponse(access_token=token, device_id=meta.device_id)
 
 
-@router.post("/lock", status_code=status.HTTP_204_NO_CONTENT, summary="Lock the app")
+@router.post("/lock", status_code=status.HTTP_204_NO_CONTENT, response_class=Response, summary="Lock the app")
 async def lock_app(
     _session: Annotated[dict, Depends(get_current_session)],
-) -> None:
+) -> Response:
     """
     Explicit lock. Disposes the SQLCipher engine so the database key is no longer
     in memory. The frontend should navigate back to the UnlockScreen after calling this.
