@@ -1,0 +1,82 @@
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# ── Dependencies ──────────────────────────────────────────────────────────────
+node_modules/
+admin-dashboard/node_modules/
+admin-android/node_modules/
+
+# ── Expo / React Native ───────────────────────────────────────────────────────
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+/android/
+/ios/
+
+# ── Metro ─────────────────────────────────────────────────────────────────────
+.metro-health-check*
+
+# ── Environment & Secrets ─────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+.env.production
+
+# ── Python Backend ────────────────────────────────────────────────────────────
+backend/venv/
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+backend/.pytest_cache/
+backend/htmlcov/
+backend/.coverage
+
+# ── Database & Sensitive Data ─────────────────────────────────────────────────
+data/db/
+data/models/
+data/backups/
+*.db
+*.db-shm
+*.db-wal
+*.salt
+
+# ── Android Signing ───────────────────────────────────────────────────────────
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+release.keystore
+upload-keystore.jks
+
+# ── Build Outputs ─────────────────────────────────────────────────────────────
+*.apk
+*.aab
+build/
+android/app/build/
+
+# ── EAS / Expo ────────────────────────────────────────────────────────────────
+.easignore
+
+# ── TypeScript ────────────────────────────────────────────────────────────────
+*.tsbuildinfo
+
+# ── Debug Logs ────────────────────────────────────────────────────────────────
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+
+# ── Native ────────────────────────────────────────────────────────────────────
+*.orig.*
+
+# ── Convex ────────────────────────────────────────────────────────────────────
+.convex/
+convex/_generated/

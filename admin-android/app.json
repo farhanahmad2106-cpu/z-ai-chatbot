@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "Z-AI Admin",
+    "slug": "zai-admin",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#030303"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#030303"
+      },
+      "package": "com.mrz.zaiadmin"
+    }
+  }
+}

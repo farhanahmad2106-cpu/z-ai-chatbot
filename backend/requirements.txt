@@ -1,0 +1,48 @@
+# ── Core Framework ────────────────────────────────────────────────────────────
+fastapi==0.115.12
+uvicorn[standard]==0.34.3
+python-multipart==0.0.20
+
+# ── Database ──────────────────────────────────────────────────────────────────
+sqlalchemy==2.0.40
+# NOTE: sqlcipher3-binary has no Python 3.14 wheel.
+# The setup script (setup_backend.ps1) creates a Python 3.12 venv automatically.
+# pysqlcipher3 is installed separately inside that venv from the setup script.
+# pysqlcipher3==1.2.0
+alembic==1.15.2
+
+# ── Authentication & Security ─────────────────────────────────────────────────
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+argon2-cffi==23.1.0
+PyNaCl==1.5.0
+cryptography==45.0.3
+
+# ── AI Inference ──────────────────────────────────────────────────────────────
+# llama-cpp-python==0.3.23
+huggingface-hub==0.32.2
+
+# ── Scheduling & Background Tasks ────────────────────────────────────────────
+apscheduler==3.11.0
+
+# ── Networking & Discovery ────────────────────────────────────────────────────
+zeroconf==0.146.1
+httpx==0.28.1
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+pydantic==2.11.5
+pydantic-settings==2.9.1
+python-dotenv==1.1.0
+psutil==7.0.0
+orjson==3.10.18
+sse-starlette==2.3.6
+aiofiles==24.1.0
+
+# ── Web Scraping (optional search toggle) ────────────────────────────────────
+playwright==1.50.0
+beautifulsoup4==4.13.4
+lxml==5.4.0
+
+# ── Development & Testing ────────────────────────────────────────────────────
+pytest==8.3.5
+pytest-asyncio==0.26.0
