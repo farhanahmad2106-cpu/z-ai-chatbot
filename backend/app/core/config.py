@@ -45,8 +45,14 @@ class Settings(BaseSettings):
             "http://10.0.2.2:8765",  # Android emulator → host machine alias
             "http://localhost:8081",  # Expo web frontend
             "http://127.0.0.1:8081",
+            "https://z-ai-chatbot.vercel.app",
+            "https://z-ai-chatbot-git-main-farhan-ahmad-s-projects.vercel.app",
         ],
         description="CORS allowed origins for desktop WebView, Expo web, and Android emulator",
+    )
+    extra_cors_origins: str = Field(
+        default="",
+        description="Comma-separated list of additional CORS origins",
     )
 
     # ── Database ───────────────────────────────────────────────────────────────

@@ -26,7 +26,7 @@ interface LogEntry {
   message: string;
 }
 
-const BACKEND_URL = 'http://127.0.0.1:8765';
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://127.0.0.1:8765';
 
 export default function AdminDashboardPage() {
   const [apiKey, setApiKey] = useState('');

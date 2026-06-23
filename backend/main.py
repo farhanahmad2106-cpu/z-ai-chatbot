@@ -87,9 +87,15 @@ def create_app() -> FastAPI:
         allowed_hosts=["*"],
     )
 
+    # Combine default allowed origins with any extra CORS origins from environment
+    origins = list(settings.allowed_origins)
+    if settings.extra_cors_origins:
+        extra_origins = [o.strip() for o in settings.extra_cors_origins.split(",") if o.strip()]
+        origins.extend(extra_origins)
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.allowed_origins,
+        allow_origins=origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
