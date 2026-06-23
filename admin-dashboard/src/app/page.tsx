@@ -52,6 +52,7 @@ export default function AdminDashboardPage() {
       setApiKey(saved);
       verifyKey(saved);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const verifyKey = async (key: string) => {
@@ -69,7 +70,7 @@ export default function AdminDashboardPage() {
         setAuthError('Access Denied: Invalid Admin API Key.');
         localStorage.removeItem('zai_admin_key');
       }
-    } catch (e) {
+    } catch {
       setAuthError('Connection Failed: Make sure backend is running locally.');
     } finally {
       setIsLoading(false);
@@ -116,7 +117,7 @@ export default function AdminDashboardPage() {
       if (res.ok) {
         await loadDashboardData(apiKey);
       }
-    } catch (e) {
+    } catch {
       alert('Failed to toggle flag');
     }
   };
@@ -145,7 +146,7 @@ export default function AdminDashboardPage() {
         setNewFlagDesc('');
         await loadDashboardData(apiKey);
       }
-    } catch (e) {
+    } catch {
       alert('Failed to create flag');
     }
   };
