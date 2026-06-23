@@ -72,21 +72,21 @@ class DatabaseManager:
         These must be the very first statements — SQLCipher enforces this.
         """
         # 1. Unlock the database with the derived key
-        connection.execute(text(f"PRAGMA key = \"x'{pin_key_hex}'\";"))
+        connection.execute(f"PRAGMA key = \"x'{pin_key_hex}'\";")
         # 2. SQLCipher version 4 defaults (AES-256-CBC, HMAC-SHA512)
-        connection.execute(text("PRAGMA cipher_page_size = 4096;"))
-        connection.execute(text("PRAGMA kdf_iter = 256000;"))
-        connection.execute(text("PRAGMA cipher_hmac_algorithm = HMAC_SHA512;"))
-        connection.execute(text("PRAGMA cipher_kdf_algorithm = PBKDF2_HMAC_SHA512;"))
+        connection.execute("PRAGMA cipher_page_size = 4096;")
+        connection.execute("PRAGMA kdf_iter = 256000;")
+        connection.execute("PRAGMA cipher_hmac_algorithm = HMAC_SHA512;")
+        connection.execute("PRAGMA cipher_kdf_algorithm = PBKDF2_HMAC_SHA512;")
         # 3. WAL mode for concurrent reads during streaming
-        connection.execute(text("PRAGMA journal_mode = WAL;"))
+        connection.execute("PRAGMA journal_mode = WAL;")
         # 4. Foreign key enforcement
-        connection.execute(text("PRAGMA foreign_keys = ON;"))
+        connection.execute("PRAGMA foreign_keys = ON;")
         # 5. Performance tuning — safe for local single-device use
-        connection.execute(text("PRAGMA synchronous = NORMAL;"))
-        connection.execute(text("PRAGMA cache_size = -32000;"))  # 32 MiB cache
-        connection.execute(text("PRAGMA temp_store = MEMORY;"))
-        connection.execute(text("PRAGMA mmap_size = 134217728;")) # 128 MiB mmap
+        connection.execute("PRAGMA synchronous = NORMAL;")
+        connection.execute("PRAGMA cache_size = -32000;")  # 32 MiB cache
+        connection.execute("PRAGMA temp_store = MEMORY;")
+        connection.execute("PRAGMA mmap_size = 134217728;") # 128 MiB mmap
 
     def initialize(self, pin: str, salt_hex: str) -> None:
         """

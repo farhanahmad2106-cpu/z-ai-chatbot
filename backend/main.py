@@ -81,10 +81,10 @@ def create_app() -> FastAPI:
     )
 
     # ── Security Middleware ────────────────────────────────────────────────────
-    # Only accept requests from localhost — the backend is never public-facing
+    # Allow local network connections (mobile app)
     app.add_middleware(
         TrustedHostMiddleware,
-        allowed_hosts=["localhost", "127.0.0.1", "::1"],
+        allowed_hosts=["*"],
     )
 
     app.add_middleware(
@@ -140,7 +140,7 @@ if __name__ == "__main__":
     settings = get_settings()
     uvicorn.run(
         "main:app",
-        host=settings.host,
+        host="0.0.0.0",
         port=settings.port,
         reload=settings.debug,
         log_level="debug" if settings.debug else "info",

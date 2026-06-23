@@ -13,6 +13,10 @@ export const getBaseUrl = (): string => {
     // Android emulator routes to host machine via 10.0.2.2
     return 'http://10.0.2.2:8765';
   }
+  if (__DEV__ && Platform.OS === 'web') {
+    // Web browser runs on the same machine
+    return 'http://localhost:8765';
+  }
   // Use the PC's actual local Wi-Fi IP address so the physical phone can reach it
   return 'http://172.20.10.13:8765';
 };

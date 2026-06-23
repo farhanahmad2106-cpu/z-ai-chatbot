@@ -28,7 +28,7 @@ from app.core.security import (
     hash_pin,
     verify_pin,
 )
-from app.database.connection import db_manager, get_db
+from app.database.connection import db_manager, get_db_session
 from app.database.models import AppMetadata
 
 logger = logging.getLogger(__name__)
@@ -114,7 +114,7 @@ async def get_auth_status() -> AuthStatusResponse:
         is_first = not settings.db_path.exists()
         return AuthStatusResponse(is_unlocked=False, is_first_launch=is_first)
 
-    with get_db() as db:
+    with get_db_session() as db:
         meta = db.query(AppMetadata).filter_by(id=1).first()
         return AuthStatusResponse(
             is_unlocked=True,
@@ -162,7 +162,7 @@ async def setup_pin(body: PinSetupRequest) -> TokenResponse:
 
     # 3. Seed the AppMetadata singleton + Default AI Models
     from app.database.models import AIModel
-    with get_db() as db:
+    with get_db_session() as db:
         meta = AppMetadata(
             id=1,
             device_id=device_id,
@@ -240,7 +240,7 @@ async def unlock(body: UnlockRequest) -> TokenResponse:
 
     if db_manager.is_unlocked:
         # Already unlocked — just issue a fresh token
-        with get_db() as db:
+        with get_db_session() as db:
             meta = db.query(AppMetadata).filter_by(id=1).first()
             if not meta:
                 raise HTTPException(status_code=500, detail="AppMetadata missing")
@@ -269,22 +269,29 @@ async def unlock(body: UnlockRequest) -> TokenResponse:
         ) from exc
 
     # Verify PIN against the stored Argon2id hash
-    with get_db() as db:
+    with get_db_session() as db:
         meta = db.query(AppMetadata).filter_by(id=1).first()
-        if not meta:
-            db_manager.lock()
-            raise HTTPException(status_code=500, detail="AppMetadata missing")
+        if meta:
+            pin_hash = meta.pin_hash
+            device_id = meta.device_id
+        else:
+            pin_hash = None
+            device_id = None
 
-        if not verify_pin(meta.pin_hash, body.pin):
-            db_manager.lock()
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect PIN",
-            )
+    if not pin_hash:
+        db_manager.lock()
+        raise HTTPException(status_code=500, detail="AppMetadata missing")
 
-        token = create_access_token(subject=meta.device_id, extra_claims={"role": "user"})
-        logger.info("App unlocked for device %s", meta.device_id)
-        return TokenResponse(access_token=token, device_id=meta.device_id)
+    if not verify_pin(pin_hash, body.pin):
+        db_manager.lock()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect PIN",
+        )
+
+    token = create_access_token(subject=device_id, extra_claims={"role": "user"})
+    logger.info("App unlocked for device %s", device_id)
+    return TokenResponse(access_token=token, device_id=device_id)
 
 
 @router.post("/lock", status_code=status.HTTP_204_NO_CONTENT, response_class=Response, summary="Lock the app")

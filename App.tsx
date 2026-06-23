@@ -132,20 +132,20 @@ function RootNavigator(): React.JSX.Element {
 // ─────────────────────────────────────────────────────────────────────────────
 export default function App(): React.JSX.Element {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <GestureHandlerRootView style={{ flex: 1 }}>
-      <NavigationContainer>
-          <StatusBar
-            barStyle="light-content"
-            backgroundColor={theme.colors.background}
-            translucent={false}
-          />
-          <RootNavigator />
-        </NavigationContainer>
-    </GestureHandlerRootView>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <ConvexProvider client={convex}>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <NavigationContainer>
+            <StatusBar
+              barStyle="light-content"
+              backgroundColor={theme.colors.background}
+              translucent={false}
+            />
+            <RootNavigator />
+          </NavigationContainer>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </ConvexProvider>
   );
 }
 
