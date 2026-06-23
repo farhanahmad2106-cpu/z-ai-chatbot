@@ -184,10 +184,10 @@
   - File: [`streamHandler.ts`](file:///c:/Farhan%20Ahmad/Code%20Languages/Mr.%20Z/Anti%20Gravity/AI%20Chatbot/src/services/streamHandler.ts)
   - Check the SSE URL uses the same `getBaseUrl()` helper — hardcoded URLs will break on emulator/device.
 
-- `[ ]` **Backend CORS `allowed_origins` covers the app's origin**
+- `[x]` **Backend CORS `allowed_origins` covers the app's origin**
   - File: [`config.py`](file:///c:/Farhan%20Ahmad/Code%20Languages/Mr.%20Z/Anti%20Gravity/AI%20Chatbot/backend/app/core/config.py#L41-L44)
   - Currently allows `http://localhost:*` and `http://127.0.0.1:*`.
-  - For the Android emulator, add `http://10.0.2.2:*` to the allowed origins list.
+  - For the Android emulator, add `http://10.0.2.2:*` to the allowed origins list. ✅ Added `10.0.2.2` and Expo `8081` origins to `config.py`.
 
 ### 3.3 Admin Dashboard — Vercel Environment Variables
 
@@ -379,15 +379,17 @@
 
 ## 🔐 Section 6 — Security Configuration
 
-- `[ ]` **No API keys or secrets exist in committed source files**
+- `[x]` **No API keys or secrets exist in committed source files**
   ```powershell
   git grep -r "CHANGE_ME" .
   git grep -r "sk_live_" .
   git grep -r "secret" --and --not "SecretStr" .
   ```
+  ✅ Verified that no secrets are committed.
 
-- `[ ]` **`.gitignore` covers all sensitive files**
+- `[x]` **`.gitignore` covers all sensitive files**
   - Must include: `.env`, `data/`, `*.db`, `*.db-shm`, `*.db-wal`, `*.salt`
+  - ✅ Verified that `.env`, SQLite files, salts, keystores, and IDE configuration files are properly ignored.
 
 - `[ ]` **`DEBUG=false` is confirmed in the production `.env`**
 
