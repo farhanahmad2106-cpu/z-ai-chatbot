@@ -1,0 +1,49 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap');
+
+:root {
+  --background: #030303;
+  --foreground: #f3f4f6;
+  --surface: #0a0a0c;
+  --surface-hover: #121215;
+  --outline: #1f2025;
+  --outline-glow: #3f3f46;
+  --primary: #4f46e5;
+  --primary-glow: rgba(79, 70, 229, 0.35);
+  --secondary: #10b981;
+  --secondary-glow: rgba(16, 185, 129, 0.2);
+  --error: #ef4444;
+  --error-glow: rgba(239, 68, 68, 0.2);
+  --on-surface-variant: #9ca3af;
+}
+
+html, body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: 'Outfit', sans-serif;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+/* Scrollbar tuning */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--outline);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--outline-glow);
+}
