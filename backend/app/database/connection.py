@@ -10,13 +10,15 @@ Encrypted SQLite via SQLCipher with:
 from __future__ import annotations
 
 import logging
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import contextmanager
 from pathlib import Path
-from typing import AsyncGenerator, Generator
+from typing import Generator
 
+# #pyrefly: ignore [missing-import]
 from sqlalchemy import create_engine, event, text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+# pyrefly: ignore [missing-import]
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+# pyrefly: ignore [missing-import]
 from sqlalchemy.pool import StaticPool
 
 from app.core.config import get_settings, DB_DIR
