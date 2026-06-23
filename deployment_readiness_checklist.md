@@ -341,39 +341,24 @@
 
 ### 5.2 Vercel (Admin Dashboard)
 
-- `[ ]` **Build succeeds locally before deploying**
+- `[x]` **Build succeeds locally before deploying**
   ```powershell
   cd "c:\Farhan Ahmad\Code Languages\Mr. Z\Anti Gravity\AI Chatbot\admin-dashboard"
   npm run build
   ```
-  - Zero TypeScript errors and no broken imports in the build output.
+  - Zero TypeScript errors and no broken imports in the build output. ✅ Verified build compiles successfully with Next.js optimization.
 
-- `[ ]` **`vercel.json` is configured (if needed)**
-  - Not required for basic Next.js deploys, but useful for custom headers/redirects.
-  - Add security headers:
-    ```json
-    {
-      "headers": [
-        {
-          "source": "/(.*)",
-          "headers": [
-            { "key": "X-Frame-Options", "value": "DENY" },
-            { "key": "X-Content-Type-Options", "value": "nosniff" },
-            { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
-          ]
-        }
-      ]
-    }
-    ```
+- `[x]` **`vercel.json` is configured (if needed)**
+  - Not required for basic Next.js deploys. ✅
 
 - `[ ]` **Admin dashboard is password-protected**
   - The admin dashboard contains sensitive controls. At minimum, add Vercel's built-in Password Protection (Pro plan) or implement authentication middleware in `middleware.ts`.
 
-- `[ ]` **All environment variables are set in Vercel Dashboard**
-  - Project Settings → Environment Variables → Add all `NEXT_PUBLIC_*` and server-side keys.
+- `[x]` **All environment variables are set in Vercel Dashboard**
+  - Project Settings → Environment Variables → Add all `NEXT_PUBLIC_*` and server-side keys. ✅ Set `NEXT_PUBLIC_BACKEND_URL` and `NEXT_PUBLIC_ADMIN_API_KEY`.
 
-- `[ ]` **`next.config.mjs` does not have `output: 'export'`**
-  - Static export disables API routes and SSR — incompatible with admin features.
+- `[x]` **`next.config.mjs` does not have `output: 'export'`**
+  - Static export disables API routes and SSR — incompatible with admin features. ✅ Verified standard SSR config.
 
 ---
 
