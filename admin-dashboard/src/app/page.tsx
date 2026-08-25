@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { LandingLoadingOverlay } from './LandingLoadingOverlay';
 
 interface SystemSummary {
   total_conversations: number;
@@ -28,6 +29,36 @@ interface LogEntry {
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://127.0.0.1:8765';
 
+const DUMMY_SUMMARY: SystemSummary = {
+  total_conversations: 42,
+  total_messages: 128,
+  active_flags: 3,
+  system_status: 'ONLINE (DEMO)'
+};
+
+const DUMMY_FLAGS: FeatureFlag[] = [
+  {
+    id: 'demo-1',
+    flag_key: 'quick_health_scan',
+    flag_value: 'true',
+    is_enabled: true,
+    description: 'Enables instant AI health vision diagnostic scanning.',
+    pushed_by: 'system',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  {
+    id: 'demo-2',
+    flag_key: 'daily_motivational_deck',
+    flag_value: 'true',
+    is_enabled: true,
+    description: 'Enables 7-second dynamic quote deck with exponential cooldown.',
+    pushed_by: 'system',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  }
+];
+
 export default function AdminDashboardPage() {
   const [apiKey, setApiKey] = useState('');
   const [isAuthorized, setIsAuthorized] = useState(false);
@@ -38,6 +69,10 @@ export default function AdminDashboardPage() {
   const [flags, setFlags] = useState<FeatureFlag[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   
+  // Cache / Data Source status
+  const [dataSourceBadge, setDataSourceBadge] = useState<'LIVE' | 'PREVIOUS_DAY_CACHE' | 'DEMO_MODE'>('DEMO_MODE');
+  const [isDashboardLoading, setIsDashboardLoading] = useState(true);
+
   // New Flag Modal
   const [newFlagKey, setNewFlagKey] = useState('');
   const [newFlagVal, setNewFlagVal] = useState('true');
@@ -45,12 +80,33 @@ export default function AdminDashboardPage() {
   
   const [isLoading, setIsLoading] = useState(false);
 
-  // Check saved session
+  // 1. SWR Cache & Initial Load
   useEffect(() => {
+    // Load cached or dummy data immediately so dashboard renders in 0ms!
+    const cachedSummary = localStorage.getItem('z_sehealth_cached_summary');
+    const cachedFlags = localStorage.getItem('z_sehealth_cached_flags');
+
+    if (cachedSummary && cachedFlags) {
+      setSummary(JSON.parse(cachedSummary));
+      setFlags(JSON.parse(cachedFlags));
+      setDataSourceBadge('PREVIOUS_DAY_CACHE');
+    } else {
+      // Use curated dummy data for new users
+      setSummary(DUMMY_SUMMARY);
+      setFlags(DUMMY_FLAGS);
+      setDataSourceBadge('DEMO_MODE');
+    }
+
     const saved = localStorage.getItem('zai_admin_key');
     if (saved) {
       setApiKey(saved);
       verifyKey(saved);
+    } else {
+      // Simulate quick interactive landing demo loading delay
+      const timer = setTimeout(() => {
+        setIsDashboardLoading(false);
+      }, 3500);
+      return () => clearTimeout(timer);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -65,15 +121,16 @@ export default function AdminDashboardPage() {
       if (response.ok) {
         localStorage.setItem('zai_admin_key', key);
         setIsAuthorized(true);
-        loadDashboardData(key);
+        await loadDashboardData(key);
       } else {
         setAuthError('Access Denied: Invalid Admin API Key.');
         localStorage.removeItem('zai_admin_key');
       }
     } catch {
-      setAuthError('Connection Failed: Make sure backend is running locally.');
+      setAuthError('Connection Failed: Operating in offline / cached mode.');
     } finally {
       setIsLoading(false);
+      setIsDashboardLoading(false);
     }
   };
 
@@ -89,13 +146,21 @@ export default function AdminDashboardPage() {
       const sumRes = await fetch(`${BACKEND_URL}/api/v1/admin/summary`, {
         headers: { 'X-Admin-Key': key }
       });
-      if (sumRes.ok) setSummary(await sumRes.json());
+      if (sumRes.ok) {
+        const sumData = await sumRes.json();
+        setSummary(sumData);
+        localStorage.setItem('z_sehealth_cached_summary', JSON.stringify(sumData));
+      }
 
       // 2. Fetch flags
       const flagRes = await fetch(`${BACKEND_URL}/api/v1/admin/feature-flags`, {
         headers: { 'X-Admin-Key': key }
       });
-      if (flagRes.ok) setFlags(await flagRes.json());
+      if (flagRes.ok) {
+        const flagData = await flagRes.json();
+        setFlags(flagData);
+        localStorage.setItem('z_sehealth_cached_flags', JSON.stringify(flagData));
+      }
 
       // 3. Fetch logs
       const logRes = await fetch(`${BACKEND_URL}/api/v1/admin/diagnostics/logs`, {
@@ -103,10 +168,12 @@ export default function AdminDashboardPage() {
       });
       if (logRes.ok) setLogs(await logRes.json());
 
+      setDataSourceBadge('LIVE');
     } catch (e) {
       console.error('Error fetching admin data', e);
     }
   };
+
 
   const handleToggleFlag = async (flagKey: string) => {
     try {
@@ -187,11 +254,22 @@ export default function AdminDashboardPage() {
 
   return (
     <div style={styles.appContainer}>
+      {/* Interactive Landing & Quote Overlay while loading */}
+      <LandingLoadingOverlay isLoading={isDashboardLoading} userStreakDays={0} userName="Farhan Ahmad" />
+
       {/* Sidebar Header */}
       <header style={styles.navbar}>
         <div style={styles.brandRow}>
           <h1 style={styles.logo}>Z-AI ADMIN DASHBOARD</h1>
           <span style={styles.pill}>Local-First v1.0</span>
+          <span style={{
+            ...styles.pill,
+            backgroundColor: dataSourceBadge === 'LIVE' ? 'rgba(16,185,129,0.1)' : dataSourceBadge === 'PREVIOUS_DAY_CACHE' ? 'rgba(245,158,11,0.1)' : 'rgba(99,102,241,0.1)',
+            borderColor: dataSourceBadge === 'LIVE' ? '#10b981' : dataSourceBadge === 'PREVIOUS_DAY_CACHE' ? '#f59e0b' : '#6366f1',
+            color: dataSourceBadge === 'LIVE' ? '#10b981' : dataSourceBadge === 'PREVIOUS_DAY_CACHE' ? '#f59e0b' : '#818cf8'
+          }}>
+            {dataSourceBadge === 'LIVE' ? '🟢 LIVE METRICS' : dataSourceBadge === 'PREVIOUS_DAY_CACHE' ? '⚡ CACHED (PREVIOUS SESSION)' : '✨ DEMO MODE'}
+          </span>
         </div>
         <button onClick={handleLogOut} style={styles.logoutBtn}>
           SECURE LOG OUT
@@ -206,6 +284,7 @@ export default function AdminDashboardPage() {
             <span style={styles.sumLabel}>SYSTEM METRIC STATUS</span>
             <h3 style={{ ...styles.sumVal, color: '#10b981' }}>{summary?.system_status || 'ONLINE'}</h3>
           </div>
+
           <div style={styles.sumCard}>
             <span style={styles.sumLabel}>SECURE THREAD CONVERSATIONS</span>
             <h3 style={styles.sumVal}>{summary?.total_conversations ?? 0}</h3>
