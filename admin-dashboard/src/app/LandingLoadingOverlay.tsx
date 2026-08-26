@@ -155,7 +155,7 @@ export const LandingLoadingOverlay: React.FC<LandingLoadingOverlayProps> = ({
 
           {/* 7-Second Visual Progress Bar */}
           <div style={styles.progressTrack}>
-            <div key={key} style={styles.progressBarFill} />
+            <div key={key} style={{ ...styles.progressBarFill, animation: `progressFill ${currentDurationSec}s linear 1 forwards` }} />
           </div>
 
           {/* Interactive Action Bar */}
@@ -399,7 +399,7 @@ const styles = {
   progressBarFill: {
     height: '100%',
     backgroundColor: '#10b981',
-    animation: `progressFill ${currentDurationSec}s linear 1 forwards`
+    animation: 'progressFill 7s linear infinite'
   },
   quoteActions: {
     display: 'flex',
