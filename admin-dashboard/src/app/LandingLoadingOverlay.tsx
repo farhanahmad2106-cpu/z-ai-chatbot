@@ -10,6 +10,20 @@ import {
   QuoteRecord
 } from './quoteEngine';
 
+
+// Helper to calculate dynamic quote display duration:
+// 8 seconds for short/single line quotes, 15 seconds for long or comma-separated/multi-sentence quotes.
+export const getQuoteDurationSeconds = (quoteText?: string): number => {
+  if (!quoteText) return 8;
+  const trimmed = quoteText.trim();
+  const isLongOrMultiClause =
+    trimmed.includes(',') ||
+    trimmed.includes(';') ||
+    (trimmed.match(/[.!?]/g) || []).length > 1 ||
+    trimmed.length > 60;
+  return isLongOrMultiClause ? 15 : 8;
+};
+
 interface LandingLoadingOverlayProps {
   isLoading: boolean;
   userStreakDays?: number;
@@ -28,7 +42,7 @@ export const LandingLoadingOverlay: React.FC<LandingLoadingOverlayProps> = ({
   const [savedQuotesList, setSavedQuotesList] = useState<Quote[]>([]);
   const [key, setKey] = useState(0); // For resetting 7s progress bar animation
 
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadNextQuote = () => {
     const { quote } = getNextQuote(currentQuote?.id);
@@ -43,29 +57,33 @@ export const LandingLoadingOverlay: React.FC<LandingLoadingOverlayProps> = ({
   };
 
   // 7-second quote rotation timer while loading
+  const currentDurationSec = getQuoteDurationSeconds(currentQuote?.text);
+
   useEffect(() => {
     loadNextQuote();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!currentQuote) return;
+
+    if (timerRef.current) clearTimeout(timerRef.current);
 
     if (isLoading) {
-      timerRef.current = setInterval(() => {
+      timerRef.current = setTimeout(() => {
         loadNextQuote();
-      }, 7000);
+      }, currentDurationSec * 1000);
     }
 
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+      if (timerRef.current) clearTimeout(timerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading]);
+  }, [currentQuote, isLoading]);
 
   const handleNextClick = () => {
-    if (timerRef.current) clearInterval(timerRef.current);
+    if (timerRef.current) clearTimeout(timerRef.current);
     loadNextQuote();
-    if (isLoading) {
-      timerRef.current = setInterval(() => {
-        loadNextQuote();
-      }, 7000);
-    }
   };
 
   const handleToggleSave = () => {
@@ -381,7 +399,7 @@ const styles = {
   progressBarFill: {
     height: '100%',
     backgroundColor: '#10b981',
-    animation: 'progressFill 7s linear infinite'
+    animation: `progressFill ${currentDurationSec}s linear 1 forwards`
   },
   quoteActions: {
     display: 'flex',
