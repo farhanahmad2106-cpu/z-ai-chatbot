@@ -1,11 +1,32 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-03 (Session: 16-file technical specification framework & agent execution tracker created in .zayd_docs)
+> **Last Updated:** 2026-09-03 (Session: Production-grade Over-The-Air (OTA) Update Delivery System for React Native Expo Mobile Client)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-03
+**Work Done — Over-The-Air (OTA) Update Delivery System (React Native Expo + EAS):**
+
+### 🚀 Production Over-The-Air (OTA) Delivery Engine ✅
+- **Configured `app.json` & `eas.json`**:
+  - Implemented `expo-updates` with strict `"runtimeVersion": { "policy": "appVersion" }` lock to prevent native mismatch crashes.
+  - Set `fallbackToCacheTimeout: 3000` to prevent blocked cold boots in low-connectivity/offline edge environments.
+  - Defined EAS channel matrix (`development`, `preview` [staging], `production`) with channel-targeted update routing.
+- **Client-side Lifecycle Engine (`src/services/updateManager.ts` & `src/store/telemetryStore.ts`)**:
+  - Engineered `useUpdateManager()` hook with automatic `__DEV__` bypass and background bundle downloading via `Updates.checkForUpdateAsync()` and `Updates.fetchUpdateAsync()`.
+  - Implemented error logging to local `useTelemetryStore` without crashing active user sessions.
+  - Built unobtrusive floating toast UI in `App.tsx` offering instant reload (`Updates.reloadAsync()`) or graceful deferred reload on next cold launch.
+- **Admin Remote Control & Webhook Integration (`admin-dashboard/app/api/ota/route.ts` & `OtaManager.tsx`)**:
+  - Next.js 14 Route Handler protected by `X-Admin-Key` header verification against `ADMIN_SECRET` to inspect live EAS releases and trigger remote workflow dispatches.
+  - Brutalist dark theme admin management component for release queries and instant hotfix deployment.
+- **CI/CD Automated Deployment (`.github/workflows/ota-deploy.yml`)**:
+  - GitHub Actions pipeline publishing `eas update --auto --channel production` on push to `main` filtered strictly to JS, CSS, and asset files.
+
+---
+
+## 🗓️ Previous Session Summary
 **Date:** 2026-09-03
 **Work Done — Complete 16-File Technical Specification Framework & Agent Execution Tracker:**
 
@@ -213,8 +234,16 @@
 | `backend/.env` | Local secrets (NOT committed) | — |
 | `backend/.env.example` | Secret key template | 2026-07-30 |
 | `RULES.md` | Development rules and conventions | **2026-07-30** |
-| `MEMORY.md` | This file — project state | **2026-08-28** |
+| `MEMORY.md` | This file — project state | **2026-09-03** |
 | `Z-SeHealth_project_features.md` | Feature list and roadmap | 2026-07-30 |
+| `app.json` | Expo updates config & runtimeVersion policy | **2026-09-03** |
+| `eas.json` | EAS build and channel matrix (dev/preview/prod) | **2026-09-03** |
+| `src/services/updateManager.ts` | OTA update listener, downloader & lifecycle hook | **2026-09-03** |
+| `src/store/telemetryStore.ts` | Hardware metrics & OTA error logging store | **2026-09-03** |
+| `App.tsx` | Mobile root integration with OTA toast UI | **2026-09-03** |
+| `.github/workflows/ota-deploy.yml` | GitHub Actions automated OTA deploy pipeline | **2026-09-03** |
+| `admin-dashboard/app/api/ota/route.ts` | Next.js 14 Route Handler for EAS updates | **2026-09-03** |
+| `admin-dashboard/app/components/OtaManager.tsx` | Admin Portal brutalist OTA control center | **2026-09-03** |
 
 ---
 
