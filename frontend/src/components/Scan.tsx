@@ -626,7 +626,7 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
           </div>
 
           <div className="space-y-6">
-            {analysisResult.allergens?.length > 0 && (
+            {Array.isArray(analysisResult.allergens) && analysisResult.allergens.length > 0 && (
               <div>
                 <p className="text-[10px] text-rose-400 uppercase font-black tracking-widest mb-3 flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4" /> Allergens Detected
@@ -639,7 +639,7 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
               </div>
             )}
 
-            {analysisResult.additives?.length > 0 && (
+            {Array.isArray(analysisResult.additives) && analysisResult.additives.length > 0 && (
               <div>
                 <p className="text-[10px] text-amber-400 uppercase font-black tracking-widest mb-3">Additives Detected</p>
                 <div className="flex flex-wrap gap-2">
@@ -653,9 +653,11 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
             <div>
               <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest mb-3">Parsed Ingredients</p>
               <div className="flex flex-wrap gap-2">
-                {analysisResult.ingredients?.map((a: string, i: number) => (
+                {Array.isArray(analysisResult.ingredients) ? analysisResult.ingredients.map((a: string, i: number) => (
                   <span key={i} className="px-3 py-1.5 bg-slate-800 text-gray-300 rounded-full text-xs font-semibold border border-slate-700 shadow-sm">{a}</span>
-                ))}
+                )) : (
+                  <span className="text-sm text-gray-400">No ingredients parsed.</span>
+                )}
               </div>
             </div>
           </div>
