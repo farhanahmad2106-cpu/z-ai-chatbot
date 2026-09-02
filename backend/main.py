@@ -23,6 +23,7 @@ from fastapi import Header, Request
 # --- FREEMIUM: Import subscription and webhook routers ---
 from routes.subscriptions import router as subscriptions_router
 from routes.webhooks import router as webhooks_router
+from routes.scan import router as scan_router
 from middleware.quota_check import check_scan_quota, get_user_quota_status
 from services.ai_router import route_scan_by_tier
 from services.ocr_engine import extract_text_from_image
@@ -34,6 +35,7 @@ app = FastAPI(title="Z-SeHealth API")
 # --- FREEMIUM: Register routers ---
 app.include_router(subscriptions_router)
 app.include_router(webhooks_router)
+app.include_router(scan_router)
 
 # --- CORS SETUP ---
 app.add_middleware(

@@ -1,7 +1,21 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-03 (Session: Production-grade Over-The-Air (OTA) Update Delivery System for React Native Expo Mobile Client)
+> **Last Updated:** 2026-09-03 (Session: Back-of-Pack OCR Feature Pipeline & Interactive Ingredient Review Drawer)
+
+---
+
+## 🗓️ Last Session Summary
+**Date:** 2026-09-03
+**Work Done — Back-of-Pack OCR & Ingredient Review UI:**
+
+### 🚀 Back-of-Pack OCR Pipeline (Backend) ✅
+- **Configured `backend/schemas/scan.py`**: Created `OCRAnalysisResponse` Pydantic model.
+- **Implemented `backend/services/ocr_service.py`**: Engineered a multi-tier fallback OCR service using Sarvam/Edge, NVIDIA NIM (`nvidia/neva-22b`), and Gemini Cloud.
+- **Added `backend/routes/scan.py`**: Developed `POST /api/scan/analyze` route for processing image uploads, wired into `main.py`.
+
+### 🖥️ Interactive Ingredient Review Drawer (Frontend) ✅
+- **Built `frontend/src/components/IngredientReviewModal.tsx`**: Engineered a glassmorphic React drawer following the brutalist dark-mode design system. Maps the parsed OCR response into interactive inputs, visually tracking INS additive risks (high/moderate/low) and flagged allergens.
 
 ---
 
