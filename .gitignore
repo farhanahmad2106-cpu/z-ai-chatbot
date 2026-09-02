@@ -34,3 +34,7 @@ build/
 .DS_Store
 Thumbs.db
 backend/firebase-admin-key.json
+.next/
+admin-dashboard/.next/
+convex/_generated/
+data/db/

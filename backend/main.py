@@ -25,6 +25,8 @@ from routes.subscriptions import router as subscriptions_router
 from routes.webhooks import router as webhooks_router
 from middleware.quota_check import check_scan_quota, get_user_quota_status
 from services.ai_router import route_scan_by_tier
+from services.ocr_engine import extract_text_from_image
+from models import ParsedIngredients
 
 
 app = FastAPI(title="Z-SeHealth API")
@@ -918,6 +920,52 @@ async def scan_ingredients(request: dict, authorization: str = Header(None)):
         ],
         "warnings": ["May contain milk or gluten ingredients."]
     }
+
+@app.post("/api/scan/ingredients")
+async def scan_ingredients_ocr(request: dict, authorization: str = Header(None)):
+    image_data = request.get("image")
+    if not image_data:
+        raise HTTPException(status_code=400, detail="No image data provided")
+        
+    if "," in image_data:
+        image_data = image_data.split(",")[1]
+        
+    try:
+        image_bytes = base64.b64decode(image_data)
+        extracted_text = extract_text_from_image(image_bytes)
+        print(f"OCR Extracted Text: {extracted_text[:100]}...")
+    except Exception as e:
+        print(f"OCR Extraction failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to process image via OCR")
+        
+    prompt = (
+        f"Parse the following OCR text extracted from a product ingredients label: '{extracted_text}'. "
+        "Clean up any typos from OCR and extract the ingredients, additives, allergens, and estimate nutritional macros. "
+        "Return ONLY a raw JSON object matching this schema exactly: "
+        "{\"ingredients\": [\"str\"], \"additives\": [\"str\"], \"allergens\": [\"str\"], \"estimated_macros\": {\"calories\": 0, \"protein\": 0, \"carbs\": 0, \"fat\": 0}}. "
+        "Do NOT include markdown formatting or any other text."
+    )
+    
+    # Use Gemini Flash as primary for structuring as agreed
+    result = await try_gemini_fallback_food(prompt)
+    if not result:
+        # Fallback to NVIDIA if Gemini fails
+        nvidia_keys = get_nvidia_keys()
+        for key in nvidia_keys:
+            result = await try_nvidia_fallback_food(prompt, key)
+            if result:
+                break
+    
+    if not result:
+        # Final fallback
+        result = {
+            "ingredients": ["Raw text: " + extracted_text[:50]],
+            "additives": [],
+            "allergens": [],
+            "estimated_macros": {"calories": 0, "protein": 0, "carbs": 0, "fat": 0}
+        }
+        
+    return result
 
 @app.get("/")
 def root():

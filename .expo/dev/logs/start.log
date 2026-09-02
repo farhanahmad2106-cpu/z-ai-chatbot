@@ -1,0 +1,225 @@
+{"_e":"root:init","_t":1780112323598,"format":"v0-jsonl","version":"56.1.13"}
+{"_e":"env:mode","_t":1780112323600,"nodeEnv":"development","babelEnv":"development","mode":"development"}
+{"_e":"env:load","_t":1780112323610,"mode":"development","files":["../..\\..\\.env"],"env":{"ADMIN_API_KEY":"wSqwdMuFF3pcJLOIBKzywdjjkIdzg5oDcoj5QLTG7JdKmnT3d_2wZX0bvBCRiKGN","APP_NAME":"Z-AI Chatbot","APP_VERSION":"1.0.0","BACKUP_RETENTION_DAYS":"30","BACKUP_SCHEDULE_CRON":"0 3 * * *","DEBUG":"false","DEFAULT_MODEL":"phi-3-mini-4k-instruct-q4.gguf","FALLBACK_MODEL":"gemma-2b-it-q4_k_m.gguf","HOST":"127.0.0.1","JWT_SECRET":"khAMqAGugofzLAklAwjkdPvcK54H74nX8UxUU9HkA_EjAuSpSKFXbA0FkJ22btFh","METRICS_POLL_INTERVAL_SECONDS":"2.0","MODEL_CONTEXT_LENGTH":"4096","MODEL_MAX_TOKENS":"2048","MODEL_TEMPERATURE":"0.7","MODEL_THREADS":"4","PORT":"8765"}}
+{"_e":"devserver:start","_t":1780112324415,"mode":"development","web":true,"baseUrl":"","asyncRoutes":false,"routerRoot":"../..\\..\\app","serverComponents":false,"serverActions":false,"serverRendering":false,"apiRoutes":false,"exporting":false}
+{"_e":"metro:config","_t":1780112325918,"serverRoot":"../..\\..","projectRoot":"../..\\..","exporting":false,"flags":{"autolinkingModuleResolution":false,"serverActions":false,"serverComponents":false,"reactCompiler":false,"optimizeGraph":false,"treeshaking":false,"logbox":false}}
+{"_e":"metro:instantiate","_t":1780112350512,"atlas":false,"workers":8,"host":"::","port":8081}
+{"_e":"metro:bundling:started","_t":1780112350936,"id":"1","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:failed","_t":1780112350998,"id":"1","message":"Cannot read properties of undefined (reading 'transformFile')","importStack":null,"filename":null,"targetModuleName":null,"originModulePath":null}
+{"_e":"metro:bundling:started","_t":1780112367276,"id":"3","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:failed","_t":1780112367284,"id":"3","message":"Cannot read properties of undefined (reading 'transformFile')","importStack":null,"filename":null,"targetModuleName":null,"originModulePath":null}
+{"_e":"root:init","_t":1780112502194,"format":"v0-jsonl","version":"56.1.13"}
+{"_e":"env:mode","_t":1780112502196,"nodeEnv":"development","babelEnv":"development","mode":"development"}
+{"_e":"env:load","_t":1780112502205,"mode":"development","files":["../..\\..\\.env"],"env":{"ADMIN_API_KEY":"wSqwdMuFF3pcJLOIBKzywdjjkIdzg5oDcoj5QLTG7JdKmnT3d_2wZX0bvBCRiKGN","APP_NAME":"Z-AI Chatbot","APP_VERSION":"1.0.0","BACKUP_RETENTION_DAYS":"30","BACKUP_SCHEDULE_CRON":"0 3 * * *","DEBUG":"false","DEFAULT_MODEL":"phi-3-mini-4k-instruct-q4.gguf","FALLBACK_MODEL":"gemma-2b-it-q4_k_m.gguf","HOST":"127.0.0.1","JWT_SECRET":"khAMqAGugofzLAklAwjkdPvcK54H74nX8UxUU9HkA_EjAuSpSKFXbA0FkJ22btFh","METRICS_POLL_INTERVAL_SECONDS":"2.0","MODEL_CONTEXT_LENGTH":"4096","MODEL_MAX_TOKENS":"2048","MODEL_TEMPERATURE":"0.7","MODEL_THREADS":"4","PORT":"8765"}}
+{"_e":"devserver:start","_t":1780112502728,"mode":"development","web":true,"baseUrl":"","asyncRoutes":false,"routerRoot":"../..\\..\\app","serverComponents":false,"serverActions":false,"serverRendering":false,"apiRoutes":false,"exporting":false}
+{"_e":"metro:config","_t":1780112503672,"serverRoot":"../..\\..","projectRoot":"../..\\..","exporting":false,"flags":{"autolinkingModuleResolution":false,"serverActions":false,"serverComponents":false,"reactCompiler":false,"optimizeGraph":false,"treeshaking":false,"logbox":false}}
+{"_e":"metro:instantiate","_t":1780112523809,"atlas":false,"workers":8,"host":"::","port":8081}
+{"_e":"metro:bundling:started","_t":1780112563940,"id":"1","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:done","_t":1780112581653,"id":"1","total":882,"ms":17712.1696}
+{"_e":"metro:bundling:started","_t":1780112646693,"id":"3","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:done","_t":1780112646790,"id":"3","total":1,"ms":97.3795}
+{"_e":"metro:bundling:started","_t":1780112647227,"id":"4","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:done","_t":1780112647326,"id":"4","total":1,"ms":98.1421}
+{"_e":"metro:bundling:started","_t":1780112722220,"id":"6","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:done","_t":1780112722316,"id":"6","total":1,"ms":95.3056}
+{"_e":"metro:bundling:started","_t":1780112735137,"id":"8","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:done","_t":1780112735231,"id":"8","total":1,"ms":93.3672}
+{"_e":"metro:bundling:started","_t":1780112736652,"id":"9","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:done","_t":1780112736755,"id":"9","total":1,"ms":102.001}
+{"_e":"metro:bundling:started","_t":1780112745985,"id":"b","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:done","_t":1780112746091,"id":"b","total":1,"ms":105.3125}
+{"_e":"metro:bundling:started","_t":1780113182461,"id":"d","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:done","_t":1780113182543,"id":"d","total":1,"ms":81.1352}
+{"_e":"metro:bundling:failed","_t":1780113634958,"id":null,"message":"Unable to resolve \"react-dom/client\" from \"node_modules\\react-native-web\\dist\\exports\\render\\index.js\"\n  10 | 'use client';\n  11 |\n> 12 | import { createRoot as domCreateRoot, hydrateRoot as domHydrateRoot } from 'react-dom/client';\n     |                                                                             ^\n  13 | import { createSheet } from '../StyleSheet/dom';\n  14 | export function hydrate(element, root) {\n  15 |   createSheet(root);","importStack":"Import stack:\n\n node_modules\\react-native-web\\dist\\exports\\render\\index.js\n | import \"react-dom/client\"\n\n node_modules\\react-native-web\\dist\\exports\\AppRegistry\\renderApplication.js\n | import \"../render\"\n\n node_modules\\react-native-web\\dist\\exports\\AppRegistry\\index.js\n | import \"./renderApplication\"\n\n node_modules\\expo\\src\\launch\\AppRegistry.ts\n | import \"react-native-web/dist/exports/AppRegistry\"\n\n node_modules\\expo\\src\\launch\\registerRootComponent.web.tsx\n | import \"./AppRegistry\"\n\n node_modules\\expo\\src\\Expo.ts\n | import \"./launch/registerRootComponent\"\n\n index.ts\n | import \"expo\"\n\n \n | import \"./index.ts\"\n","filename":null,"targetModuleName":"react-dom/client","originModulePath":"node_modules\\react-native-web\\dist\\exports\\render\\index.js"}
+{"_e":"metro:bundling:failed","_t":1780113635956,"id":null,"message":"Unable to resolve \"react-dom/client\" from \"node_modules\\react-native-web\\dist\\exports\\render\\index.js\"\n  10 | 'use client';\n  11 |\n> 12 | import { createRoot as domCreateRoot, hydrateRoot as domHydrateRoot } from 'react-dom/client';\n     |                                                                             ^\n  13 | import { createSheet } from '../StyleSheet/dom';\n  14 | export function hydrate(element, root) {\n  15 |   createSheet(root);","importStack":"Import stack:\n\n node_modules\\react-native-web\\dist\\exports\\render\\index.js\n | import \"react-dom/client\"\n\n node_modules\\react-native-web\\dist\\exports\\AppRegistry\\renderApplication.js\n | import \"../render\"\n\n node_modules\\react-native-web\\dist\\exports\\AppRegistry\\index.js\n | import \"./renderApplication\"\n\n node_modules\\expo\\src\\launch\\AppRegistry.ts\n | import \"react-native-web/dist/exports/AppRegistry\"\n\n node_modules\\expo\\src\\launch\\registerRootComponent.web.tsx\n | import \"./AppRegistry\"\n\n node_modules\\expo\\src\\Expo.ts\n | import \"./launch/registerRootComponent\"\n\n index.ts\n | import \"expo\"\n\n \n | import \"./index.ts\"\n","filename":null,"targetModuleName":"react-dom/client","originModulePath":"node_modules\\react-native-web\\dist\\exports\\render\\index.js"}
+{"_e":"metro:bundling:failed","_t":1780113636393,"id":null,"message":"Unable to resolve \"react-dom/client\" from \"node_modules\\react-native-web\\dist\\exports\\render\\index.js\"\n  10 | 'use client';\n  11 |\n> 12 | import { createRoot as domCreateRoot, hydrateRoot as domHydrateRoot } from 'react-dom/client';\n     |                                                                             ^\n  13 | import { createSheet } from '../StyleSheet/dom';\n  14 | export function hydrate(element, root) {\n  15 |   createSheet(root);","importStack":"Import stack:\n\n node_modules\\react-native-web\\dist\\exports\\render\\index.js\n | import \"react-dom/client\"\n\n node_modules\\react-native-web\\dist\\exports\\AppRegistry\\renderApplication.js\n | import \"../render\"\n\n node_modules\\react-native-web\\dist\\exports\\AppRegistry\\index.js\n | import \"./renderApplication\"\n\n node_modules\\expo\\src\\launch\\AppRegistry.ts\n | import \"react-native-web/dist/exports/AppRegistry\"\n\n node_modules\\expo\\src\\launch\\registerRootComponent.web.tsx\n | import \"./AppRegistry\"\n\n node_modules\\expo\\src\\Expo.ts\n | import \"./launch/registerRootComponent\"\n\n index.ts\n | import \"expo\"\n\n \n | import \"./index.ts\"\n","filename":null,"targetModuleName":"react-dom/client","originModulePath":"node_modules\\react-native-web\\dist\\exports\\render\\index.js"}
+{"_e":"metro:bundling:failed","_t":1780113647183,"id":null,"message":"Unable to resolve \"react-dom/client\" from \"node_modules\\react-native-web\\dist\\exports\\render\\index.js\"\n  10 | 'use client';\n  11 |\n> 12 | import { createRoot as domCreateRoot, hydrateRoot as domHydrateRoot } from 'react-dom/client';\n     |                                                                             ^\n  13 | import { createSheet } from '../StyleSheet/dom';\n  14 | export function hydrate(element, root) {\n  15 |   createSheet(root);","importStack":"Import stack:\n\n node_modules\\react-native-web\\dist\\exports\\render\\index.js\n | import \"react-dom/client\"\n\n node_modules\\react-native-web\\dist\\exports\\AppRegistry\\renderApplication.js\n | import \"../render\"\n\n node_modules\\react-native-web\\dist\\exports\\AppRegistry\\index.js\n | import \"./renderApplication\"\n\n node_modules\\expo\\src\\launch\\AppRegistry.ts\n | import \"react-native-web/dist/exports/AppRegistry\"\n\n node_modules\\expo\\src\\launch\\registerRootComponent.web.tsx\n | import \"./AppRegistry\"\n\n node_modules\\expo\\src\\Expo.ts\n | import \"./launch/registerRootComponent\"\n\n index.ts\n | import \"expo\"\n\n \n | import \"./index.ts\"\n","filename":null,"targetModuleName":"react-dom/client","originModulePath":"node_modules\\react-native-web\\dist\\exports\\render\\index.js"}
+{"_e":"root:init","_t":1780113672503,"format":"v0-jsonl","version":"56.1.13"}
+{"_e":"env:mode","_t":1780113672505,"nodeEnv":"development","babelEnv":"development","mode":"development"}
+{"_e":"env:load","_t":1780113672512,"mode":"development","files":["../..\\..\\.env"],"env":{"ADMIN_API_KEY":"wSqwdMuFF3pcJLOIBKzywdjjkIdzg5oDcoj5QLTG7JdKmnT3d_2wZX0bvBCRiKGN","APP_NAME":"Z-AI Chatbot","APP_VERSION":"1.0.0","BACKUP_RETENTION_DAYS":"30","BACKUP_SCHEDULE_CRON":"0 3 * * *","DEBUG":"false","DEFAULT_MODEL":"phi-3-mini-4k-instruct-q4.gguf","FALLBACK_MODEL":"gemma-2b-it-q4_k_m.gguf","HOST":"127.0.0.1","JWT_SECRET":"khAMqAGugofzLAklAwjkdPvcK54H74nX8UxUU9HkA_EjAuSpSKFXbA0FkJ22btFh","METRICS_POLL_INTERVAL_SECONDS":"2.0","MODEL_CONTEXT_LENGTH":"4096","MODEL_MAX_TOKENS":"2048","MODEL_TEMPERATURE":"0.7","MODEL_THREADS":"4","PORT":"8765"}}
+{"_e":"devserver:start","_t":1780113673015,"mode":"development","web":true,"baseUrl":"","asyncRoutes":false,"routerRoot":"../..\\..\\app","serverComponents":false,"serverActions":false,"serverRendering":false,"apiRoutes":false,"exporting":false}
+{"_e":"metro:config","_t":1780113673643,"serverRoot":"../..\\..","projectRoot":"../..\\..","exporting":false,"flags":{"autolinkingModuleResolution":false,"serverActions":false,"serverComponents":false,"reactCompiler":false,"optimizeGraph":false,"treeshaking":false,"logbox":false}}
+{"_e":"metro:instantiate","_t":1780113691469,"atlas":false,"workers":8,"host":"::","port":8081}
+{"_e":"root:init","_t":1780113761355,"format":"v0-jsonl","version":"56.1.13"}
+{"_e":"env:mode","_t":1780113761357,"nodeEnv":"development","babelEnv":"development","mode":"development"}
+{"_e":"env:load","_t":1780113761364,"mode":"development","files":["../..\\..\\.env"],"env":{"ADMIN_API_KEY":"wSqwdMuFF3pcJLOIBKzywdjjkIdzg5oDcoj5QLTG7JdKmnT3d_2wZX0bvBCRiKGN","APP_NAME":"Z-AI Chatbot","APP_VERSION":"1.0.0","BACKUP_RETENTION_DAYS":"30","BACKUP_SCHEDULE_CRON":"0 3 * * *","DEBUG":"false","DEFAULT_MODEL":"phi-3-mini-4k-instruct-q4.gguf","FALLBACK_MODEL":"gemma-2b-it-q4_k_m.gguf","HOST":"127.0.0.1","JWT_SECRET":"khAMqAGugofzLAklAwjkdPvcK54H74nX8UxUU9HkA_EjAuSpSKFXbA0FkJ22btFh","METRICS_POLL_INTERVAL_SECONDS":"2.0","MODEL_CONTEXT_LENGTH":"4096","MODEL_MAX_TOKENS":"2048","MODEL_TEMPERATURE":"0.7","MODEL_THREADS":"4","PORT":"8765"}}
+{"_e":"devserver:start","_t":1780113761746,"mode":"development","web":true,"baseUrl":"","asyncRoutes":false,"routerRoot":"../..\\..\\app","serverComponents":false,"serverActions":false,"serverRendering":false,"apiRoutes":false,"exporting":false}
+{"_e":"metro:config","_t":1780113762362,"serverRoot":"../..\\..","projectRoot":"../..\\..","exporting":false,"flags":{"autolinkingModuleResolution":false,"serverActions":false,"serverComponents":false,"reactCompiler":false,"optimizeGraph":false,"treeshaking":false,"logbox":false}}
+{"_e":"metro:instantiate","_t":1780113779223,"atlas":false,"workers":8,"host":"::","port":8081}
+{"_e":"metro:bundling:started","_t":1780113878699,"id":"1","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:failed","_t":1780113891579,"id":"1","message":"SyntaxError: C:\\Farhan Ahmad\\Code Languages\\Mr. Z\\Anti Gravity\\AI Chatbot\\App.tsx: Identifier 'GestureHandlerRootView' has already been declared. (27:9)\n\n  25 | import { createNativeStackNavigator } from '@react-navigation/native-stack';\n  26 | import { createDrawerNavigator } from '@react-navigation/drawer';\n> 27 | import { GestureHandlerRootView } from 'react-native-gesture-handler';\n     |          ^\n  28 | import { SafeAreaProvider } from 'react-native-safe-area-context';\n  29 |\n  30 | import { theme } from './src/theme';","importStack":null,"filename":"App.tsx","targetModuleName":null,"originModulePath":null}
+{"_e":"metro:bundling:started","_t":1780114219757,"id":"3","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:failed","_t":1780114220558,"id":"3","message":"SyntaxError: C:\\Farhan Ahmad\\Code Languages\\Mr. Z\\Anti Gravity\\AI Chatbot\\App.tsx: Identifier 'GestureHandlerRootView' has already been declared. (27:9)\n\n  25 | import { createNativeStackNavigator } from '@react-navigation/native-stack';\n  26 | import { createDrawerNavigator } from '@react-navigation/drawer';\n> 27 | import { GestureHandlerRootView } from 'react-native-gesture-handler';\n     |          ^\n  28 | import { SafeAreaProvider } from 'react-native-safe-area-context';\n  29 |\n  30 | import { theme } from './src/theme';","importStack":null,"filename":"App.tsx","targetModuleName":null,"originModulePath":null}
+{"_e":"metro:bundling:started","_t":1780115814284,"id":"5","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:failed","_t":1780115816459,"id":"5","message":"Unable to resolve \"convex/react\" from \"App.tsx\"","importStack":null,"filename":null,"targetModuleName":"convex/react","originModulePath":"App.tsx"}
+{"_e":"metro:bundling:started","_t":1780117173900,"id":"7","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:failed","_t":1780117175219,"id":"7","message":"Unable to resolve \"convex/react\" from \"App.tsx\"","importStack":null,"filename":null,"targetModuleName":"convex/react","originModulePath":"App.tsx"}
+{"_e":"root:init","_t":1780120476266,"format":"v0-jsonl","version":"56.1.13"}
+{"_e":"env:mode","_t":1780120476267,"nodeEnv":"development","babelEnv":"development","mode":"development"}
+{"_e":"env:load","_t":1780120476275,"mode":"development","files":["../..\\..\\.env"],"env":{"ADMIN_API_KEY":"wSqwdMuFF3pcJLOIBKzywdjjkIdzg5oDcoj5QLTG7JdKmnT3d_2wZX0bvBCRiKGN","APP_NAME":"Z-AI Chatbot","APP_VERSION":"1.0.0","BACKUP_RETENTION_DAYS":"30","BACKUP_SCHEDULE_CRON":"0 3 * * *","DEBUG":"false","DEFAULT_MODEL":"phi-3-mini-4k-instruct-q4.gguf","EXPO_PUBLIC_CONVEX_URL":"https://frugal-crab-85.eu-west-1.convex.cloud","FALLBACK_MODEL":"gemma-2b-it-q4_k_m.gguf","HOST":"127.0.0.1","JWT_SECRET":"khAMqAGugofzLAklAwjkdPvcK54H74nX8UxUU9HkA_EjAuSpSKFXbA0FkJ22btFh","METRICS_POLL_INTERVAL_SECONDS":"2.0","MODEL_CONTEXT_LENGTH":"4096","MODEL_MAX_TOKENS":"2048","MODEL_TEMPERATURE":"0.7","MODEL_THREADS":"4","PORT":"8765"}}
+{"_e":"devserver:start","_t":1780120506667,"mode":"development","web":true,"baseUrl":"","asyncRoutes":false,"routerRoot":"../..\\..\\app","serverComponents":false,"serverActions":false,"serverRendering":false,"apiRoutes":false,"exporting":false}
+{"_e":"metro:config","_t":1780120507487,"serverRoot":"../..\\..","projectRoot":"../..\\..","exporting":false,"flags":{"autolinkingModuleResolution":false,"serverActions":false,"serverComponents":false,"reactCompiler":false,"optimizeGraph":false,"treeshaking":false,"logbox":false}}
+{"_e":"metro:instantiate","_t":1780120523698,"atlas":false,"workers":8,"host":"::","port":8082}
+{"_e":"metro:bundling:started","_t":1780120538175,"id":"1","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:progress","_t":1780120538176,"id":"1","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1780120538199,"id":"1","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1780120538299,"id":"1","progress":0.011687363038714392,"total":37,"current":4}
+{"_e":"metro:bundling:progress","_t":1780120538404,"id":"1","progress":0.0253099173553719,"total":88,"current":14}
+{"_e":"metro:bundling:progress","_t":1780120538510,"id":"1","progress":0.08287419651056016,"total":132,"current":38}
+{"_e":"metro:bundling:progress","_t":1780120538620,"id":"1","progress":0.09223593964334705,"total":135,"current":41}
+{"_e":"metro:bundling:progress","_t":1780120538722,"id":"1","progress":0.10314880920667058,"total":137,"current":44}
+{"_e":"metro:bundling:progress","_t":1780120538822,"id":"1","progress":0.2088066312881014,"total":151,"current":69}
+{"_e":"metro:bundling:progress","_t":1780120538937,"id":"1","progress":0.2088066312881014,"total":160,"current":73}
+{"_e":"metro:bundling:progress","_t":1780120539064,"id":"1","progress":0.2088066312881014,"total":179,"current":77}
+{"_e":"metro:bundling:progress","_t":1780120539189,"id":"1","progress":0.227227576579237,"total":193,"current":92}
+{"_e":"metro:bundling:progress","_t":1780120539292,"id":"1","progress":0.2827126710291493,"total":205,"current":109}
+{"_e":"metro:bundling:progress","_t":1780120539392,"id":"1","progress":0.29425507297970815,"total":212,"current":115}
+{"_e":"metro:bundling:progress","_t":1780120539499,"id":"1","progress":0.3761777777777777,"total":225,"current":138}
+{"_e":"metro:bundling:progress","_t":1780120539608,"id":"1","progress":0.40775148787922766,"total":249,"current":159}
+{"_e":"metro:bundling:progress","_t":1780120539709,"id":"1","progress":0.43097721577996617,"total":262,"current":172}
+{"_e":"metro:bundling:progress","_t":1780120539841,"id":"1","progress":0.4935188396860266,"total":279,"current":196}
+{"_e":"metro:bundling:progress","_t":1780120539945,"id":"1","progress":0.5512690014653079,"total":299,"current":222}
+{"_e":"metro:bundling:progress","_t":1780120540064,"id":"1","progress":0.5968886171523956,"total":321,"current":248}
+{"_e":"metro:bundling:progress","_t":1780120540166,"id":"1","progress":0.5968886171523956,"total":369,"current":262}
+{"_e":"metro:bundling:progress","_t":1780120540281,"id":"1","progress":0.5968886171523956,"total":392,"current":274}
+{"_e":"metro:bundling:progress","_t":1780120540384,"id":"1","progress":0.5968886171523956,"total":419,"current":307}
+{"_e":"metro:bundling:progress","_t":1780120540485,"id":"1","progress":0.5968886171523956,"total":451,"current":322}
+{"_e":"metro:bundling:progress","_t":1780120540585,"id":"1","progress":0.5968886171523956,"total":459,"current":351}
+{"_e":"metro:bundling:progress","_t":1780120540687,"id":"1","progress":0.5968886171523956,"total":459,"current":354}
+{"_e":"metro:bundling:progress","_t":1780120540796,"id":"1","progress":0.5981792378050227,"total":459,"current":355}
+{"_e":"metro:bundling:progress","_t":1780120540903,"id":"1","progress":0.6132965597329075,"total":498,"current":390}
+{"_e":"metro:bundling:progress","_t":1780120541002,"id":"1","progress":0.6132965597329075,"total":519,"current":399}
+{"_e":"metro:bundling:progress","_t":1780120541106,"id":"1","progress":0.6400000000000001,"total":530,"current":424}
+{"_e":"metro:bundling:progress","_t":1780120541207,"id":"1","progress":0.6483386743127003,"total":539,"current":434}
+{"_e":"metro:bundling:progress","_t":1780120541315,"id":"1","progress":0.6483386743127003,"total":543,"current":437}
+{"_e":"metro:bundling:progress","_t":1780120541420,"id":"1","progress":0.6483386743127003,"total":553,"current":439}
+{"_e":"metro:bundling:progress","_t":1780120541521,"id":"1","progress":0.6483386743127003,"total":559,"current":443}
+{"_e":"metro:bundling:progress","_t":1780120541622,"id":"1","progress":0.6570402683781988,"total":586,"current":475}
+{"_e":"metro:bundling:progress","_t":1780120541727,"id":"1","progress":0.6570402683781988,"total":640,"current":514}
+{"_e":"metro:bundling:progress","_t":1780120541857,"id":"1","progress":0.6570402683781988,"total":642,"current":519}
+{"_e":"metro:bundling:progress","_t":1780120541957,"id":"1","progress":0.6574784358579646,"total":682,"current":553}
+{"_e":"metro:bundling:progress","_t":1780120542080,"id":"1","progress":0.7069621618451833,"total":691,"current":581}
+{"_e":"metro:bundling:progress","_t":1780120542181,"id":"1","progress":0.721035225921522,"total":696,"current":591}
+{"_e":"metro:bundling:progress","_t":1780120542288,"id":"1","progress":0.77986312239635,"total":710,"current":627}
+{"_e":"metro:bundling:progress","_t":1780120542389,"id":"1","progress":0.8035488080339428,"total":724,"current":649}
+{"_e":"metro:bundling:progress","_t":1780120542491,"id":"1","progress":0.8309500671016706,"total":735,"current":670}
+{"_e":"metro:bundling:progress","_t":1780120542593,"id":"1","progress":0.8463001386308866,"total":737,"current":678}
+{"_e":"metro:bundling:progress","_t":1780120542703,"id":"1","progress":0.8464997319349886,"total":738,"current":679}
+{"_e":"metro:bundling:progress","_t":1780120542807,"id":"1","progress":0.848078042679815,"total":746,"current":687}
+{"_e":"metro:bundling:progress","_t":1780120542916,"id":"1","progress":0.8492887351018837,"total":765,"current":705}
+{"_e":"metro:bundling:progress","_t":1780120543027,"id":"1","progress":0.8492887351018837,"total":784,"current":715}
+{"_e":"metro:bundling:progress","_t":1780120543128,"id":"1","progress":0.8492887351018837,"total":821,"current":723}
+{"_e":"metro:bundling:progress","_t":1780120543239,"id":"1","progress":0.8492887351018837,"total":843,"current":755}
+{"_e":"metro:bundling:progress","_t":1780120543343,"id":"1","progress":0.8492887351018837,"total":877,"current":762}
+{"_e":"metro:bundling:progress","_t":1780120543471,"id":"1","progress":0.8492887351018837,"total":905,"current":781}
+{"_e":"metro:bundling:progress","_t":1780120543576,"id":"1","progress":0.8492887351018837,"total":915,"current":793}
+{"_e":"metro:bundling:progress","_t":1780120543714,"id":"1","progress":0.8492887351018837,"total":927,"current":822}
+{"_e":"metro:bundling:progress","_t":1780120543819,"id":"1","progress":0.8492887351018837,"total":945,"current":830}
+{"_e":"metro:bundling:progress","_t":1780120543919,"id":"1","progress":0.8492887351018837,"total":960,"current":850}
+{"_e":"metro:bundling:progress","_t":1780120544024,"id":"1","progress":0.8492887351018837,"total":964,"current":859}
+{"_e":"metro:bundling:progress","_t":1780120544125,"id":"1","progress":0.8492887351018837,"total":988,"current":867}
+{"_e":"metro:bundling:progress","_t":1780120544236,"id":"1","progress":0.8492887351018837,"total":998,"current":889}
+{"_e":"metro:bundling:progress","_t":1780120544340,"id":"1","progress":0.8492887351018837,"total":1003,"current":909}
+{"_e":"metro:bundling:progress","_t":1780120544444,"id":"1","progress":0.8492887351018837,"total":1014,"current":919}
+{"_e":"metro:bundling:progress","_t":1780120544550,"id":"1","progress":0.8492887351018837,"total":1017,"current":929}
+{"_e":"metro:bundling:progress","_t":1780120544702,"id":"1","progress":0.852629100551565,"total":1018,"current":940}
+{"_e":"metro:bundling:progress","_t":1780120544803,"id":"1","progress":0.852629100551565,"total":1035,"current":952}
+{"_e":"metro:bundling:progress","_t":1780120544918,"id":"1","progress":0.8677542313382662,"total":1037,"current":966}
+{"_e":"metro:bundling:progress","_t":1780120545021,"id":"1","progress":0.8865557243728072,"total":1044,"current":983}
+{"_e":"metro:bundling:progress","_t":1780120545120,"id":"1","progress":0.9067696032417176,"total":1047,"current":997}
+{"_e":"metro:bundling:progress","_t":1780120545231,"id":"1","progress":0.917946485260771,"total":1050,"current":1006}
+{"_e":"metro:bundling:progress","_t":1780120545282,"id":"1","progress":0.919772335600907,"total":1050,"current":1007}
+{"_e":"metro:bundling:progress","_t":1780120545384,"id":"1","progress":0.9400326452719128,"total":1051,"current":1019}
+{"_e":"metro:bundling:progress","_t":1780120545486,"id":"1","progress":0.9567517601815841,"total":1052,"current":1029}
+{"_e":"metro:bundling:progress","_t":1780120545585,"id":"1","progress":0.9626898755501648,"total":1062,"current":1042}
+{"_e":"metro:bundling:progress","_t":1780120545685,"id":"1","progress":0.981273822556194,"total":1063,"current":1053}
+{"_e":"metro:bundling:progress","_t":1780120545786,"id":"1","progress":0.999,"total":1065,"current":1065}
+{"_e":"metro:bundling:done","_t":1780120546196,"id":"1","total":1065,"ms":8020.816}
+{"_e":"metro:client_log","_t":1780120546996,"level":"log","data":["Running application \"main\" with appParams:\n","{\"hydrate\": undefined, \"rootTag\": \"#root\"}","\nDevelopment-level warnings: ON.\nPerformance optimizations: OFF."]}
+{"_e":"metro:client_log","_t":1780120548665,"level":"warn","data":["Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md"]}
+{"_e":"metro:client_log","_t":1780120811442,"level":"error","data":["Project is incompatible with this version of Expo Go\n\nThis project requires a newer version of Expo Go.\n\nHow to fix this error:\nDownload the latest version of Expo Go from the Play Store."]}
+{"_e":"metro:client_log","_t":1780120835848,"level":"error","data":["Project is incompatible with this version of Expo Go\n\nThis project requires a newer version of Expo Go.\n\nHow to fix this error:\nDownload the latest version of Expo Go from the Play Store."]}
+{"_e":"metro:client_log","_t":1780121082831,"level":"error","data":["Project is incompatible with this version of Expo Go\n\nThis project requires a newer version of Expo Go.\n\nHow to fix this error:\nDownload the latest version of Expo Go from the Play Store."]}
+{"_e":"metro:client_log","_t":1780121111621,"level":"error","data":["Project is incompatible with this version of Expo Go\n\nThis project requires a newer version of Expo Go.\n\nHow to fix this error:\nDownload the latest version of Expo Go from the Play Store."]}
+{"_e":"metro:client_log","_t":1780121111625,"level":"error","data":["Project is incompatible with this version of Expo Go\n\nThis project requires a newer version of Expo Go.\n\nHow to fix this error:\nDownload the latest version of Expo Go from the Play Store."]}
+{"_e":"metro:client_log","_t":1780121163537,"level":"error","data":["Project is incompatible with this version of Expo Go\n\nThis project requires a newer version of Expo Go.\n\nHow to fix this error:\nDownload the latest version of Expo Go from the Play Store."]}
+{"_e":"metro:bundling:started","_t":1780121968556,"id":"3","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:progress","_t":1780121968557,"id":"3","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:done","_t":1780121968815,"id":"3","total":1,"ms":258.101}
+{"_e":"metro:client_log","_t":1780121970447,"level":"log","data":["Running application \"main\" with appParams:\n","{\"hydrate\": undefined, \"rootTag\": \"#root\"}","\nDevelopment-level warnings: ON.\nPerformance optimizations: OFF."]}
+{"_e":"metro:client_log","_t":1780121972099,"level":"warn","data":["Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md"]}
+{"_e":"metro:bundling:started","_t":1780121987868,"id":"4","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:progress","_t":1780121987868,"id":"4","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:done","_t":1780121988033,"id":"4","total":1,"ms":164.9704}
+{"_e":"metro:client_log","_t":1780121989477,"level":"log","data":["Running application \"main\" with appParams:\n","{\"hydrate\": undefined, \"rootTag\": \"#root\"}","\nDevelopment-level warnings: ON.\nPerformance optimizations: OFF."]}
+{"_e":"metro:client_log","_t":1780121990744,"level":"warn","data":["Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md"]}
+{"_e":"metro:client_log","_t":1780127876300,"level":"error","data":["Project is incompatible with this version of Expo Go\n\nThis project requires a newer version of Expo Go.\n\nHow to fix this error:\nDownload the latest version of Expo Go from the Play Store."]}
+{"_e":"metro:bundling:started","_t":1780127904756,"id":"5","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:progress","_t":1780127904757,"id":"5","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1780127904764,"id":"5","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1780127904948,"id":"5","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1780127905150,"id":"5","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1780127905250,"id":"5","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1780127905354,"id":"5","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1780127905459,"id":"5","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1780127905562,"id":"5","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1780127905664,"id":"5","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1780127905764,"id":"5","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1780127905864,"id":"5","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1780127905964,"id":"5","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1780127906064,"id":"5","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1780127906224,"id":"5","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1780127906329,"id":"5","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1780127906437,"id":"5","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1780127906538,"id":"5","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1780127906638,"id":"5","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1780127906738,"id":"5","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1780127906839,"id":"5","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1780127906981,"id":"5","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:done","_t":1780127907193,"id":"5","total":1,"ms":2436.1264}
+{"_e":"metro:client_log","_t":1780127908040,"level":"log","data":["Running application \"main\" with appParams:\n","{\"hydrate\": undefined, \"rootTag\": \"#root\"}","\nDevelopment-level warnings: ON.\nPerformance optimizations: OFF."]}
+{"_e":"metro:client_log","_t":1780127909744,"level":"warn","data":["Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md"]}
+{"_e":"metro:bundling:started","_t":1780128222697,"id":"6","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:progress","_t":1780128222698,"id":"6","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:done","_t":1780128222805,"id":"6","total":1,"ms":107.6615}
+{"_e":"metro:client_log","_t":1780128223705,"level":"log","data":["Running application \"main\" with appParams:\n","{\"hydrate\": undefined, \"rootTag\": \"#root\"}","\nDevelopment-level warnings: ON.\nPerformance optimizations: OFF."]}
+{"_e":"metro:client_log","_t":1780128224386,"level":"warn","data":["Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md"]}
+{"_e":"root:init","_t":1782216052448,"format":"v0-jsonl","version":"56.1.13"}
+{"_e":"env:mode","_t":1782216052451,"nodeEnv":"development","babelEnv":"development","mode":"development"}
+{"_e":"env:load","_t":1782216052463,"mode":"development","files":["../..\\..\\.env.local","../..\\..\\.env"],"env":{"ADMIN_API_KEY":"wSqwdMuFF3pcJLOIBKzywdjjkIdzg5oDcoj5QLTG7JdKmnT3d_2wZX0bvBCRiKGN","APP_NAME":"Z-AI Chatbot","APP_VERSION":"1.0.0","BACKUP_RETENTION_DAYS":"30","BACKUP_SCHEDULE_CRON":"0 3 * * *","DEBUG":"false","DEFAULT_MODEL":"phi-3-mini-4k-instruct-q4.gguf","EXPO_PUBLIC_CONVEX_URL":"https://frugal-crab-85.eu-west-1.convex.cloud","FALLBACK_MODEL":"gemma-2b-it-q4_k_m.gguf","HOST":"127.0.0.1","JWT_SECRET":"khAMqAGugofzLAklAwjkdPvcK54H74nX8UxUU9HkA_EjAuSpSKFXbA0FkJ22btFh","METRICS_POLL_INTERVAL_SECONDS":"2.0","MODEL_CONTEXT_LENGTH":"4096","MODEL_MAX_TOKENS":"2048","MODEL_TEMPERATURE":"0.7","MODEL_THREADS":"4","PORT":"8765","CONVEX_DEPLOYMENT":"dev:frugal-crab-85","EXPO_PUBLIC_CONVEX_SITE_URL":"https://frugal-crab-85.eu-west-1.convex.site"}}
+{"_e":"devserver:start","_t":1782216053783,"mode":"development","web":true,"baseUrl":"","asyncRoutes":false,"routerRoot":"../..\\..\\app","serverComponents":false,"serverActions":false,"serverRendering":false,"apiRoutes":false,"exporting":false}
+{"_e":"metro:config","_t":1782216055853,"serverRoot":"../..\\..","projectRoot":"../..\\..","exporting":false,"flags":{"autolinkingModuleResolution":false,"serverActions":false,"serverComponents":false,"reactCompiler":false,"optimizeGraph":false,"treeshaking":false,"logbox":false}}
+{"_e":"metro:instantiate","_t":1782216075416,"atlas":false,"workers":8,"host":"::","port":8081}
+{"_e":"metro:bundling:started","_t":1782216094986,"id":"1","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:done","_t":1782216111048,"id":"1","total":1065,"ms":16060.8677}
+{"_e":"metro:client_log","_t":1782216112316,"level":"warn","data":["[Reanimated] Reduced motion setting is enabled on this device. This warning is visible only in the development mode. Some animations will be disabled by default. You can override the behavior for individual animations, see https://docs.swmansion.com/react-native-reanimated/docs/guides/troubleshooting#reduced-motion-setting-is-enabled-on-this-device."]}
+{"_e":"metro:client_log","_t":1782216112322,"level":"log","data":["Running application \"main\" with appParams:\n","{\"hydrate\": undefined, \"rootTag\": \"#root\"}","\nDevelopment-level warnings: ON.\nPerformance optimizations: OFF."]}
+{"_e":"metro:client_log","_t":1782216114097,"level":"warn","data":["Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md"]}
+{"_e":"metro:bundling:started","_t":1782219237512,"id":"3","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:done","_t":1782219237718,"id":"3","total":1,"ms":204.3809}
+{"_e":"metro:client_log","_t":1782219238860,"level":"warn","data":["[Reanimated] Reduced motion setting is enabled on this device. This warning is visible only in the development mode. Some animations will be disabled by default. You can override the behavior for individual animations, see https://docs.swmansion.com/react-native-reanimated/docs/guides/troubleshooting#reduced-motion-setting-is-enabled-on-this-device."]}
+{"_e":"metro:client_log","_t":1782219238864,"level":"log","data":["Running application \"main\" with appParams:\n","{\"hydrate\": undefined, \"rootTag\": \"#root\"}","\nDevelopment-level warnings: ON.\nPerformance optimizations: OFF."]}
+{"_e":"metro:client_log","_t":1782219239933,"level":"warn","data":["Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md"]}
+{"_e":"metro:bundling:started","_t":1782219252427,"id":"5","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:started","_t":1782219418638,"id":"6","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:done","_t":1782219418804,"id":"6","total":1,"ms":163.3262}
+{"_e":"metro:client_log","_t":1782219420469,"level":"warn","data":["[Reanimated] Reduced motion setting is enabled on this device. This warning is visible only in the development mode. Some animations will be disabled by default. You can override the behavior for individual animations, see https://docs.swmansion.com/react-native-reanimated/docs/guides/troubleshooting#reduced-motion-setting-is-enabled-on-this-device."]}
+{"_e":"metro:client_log","_t":1782219420469,"level":"log","data":["Running application \"main\" with appParams:\n","{\"hydrate\": undefined, \"rootTag\": \"#root\"}","\nDevelopment-level warnings: ON.\nPerformance optimizations: OFF."]}
+{"_e":"metro:client_log","_t":1782219421883,"level":"warn","data":["Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md"]}
+{"_e":"metro:bundling:started","_t":1782219815170,"id":"8","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:done","_t":1782219815278,"id":"8","total":1,"ms":108.271}
+{"_e":"metro:client_log","_t":1782219816118,"level":"warn","data":["[Reanimated] Reduced motion setting is enabled on this device. This warning is visible only in the development mode. Some animations will be disabled by default. You can override the behavior for individual animations, see https://docs.swmansion.com/react-native-reanimated/docs/guides/troubleshooting#reduced-motion-setting-is-enabled-on-this-device."]}
+{"_e":"metro:client_log","_t":1782219816119,"level":"log","data":["Running application \"main\" with appParams:\n","{\"hydrate\": undefined, \"rootTag\": \"#root\"}","\nDevelopment-level warnings: ON.\nPerformance optimizations: OFF."]}
+{"_e":"metro:client_log","_t":1782219816927,"level":"warn","data":["Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md"]}
+{"_e":"metro:bundling:started","_t":1782222254680,"id":"a","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:done","_t":1782222254810,"id":"a","total":1,"ms":130.0643}
+{"_e":"metro:client_log","_t":1782222255770,"level":"warn","data":["[Reanimated] Reduced motion setting is enabled on this device. This warning is visible only in the development mode. Some animations will be disabled by default. You can override the behavior for individual animations, see https://docs.swmansion.com/react-native-reanimated/docs/guides/troubleshooting#reduced-motion-setting-is-enabled-on-this-device."]}
+{"_e":"metro:client_log","_t":1782222255770,"level":"log","data":["Running application \"main\" with appParams:\n","{\"hydrate\": undefined, \"rootTag\": \"#root\"}","\nDevelopment-level warnings: ON.\nPerformance optimizations: OFF."]}
+{"_e":"metro:client_log","_t":1782222257546,"level":"warn","data":["Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md"]}
+{"_e":"metro:bundling:started","_t":1782222306157,"id":"d","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:started","_t":1782222527683,"id":"e","platform":"web","environment":null,"entry":"index.ts"}
+{"_e":"metro:bundling:done","_t":1782222527809,"id":"e","total":1,"ms":125.3224}
+{"_e":"metro:client_log","_t":1782222528674,"level":"warn","data":["[Reanimated] Reduced motion setting is enabled on this device. This warning is visible only in the development mode. Some animations will be disabled by default. You can override the behavior for individual animations, see https://docs.swmansion.com/react-native-reanimated/docs/guides/troubleshooting#reduced-motion-setting-is-enabled-on-this-device."]}
+{"_e":"metro:client_log","_t":1782222528674,"level":"log","data":["Running application \"main\" with appParams:\n","{\"hydrate\": undefined, \"rootTag\": \"#root\"}","\nDevelopment-level warnings: ON.\nPerformance optimizations: OFF."]}
+{"_e":"metro:client_log","_t":1782222529735,"level":"warn","data":["Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md"]}
+{"_e":"metro:client_log","_t":1782222539754,"level":"warn","data":["props.pointerEvents is deprecated. Use style.pointerEvents"]}

@@ -44,6 +44,7 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
   const [showMoreClicks, setShowMoreClicks] = useState(0);
   const [translating, setTranslating] = useState(false);
   const [translatedList, setTranslatedList] = useState<string[] | null>(null);
+  const [scanMode, setScanMode] = useState<'food' | 'ingredients'>('food');
   
   // Refs for the video element and the hidden canvas used to capture the image frame
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -209,7 +210,8 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
         }
       }
 
-      const response = await fetch(`${API_BASE}/api/scan`, {
+      const endpoint = scanMode === 'ingredients' ? '/api/scan/ingredients' : '/api/scan';
+      const response = await fetch(`${API_BASE}${endpoint}`, {
         method: "POST",
         headers: headers,
         body: JSON.stringify({ image: optimizedImage }),
@@ -222,8 +224,8 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
 
       const data = await response.json();
 
-      // Check if AI found valid ingredients
-      if (data.has_ingredients === false) {
+      // Check if AI found valid ingredients (only applies to normal scan mode)
+      if (scanMode === 'food' && data.has_ingredients === false) {
         setScanError(data.error_message || "No ingredients list detected. Please retake the image showing the label clearly.");
       } else {
         setAnalysisResult(data);
@@ -296,6 +298,22 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
         )}
       </div>
 
+      {/* Mode Toggle */}
+      <div className="flex justify-center gap-2 mb-6">
+        <button
+          onClick={() => { setScanMode('food'); setAnalysisResult(null); }}
+          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${scanMode === 'food' ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-800 text-gray-400 hover:bg-slate-700'}`}
+        >
+          🍽️ Scan Food
+        </button>
+        <button
+          onClick={() => { setScanMode('ingredients'); setAnalysisResult(null); }}
+          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${scanMode === 'ingredients' ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-800 text-gray-400 hover:bg-slate-700'}`}
+        >
+          📋 Scan Ingredients Label
+        </button>
+      </div>
+
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 flex flex-col items-center justify-center min-h-[400px] relative overflow-hidden">
         
         {/* Hidden inputs and canvases */}
@@ -311,12 +329,21 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
         {/* Condition 1: Live Camera Stream view */}
         {isCameraActive ? (
           <div className="w-full max-w-md flex flex-col items-center">
-            <video 
-              ref={videoRef} 
-              autoPlay 
-              playsInline 
-              className="w-full rounded-2xl border border-slate-700 bg-black aspect-video object-cover mb-4"
-            />
+            <div className="relative w-full rounded-2xl border border-slate-700 bg-black aspect-video overflow-hidden mb-4">
+              <video 
+                ref={videoRef} 
+                autoPlay 
+                playsInline 
+                className="w-full h-full object-cover"
+              />
+              {scanMode === 'ingredients' && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-4">
+                  <div className="w-full max-w-[90%] h-32 border-2 border-emerald-500 border-dashed rounded-xl flex items-center justify-center bg-emerald-500/10">
+                    <p className="text-emerald-400 font-bold text-xs bg-slate-900/80 px-3 py-1 rounded-full drop-shadow-md">Align text within frame</p>
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="flex gap-4">
               <button 
                 onClick={capturePhoto} 
@@ -423,7 +450,7 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
       {/* Your existing {analysisResult && (
       ...)} container goes directly below here */}
 
-      {analysisResult && (
+      {analysisResult && scanMode === 'food' && (
         <div className="mt-8 bg-slate-900 border border-slate-800 rounded-3xl p-8 font-manrope">
           {/* Allergen Warning Banner for Scanned Label */}
           {(() => {
@@ -569,6 +596,68 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* OCR Results Display (For Label Scanning) */}
+      {analysisResult && scanMode === 'ingredients' && (
+        <div className="mt-8 bg-slate-900 border border-slate-800 rounded-3xl p-8 font-manrope animate-in fade-in slide-in-from-bottom-4">
+          <h3 className="text-2xl font-outfit font-bold text-white mb-2">Label Analysis</h3>
+          <p className="text-sm text-gray-400 mb-8">AI-structured data from the scanned text.</p>
+          
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div className="bg-slate-800/50 rounded-2xl p-4 text-center border border-slate-700/50">
+               <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest mb-1">Calories</p>
+               <p className="text-2xl font-bold text-emerald-400">{analysisResult.estimated_macros?.calories || 0}</p>
+            </div>
+            <div className="bg-slate-800/50 rounded-2xl p-4 text-center border border-slate-700/50">
+               <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest mb-1">Protein (g)</p>
+               <p className="text-2xl font-bold text-white">{analysisResult.estimated_macros?.protein || 0}</p>
+            </div>
+            <div className="bg-slate-800/50 rounded-2xl p-4 text-center border border-slate-700/50">
+               <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest mb-1">Carbs (g)</p>
+               <p className="text-2xl font-bold text-white">{analysisResult.estimated_macros?.carbs || 0}</p>
+            </div>
+            <div className="bg-slate-800/50 rounded-2xl p-4 text-center border border-slate-700/50">
+               <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest mb-1">Fat (g)</p>
+               <p className="text-2xl font-bold text-white">{analysisResult.estimated_macros?.fat || 0}</p>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            {analysisResult.allergens?.length > 0 && (
+              <div>
+                <p className="text-[10px] text-rose-400 uppercase font-black tracking-widest mb-3 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4" /> Allergens Detected
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {analysisResult.allergens.map((a: string, i: number) => (
+                    <span key={i} className="px-3 py-1.5 bg-rose-500/10 border border-rose-500/30 text-rose-300 rounded-full text-xs font-bold">{a}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {analysisResult.additives?.length > 0 && (
+              <div>
+                <p className="text-[10px] text-amber-400 uppercase font-black tracking-widest mb-3">Additives Detected</p>
+                <div className="flex flex-wrap gap-2">
+                  {analysisResult.additives.map((a: string, i: number) => (
+                    <span key={i} className="px-3 py-1.5 bg-amber-500/10 border border-amber-500/30 text-amber-300 rounded-full text-xs font-bold">{a}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest mb-3">Parsed Ingredients</p>
+              <div className="flex flex-wrap gap-2">
+                {analysisResult.ingredients?.map((a: string, i: number) => (
+                  <span key={i} className="px-3 py-1.5 bg-slate-800 text-gray-300 rounded-full text-xs font-semibold border border-slate-700 shadow-sm">{a}</span>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}
