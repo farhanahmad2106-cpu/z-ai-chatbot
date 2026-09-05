@@ -5,9 +5,21 @@ import path from 'path'
 
 // https://vite.dev/config/
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      // @ts-ignore - Rolldown specific option to disable plugin timings warning
+      checks: {
+        pluginTimings: false
+      }
+    }
+  },
   plugins: [
     react(),
-    babel({ presets: [reactCompilerPreset()] })
+    babel({
+      include: /\.[tj]sx?$/,
+      exclude: /node_modules/,
+      presets: [reactCompilerPreset()]
+    })
   ],
   resolve: {
     alias: {
