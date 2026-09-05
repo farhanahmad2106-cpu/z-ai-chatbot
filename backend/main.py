@@ -910,17 +910,10 @@ async def scan_ingredients(request: dict, authorization: str = Header(None)):
         print(f"[Scan] Ollama legacy fallback failed: {e}")
 
     # Backup: Return structured scanned ingredient fallback
-    print("[Scan] All remote AI services timed out. Returning structured fallback.")
+    print("[Scan] All remote AI services timed out or failed. Returning error.")
     return {
-        "name": "Scanned Food Packaging",
-        "safety_score": 82,
-        "ingredients": [
-            {"name": "Enriched Flour / Grain", "safety": "Safe", "description": "Base carbohydrate source"},
-            {"name": "Vegetable Oil (Corn/Canola)", "safety": "Moderate", "description": "Used for texture and flavor preservation"},
-            {"name": "Cheese & Dairy Solids", "safety": "Safe", "description": "Contains milk solids and flavorings"},
-            {"name": "Spices & Seasoning", "safety": "Safe", "description": "Natural flavor enhancers"}
-        ],
-        "warnings": ["May contain milk or gluten ingredients."]
+        "has_ingredients": False,
+        "error_message": "AI services unavailable or timed out. Please try again later."
     }
 
 @app.post("/api/scan/ingredients")
