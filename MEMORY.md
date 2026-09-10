@@ -1,11 +1,31 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-03 (Session: Back-of-Pack OCR Feature Pipeline & Interactive Ingredient Review Drawer)
+> **Last Updated:** 2026-09-11 (Session: Dashboard Layout Enhancement)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-11
+**Work Done — Dashboard UI Enhancement:**
+- **Dashboard Layout**: Re-arranged the Dashboard layout to place "Dietary Preferences" on the left and the "Quote Card" on the right in a side-by-side grid, matching the user's requested visual hierarchy.
+
+## 🗓️ Last Session Summary
+**Date:** 2026-09-06
+**Work Done — End-to-End QA Regression Testing Against Production:**
+
+### 🧪 Production Deployment QA Verification ✅
+- **Executed Test Suite A (Non-Food Rejection)**: Tested non-food images (dark camera frames, person/portrait images) against the production scan pipeline. All negative tests PASSED — backend correctly returns `{"has_ingredients": false}` and frontend displays "Detection Failed" error panel without hallucinating ingredients.
+- **Verified Mock Fallback Purge**: Confirmed "Cheese & Dairy Solids" and "Enriched Flour" hardcoded fallback payloads are fully removed from the production codebase.
+- **Verified Explicit Error Contract**: Backend `POST /api/scan` returns `{"has_ingredients": false, "error_message": "..."}` when all AI tiers fail or non-food is detected. Backend `POST /api/scan/analyze` raises `HTTPException(500)` on complete OCR failure.
+- **Verified Frontend Error Handling**: `Scan.tsx` correctly checks `data.has_ingredients === false` and triggers `setScanError()` instead of `setAnalysisResult()`, preventing IngredientReviewModal from rendering with hallucinated data.
+- **Verified No Storage Pollution**: Non-food rejections do NOT write to localStorage or SWR cache.
+- **Discovered Edge Case D-02**: The `has_ingredients: false` check only applies in `scanMode === 'food'`. The `/api/scan/ingredients` OCR pipeline does not have a domain validation gate — non-food images may produce garbled raw text fallback.
+- **Test B1 (Positive Control)**: INCONCLUSIVE — browser automation could not simulate clean file upload due to camera viewfinder taking precedence. Requires manual re-test on physical device.
+
+---
+
+## 🗓️ Previous Session Summary
 **Date:** 2026-09-03
 **Work Done — Back-of-Pack OCR & Ingredient Review UI:**
 

@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useUserStats } from '../context/UserStatsContext';
 import { useUserProfile } from '../context/UserProfileContext';
 import { Camera, Utensils } from 'lucide-react';
@@ -96,9 +96,6 @@ export default function Dashboard({ onNavigateToScan, onGoToPricing }: Dashboard
         />
       )}
 
-      {/* Interactive Motivational Quote Deck Card */}
-      <InteractiveQuoteCard userStreakDays={streak} />
-
       {/* Welcome Heading */}
       <div className="mb-6 text-left flex items-start justify-between gap-4">
         <div>
@@ -112,31 +109,39 @@ export default function Dashboard({ onNavigateToScan, onGoToPricing }: Dashboard
         <SubscriptionBadge variant="full" onUpgradeClick={onGoToPricing} />
       </div>
 
-      {/* Active Dietary Preferences & Allergies Summary Card */}
-      {(preferences.diet !== 'None' || (preferences.allergies && preferences.allergies.length > 0)) && (
-        <div className="mb-6 p-4 bg-slate-800/60 backdrop-blur-xl border border-slate-700/50 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-left">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
-              <Utensils className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-emerald-400">Active Dietary Safety Profile</p>
-              <div className="flex flex-wrap items-center gap-2 mt-1">
-                {preferences.diet !== 'None' && (
-                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                    {preferences.diet}
-                  </span>
-                )}
-                {preferences.allergies?.map((allergy, i) => (
-                  <span key={i} className="text-xs font-semibold px-2.5 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                    {allergy}
-                  </span>
-                ))}
+      {/* Top Section: Dietary Profile (Left) and Quote Card (Right) */}
+      <div className={`grid grid-cols-1 ${(preferences.diet !== 'None' || (preferences.allergies && preferences.allergies.length > 0)) ? 'lg:grid-cols-2' : ''} gap-6 mb-6`}>
+        {/* Active Dietary Preferences & Allergies Summary Card */}
+        {(preferences.diet !== 'None' || (preferences.allergies && preferences.allergies.length > 0)) && (
+          <div className="h-full p-4 bg-slate-800/60 backdrop-blur-xl border border-slate-700/50 rounded-2xl flex flex-col justify-center gap-3 text-left">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
+                <Utensils className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-emerald-400">Active Dietary Safety Profile</p>
+                <div className="flex flex-wrap items-center gap-2 mt-1">
+                  {preferences.diet !== 'None' && (
+                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      {preferences.diet}
+                    </span>
+                  )}
+                  {preferences.allergies?.map((allergy, i) => (
+                    <span key={i} className="text-xs font-semibold px-2.5 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                      {allergy}
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
+        )}
+
+        {/* Interactive Motivational Quote Deck Card */}
+        <div className="h-full flex flex-col justify-center">
+          <InteractiveQuoteCard userStreakDays={streak} />
         </div>
-      )}
+      </div>
 
       {/* Embedded Live Camera Scanner Widget inside Dashboard */}
       <div className="mb-10 bg-slate-900/90 rounded-3xl overflow-hidden border border-slate-800 shadow-2xl relative">
