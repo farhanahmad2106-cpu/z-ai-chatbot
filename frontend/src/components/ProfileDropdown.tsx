@@ -6,7 +6,6 @@ import {
   Crown, 
   Flame, 
   HelpCircle, 
-  LayoutDashboard, 
   ChevronRight,
   Search,
   Scan
