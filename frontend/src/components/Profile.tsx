@@ -261,7 +261,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
         {/* Health Profile Overview */}
         <div className="col-span-1 md:col-span-2 space-y-6">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden group">
-            <div className="absolute inset-0 bg-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <div className="absolute inset-0 bg-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
             
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-white flex items-center gap-2">
@@ -347,7 +347,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
             
             <button 
               onClick={handleOpenHealthModal} 
-              className="px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm font-bold transition-all border border-slate-700 w-full flex items-center justify-center gap-2 cursor-pointer hover:border-emerald-500/50 active:scale-95 shadow-sm"
+              className="relative z-10 px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm font-bold transition-all border border-slate-700 w-full flex items-center justify-center gap-2 cursor-pointer hover:border-emerald-500/50 active:scale-95 shadow-sm"
             >
               <Edit2 className="w-4 h-4 text-emerald-400" /> Edit Health Profile Credentials
             </button>
