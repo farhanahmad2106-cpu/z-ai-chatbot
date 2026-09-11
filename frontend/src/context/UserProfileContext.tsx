@@ -11,6 +11,10 @@ export interface HealthProfile {
   healthGoal?: string;
   targetWater?: number | string;
   dailyCalorieTarget?: number | string;
+  bloodType?: string;
+  medicalConditions?: string;
+  targetWeight?: number | string;
+  sleepDuration?: number | string;
 }
 
 export interface Preferences {

@@ -1,18 +1,19 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-11 (Session: Dashboard Layout Enhancement)
+> **Last Updated:** 2026-09-11 (Session: Profile Enhancement)
 
 ---
 
 ## 🗓️ Last Session Summary
 **Date:** 2026-09-11
-**Work Done — Dashboard UI Enhancement:**
-- **Dietary Profile Card**: Redesigned the "Active Dietary Safety Profile" card in the Dashboard. Fixed the vertical alignment by removing `justify-center` and replacing it with a `gap-5` column layout. Upgraded aesthetics with a premium look (larger icon, top alignment, better spacing, shadow effects, and hover states for tags).
-- **Dashboard Layout**: Re-arranged the Dashboard layout to place "Dietary Preferences" on the left and the "Quote Card" on the right in a side-by-side grid, matching the user's requested visual hierarchy.
+**Work Done — Health Profile Enhancement:**
+- **Editable Health Profile Overview**: Added new optional fields for users (Blood Type, Target Weight, Target Sleep, and Medical Conditions) to make the profile more comprehensive.
+- **Mandatory Indicators**: Added red asterisks (*) to all mandatory fields in the Health Profile editing modal to improve user clarity.
+- **Dynamic Display**: Updated the Health Profile Overview card to dynamically display the newly added optional metrics if the user has provided them.
 
 ## 🗓️ Previous Session Summary
-**Date:** 2026-09-06
+**Date:** 2026-09-11
 **Work Done — End-to-End QA Regression Testing Against Production:**
 
 ### 🧪 Production Deployment QA Verification ✅

@@ -301,7 +301,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
             </div>
 
             {/* Additional Credentials Summary Row */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
               <div className="bg-slate-800/30 p-3 rounded-2xl border border-slate-700/30 text-left">
                 <p className="text-[11px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">Activity Level</p>
                 <p className="text-xs font-bold text-emerald-400">{healthProfile.activityLevel || 'Moderately Active'}</p>
@@ -315,6 +315,35 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
                 <p className="text-xs font-bold text-cyan-400">{healthProfile.targetWater || '2.5'} Liters / day</p>
               </div>
             </div>
+
+            {(healthProfile.bloodType || healthProfile.medicalConditions || healthProfile.targetWeight || healthProfile.sleepDuration) && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6 pt-4 border-t border-slate-800/50">
+                {healthProfile.bloodType && (
+                  <div className="bg-slate-800/20 p-3 rounded-2xl border border-slate-700/20 text-left">
+                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">Blood Type</p>
+                    <p className="text-sm font-bold text-rose-400">{healthProfile.bloodType}</p>
+                  </div>
+                )}
+                {healthProfile.targetWeight && (
+                  <div className="bg-slate-800/20 p-3 rounded-2xl border border-slate-700/20 text-left">
+                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">Target Weight</p>
+                    <p className="text-sm font-bold text-purple-400">{healthProfile.targetWeight} kg</p>
+                  </div>
+                )}
+                {healthProfile.sleepDuration && (
+                  <div className="bg-slate-800/20 p-3 rounded-2xl border border-slate-700/20 text-left">
+                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">Sleep Target</p>
+                    <p className="text-sm font-bold text-indigo-400">{healthProfile.sleepDuration} hrs</p>
+                  </div>
+                )}
+                {healthProfile.medicalConditions && (
+                  <div className="col-span-2 sm:col-span-1 bg-slate-800/20 p-3 rounded-2xl border border-slate-700/20 text-left">
+                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">Conditions</p>
+                    <p className="text-xs font-medium text-gray-300 truncate" title={healthProfile.medicalConditions}>{healthProfile.medicalConditions}</p>
+                  </div>
+                )}
+              </div>
+            )}
             
             <button 
               onClick={handleOpenHealthModal} 
@@ -569,7 +598,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
               {/* Row 1: Age & Gender */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">Age (Years)</label>
+                  <label className="block text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">Age (Years) <span className="text-red-500">*</span></label>
                   <input 
                     type="number"
                     value={localHealth.age}
@@ -579,7 +608,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">Gender</label>
+                  <label className="block text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">Gender <span className="text-red-500">*</span></label>
                   <select 
                     value={localHealth.gender}
                     onChange={e => setLocalHealth({ ...localHealth, gender: e.target.value })}
@@ -596,7 +625,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
               {/* Row 2: Height & Weight */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">Height (cm)</label>
+                  <label className="block text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">Height (cm) <span className="text-red-500">*</span></label>
                   <input 
                     type="number"
                     value={localHealth.height}
@@ -606,7 +635,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">Weight (kg)</label>
+                  <label className="block text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">Weight (kg) <span className="text-red-500">*</span></label>
                   <input 
                     type="number"
                     value={localHealth.weight}
@@ -619,7 +648,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
 
               {/* Activity Level */}
               <div>
-                <label className="block text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">Daily Activity Level</label>
+                <label className="block text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">Daily Activity Level <span className="text-red-500">*</span></label>
                 <select 
                   value={localHealth.activityLevel || 'Moderately Active'}
                   onChange={e => setLocalHealth({ ...localHealth, activityLevel: e.target.value })}
@@ -635,7 +664,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
 
               {/* Primary Goal */}
               <div>
-                <label className="block text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">Primary Health Goal</label>
+                <label className="block text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">Primary Health Goal <span className="text-red-500">*</span></label>
                 <select 
                   value={localHealth.healthGoal || 'Healthy Lifestyle'}
                   onChange={e => setLocalHealth({ ...localHealth, healthGoal: e.target.value })}
@@ -649,17 +678,73 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
                 </select>
               </div>
 
-              {/* Row 3: Target Water Intake */}
+              {/* Row 3: Target Water Intake & Target Weight */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">Daily Target Water (Liters) <span className="text-red-500">*</span></label>
+                  <input 
+                    type="number"
+                    step="0.1"
+                    value={localHealth.targetWater || '2.5'}
+                    onChange={e => setLocalHealth({ ...localHealth, targetWater: e.target.value })}
+                    placeholder="e.g. 2.5"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">Target Weight (kg)</label>
+                  <input 
+                    type="number"
+                    value={localHealth.targetWeight || ''}
+                    onChange={e => setLocalHealth({ ...localHealth, targetWeight: e.target.value })}
+                    placeholder="Optional"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              {/* Row 4: Blood Type & Sleep Duration */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">Blood Type</label>
+                  <select 
+                    value={localHealth.bloodType || ''}
+                    onChange={e => setLocalHealth({ ...localHealth, bloodType: e.target.value })}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                  >
+                    <option value="">-- Optional --</option>
+                    <option value="A+">A+</option>
+                    <option value="A-">A-</option>
+                    <option value="B+">B+</option>
+                    <option value="B-">B-</option>
+                    <option value="O+">O+</option>
+                    <option value="O-">O-</option>
+                    <option value="AB+">AB+</option>
+                    <option value="AB-">AB-</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">Target Sleep (Hours)</label>
+                  <input 
+                    type="number"
+                    step="0.5"
+                    value={localHealth.sleepDuration || ''}
+                    onChange={e => setLocalHealth({ ...localHealth, sleepDuration: e.target.value })}
+                    placeholder="e.g. 8"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              {/* Medical Conditions */}
               <div>
-                <label className="block text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">Daily Target Water (Liters)</label>
-                <input 
-                  type="number"
-                  step="0.1"
-                  value={localHealth.targetWater || '2.5'}
-                  onChange={e => setLocalHealth({ ...localHealth, targetWater: e.target.value })}
-                  placeholder="e.g. 2.5"
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
-                />
+                <label className="block text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">Medical Conditions</label>
+                <textarea 
+                  value={localHealth.medicalConditions || ''}
+                  onChange={e => setLocalHealth({ ...localHealth, medicalConditions: e.target.value })}
+                  placeholder="Optional: e.g., Asthma, Hypertension, PCOS..."
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 resize-none h-20"
+                ></textarea>
               </div>
             </div>
 
