@@ -8,9 +8,10 @@
 ## 🗓️ Last Session Summary
 **Date:** 2026-09-11
 **Work Done — Dashboard UI Enhancement:**
+- **Dietary Profile Card**: Redesigned the "Active Dietary Safety Profile" card in the Dashboard. Fixed the vertical alignment by removing `justify-center` and replacing it with a `gap-5` column layout. Upgraded aesthetics with a premium look (larger icon, top alignment, better spacing, shadow effects, and hover states for tags).
 - **Dashboard Layout**: Re-arranged the Dashboard layout to place "Dietary Preferences" on the left and the "Quote Card" on the right in a side-by-side grid, matching the user's requested visual hierarchy.
 
-## 🗓️ Last Session Summary
+## 🗓️ Previous Session Summary
 **Date:** 2026-09-06
 **Work Done — End-to-End QA Regression Testing Against Production:**
 

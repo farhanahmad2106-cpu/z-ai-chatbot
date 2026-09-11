@@ -113,26 +113,28 @@ export default function Dashboard({ onNavigateToScan, onGoToPricing }: Dashboard
       <div className={`grid grid-cols-1 ${(preferences.diet !== 'None' || (preferences.allergies && preferences.allergies.length > 0)) ? 'lg:grid-cols-2' : ''} gap-6 mb-6`}>
         {/* Active Dietary Preferences & Allergies Summary Card */}
         {(preferences.diet !== 'None' || (preferences.allergies && preferences.allergies.length > 0)) && (
-          <div className="h-full p-4 bg-slate-800/60 backdrop-blur-xl border border-slate-700/50 rounded-2xl flex flex-col justify-center gap-3 text-left">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
-                <Utensils className="w-5 h-5" />
+          <div className="h-full p-7 bg-slate-800/60 backdrop-blur-xl border border-slate-700/50 rounded-3xl flex flex-col gap-5 text-left shadow-xl hover:bg-slate-800/80 transition-all duration-300">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
+                <Utensils className="w-6 h-6" />
               </div>
               <div>
-                <p className="text-xs font-bold uppercase tracking-wider text-emerald-400">Active Dietary Safety Profile</p>
-                <div className="flex flex-wrap items-center gap-2 mt-1">
-                  {preferences.diet !== 'None' && (
-                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                      {preferences.diet}
-                    </span>
-                  )}
-                  {preferences.allergies?.map((allergy, i) => (
-                    <span key={i} className="text-xs font-semibold px-2.5 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                      {allergy}
-                    </span>
-                  ))}
-                </div>
+                <p className="text-xs font-black uppercase tracking-widest text-gray-400">Safety Profile</p>
+                <p className="text-sm font-bold text-emerald-400 mt-0.5">Active Dietary Filters</p>
               </div>
+            </div>
+            
+            <div className="flex flex-wrap items-start gap-2 mt-1">
+              {preferences.diet !== 'None' && (
+                <span className="text-xs font-bold px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm hover:bg-emerald-500/30 transition-colors cursor-default">
+                  {preferences.diet}
+                </span>
+              )}
+              {preferences.allergies?.map((allergy, i) => (
+                <span key={i} className="text-xs font-bold px-3 py-1.5 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/30 shadow-sm hover:bg-rose-500/30 transition-colors cursor-default">
+                  {allergy}
+                </span>
+              ))}
             </div>
           </div>
         )}
