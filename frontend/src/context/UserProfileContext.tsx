@@ -89,9 +89,9 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
       });
       if (response.ok) {
         const data = await response.json();
-        setHealthProfile(data.health_profile || defaultHealth);
-        setPreferences(data.preferences || defaultPreferences);
-        setSettings(data.settings || defaultSettings);
+        setHealthProfile({ ...defaultHealth, ...(data.health_profile || {}) });
+        setPreferences({ ...defaultPreferences, ...(data.preferences || {}) });
+        setSettings({ ...defaultSettings, ...(data.settings || {}) });
       }
     } catch (error) {
       console.error("Failed to fetch user profile", error);
