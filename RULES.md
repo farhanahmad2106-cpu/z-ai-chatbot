@@ -221,6 +221,7 @@ backend/
 
 ## 8. 🔁 Git & Commit Rules
 
+- **Repository:** `https://github.com/farhanahmad2106-cpu/Z-SeHealth` (Always push to the `z-sehealth` remote, never `origin` unless explicitly instructed)
 - **Branch:** `main` (single developer — always push to main)
 - **Commit message format:** `type: short clear description`
 

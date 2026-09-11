@@ -1,5 +1,6 @@
-﻿import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { useAuth } from './AuthContext';
+import { useToast } from './ToastContext';
 import { API_BASE } from '../config';
 
 interface UserStats {
@@ -47,6 +48,7 @@ export function useUserStats() {
 
 export function UserStatsProvider({ children }: { children: React.ReactNode }) {
   const { currentUser, setShowLoginModal } = useAuth();
+  const { showToast } = useToast();
 
   const [stats, setStats] = useState<UserStats>(() => {
     if (typeof window !== 'undefined') {
@@ -217,7 +219,7 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
 
   const logMeal = async (foodItem: any, options?: { silent?: boolean }): Promise<boolean> => {
     if (!currentUser) {
-      alert("Please log in to log a meal.");
+      showToast("Please log in to log a meal.");
       setShowLoginModal(true);
       return false;
     }
@@ -237,19 +239,19 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
         setStats(data.new_stats);
         localStorage.setItem('z_sehealth_cached_user_stats', JSON.stringify(data.new_stats));
         if (!options?.silent) {
-          alert(`Successfully logged ${foodItem.name}. Estimated macros added!`);
+          showToast(`Successfully logged ${foodItem.name}. Estimated macros added!`);
         }
         return true;
       } else {
         if (!options?.silent) {
-          alert("Failed to log meal. Please try again.");
+          showToast("Failed to log meal. Please try again.");
         }
         return false;
       }
     } catch (error) {
       console.error("Failed to log meal", error);
       if (!options?.silent) {
-        alert("Failed to log meal due to a network error.");
+        showToast("Failed to log meal due to a network error.");
       }
       return false;
     }
@@ -257,7 +259,7 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
 
   const logMultipleMeals = async (items: Array<{ food: any; count: number }>): Promise<boolean> => {
     if (!currentUser) {
-      alert("Please log in to log meals.");
+      showToast("Please log in to log meals.");
       setShowLoginModal(true);
       return false;
     }

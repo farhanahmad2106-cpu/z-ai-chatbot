@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
+import { useToast } from '../context/ToastContext';
 import { 
   User, 
   Mail, 
@@ -9,7 +10,6 @@ import {
   Shield, 
   Edit2, 
   ArrowLeft, 
-  CheckCircle, 
   X, 
   Upload, 
   Link as LinkIcon, 
@@ -59,14 +59,7 @@ const COMMON_ALLERGIES = [
 const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
   const { currentUser, updateUserProfile } = useAuth();
   const { healthProfile, updateHealthProfile, preferences, updatePreferences } = useUserProfile();
-
-  // Toast notification state
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
-  };
+  const { showToast } = useToast();
 
   // --- Health Profile Modal State & Calculator ---
   const [isHealthModalOpen, setIsHealthModalOpen] = useState(false);
@@ -208,14 +201,6 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
 
   return (
     <div className="max-w-4xl mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div className="fixed bottom-6 right-6 bg-emerald-600 text-white font-bold px-4 py-3 rounded-2xl shadow-2xl z-100 animate-in fade-in slide-in-from-bottom-3 duration-300 flex items-center gap-2">
-          <CheckCircle className="w-5 h-5 text-white" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
-
       {onBack && (
         <button onClick={onBack} className="mb-6 flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer">
           <ArrowLeft className="w-5 h-5" /> Back to Dashboard
