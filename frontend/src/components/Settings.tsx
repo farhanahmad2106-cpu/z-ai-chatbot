@@ -10,12 +10,12 @@ import {
   Lock, 
   User, 
   ArrowLeft,
-  CheckCircle,
   X,
   AlertTriangle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
+import { useToast } from '../context/ToastContext';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../firebase';
 
@@ -39,14 +39,9 @@ const LANGUAGES = [
 const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   const { currentUser, updateUserProfile, logout } = useAuth();
   const { settings, updateSettings } = useUserProfile();
+  const { showToast } = useToast();
 
   const [activeTab, setActiveTab] = useState<'account' | 'notifications' | 'privacy' | 'devices'>('account');
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
-  };
 
   // --- Display Name Edit ---
   const [displayNameInput, setDisplayNameInput] = useState(currentUser?.displayName || '');
@@ -129,14 +124,6 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
 
   return (
     <div className="max-w-4xl mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div className="fixed bottom-6 right-6 bg-emerald-600 text-white font-bold px-4 py-3 rounded-2xl shadow-2xl z-100 animate-in fade-in slide-in-from-bottom-3 duration-300 flex items-center gap-2">
-          <CheckCircle className="w-5 h-5 text-white" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
-
       {onBack && (
         <button onClick={onBack} className="mb-6 flex items-center gap-2 text-gray-400 hover:text-white transition-colors cursor-pointer">
           <ArrowLeft className="w-5 h-5" /> Back to Dashboard

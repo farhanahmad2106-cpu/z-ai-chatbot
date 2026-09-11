@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Search as SearchIcon, SlidersHorizontal, Plus, Minus, Check, X, Globe, Search as MiniSearch, Loader2, AlertTriangle } from 'lucide-react';
 import { useUserStats } from '../context/UserStatsContext';
 import { useUserProfile } from '../context/UserProfileContext';
+import { useToast } from '../context/ToastContext';
 import { API_BASE } from '../config';
 
 /** * INTERFACES
@@ -289,7 +290,7 @@ export default function Search({ onNavigateToDashboard }: { onNavigateToDashboar
   const [selectedMealsMap, setSelectedMealsMap] = useState<Record<string, { food: FoodItem; count: number }>>({});
   const [lastSelectedFoodId, setLastSelectedFoodId] = useState<string | null>(null);
   const [isSubmittingBatch, setIsSubmittingBatch] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   /**
    * CRITICAL FIX: Translated Data Store
@@ -382,18 +383,15 @@ export default function Search({ onNavigateToDashboard }: { onNavigateToDashboar
       const countLogged = totalSelectedCount;
       const success = await logMultipleMeals(items);
       if (success) {
-        setToastMessage(`Successfully logged ${countLogged} meal${countLogged > 1 ? 's' : ''}!`);
+        showToast(`Successfully logged ${countLogged} meal${countLogged > 1 ? 's' : ''}!`);
         clearAllSelectedMeals();
         if (onNavigateToDashboard) {
           setTimeout(() => {
             onNavigateToDashboard();
           }, 1200);
-        } else {
-          setTimeout(() => setToastMessage(null), 4000);
         }
       } else {
-        setToastMessage("Failed to log meals. Please check your network or login status.");
-        setTimeout(() => setToastMessage(null), 4000);
+        showToast("Failed to log meals. Please check your network or login status.");
       }
     } catch (err) {
       console.error("Batch log error:", err);
@@ -537,14 +535,6 @@ export default function Search({ onNavigateToDashboard }: { onNavigateToDashboar
 
   return (
     <div className="min-h-screen bg-slate-950 text-white p-6 font-outfit pb-36 relative">
-      
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50 bg-emerald-500 text-slate-950 font-extrabold px-6 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-top-6 duration-300">
-          <Check className="w-5 h-5 stroke-[3]" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
 
       {/* Top Right Corner Tick Confirmation Button (Below Navbar) */}
       {totalSelectedCount > 0 && (

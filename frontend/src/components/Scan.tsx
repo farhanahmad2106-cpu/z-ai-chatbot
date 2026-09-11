@@ -4,6 +4,7 @@ import { useState, useRef, useMemo, useEffect } from 'react';
 import { SlidersHorizontal, X, Globe, Search as MiniSearch, Loader2, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
+import { useToast } from '../context/ToastContext';
 import { API_BASE } from '../config';
 
 const ALL_INDIAN_LANGUAGES = [
@@ -54,6 +55,7 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
 
   const { currentUser, setShowLoginModal } = useAuth();
   const { preferences } = useUserProfile();
+  const { showToast } = useToast();
 
   // Handle initialImage passed from other tabs (like Dashboard)
   useEffect(() => {
@@ -87,7 +89,7 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
       }
     } catch (err) {
       console.error("Error accessing camera: ", err);
-      alert("Could not access camera. Please check permissions.");
+      showToast("Could not access camera. Please check permissions.");
       setIsCameraActive(false);
     }
   };
