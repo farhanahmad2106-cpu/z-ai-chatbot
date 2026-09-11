@@ -7,7 +7,9 @@ import {
   Flame, 
   HelpCircle, 
   LayoutDashboard, 
-  ChevronRight
+  ChevronRight,
+  Search,
+  Scan
 } from 'lucide-react';
 
 
@@ -77,12 +79,23 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({
         {/* Core Options */}
         <div className="py-1 border-b border-slate-800">
           <button
-            onClick={() => { onNavigate('dashboard'); onClose(); }}
+            onClick={() => { onNavigate('search'); onClose(); }}
             className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-slate-800 hover:text-white transition-colors flex items-center justify-between group cursor-pointer"
           >
             <div className="flex items-center gap-2.5">
-              <LayoutDashboard className="w-4 h-4 text-emerald-400" />
-              <span className="font-medium">Dashboard Overview</span>
+              <Search className="w-4 h-4 text-emerald-400" />
+              <span className="font-medium">Search Food</span>
+            </div>
+            <ChevronRight className="w-3.5 h-3.5 text-gray-500 group-hover:text-gray-300 group-hover:translate-x-0.5 transition-all" />
+          </button>
+
+          <button
+            onClick={() => { onNavigate('scan'); onClose(); }}
+            className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-slate-800 hover:text-white transition-colors flex items-center justify-between group cursor-pointer"
+          >
+            <div className="flex items-center gap-2.5">
+              <Scan className="w-4 h-4 text-emerald-400" />
+              <span className="font-medium">Food Scanner</span>
             </div>
             <ChevronRight className="w-3.5 h-3.5 text-gray-500 group-hover:text-gray-300 group-hover:translate-x-0.5 transition-all" />
           </button>
