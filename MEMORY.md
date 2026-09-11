@@ -1,11 +1,17 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-11 (Session: Profile Enhancement)
+> **Last Updated:** 2026-09-12 (Session: Profile Dropdown Update)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-12
+**Work Done — Profile Dropdown Update:**
+- **Updated Profile Dropdown UI**: Removed "Dashboard Overview" from the user account dropdown menu in `ProfileDropdown.tsx`.
+- **Added Search & Scan**: Replaced it with "Search Food" and "Food Scanner" options directly accessible from the dropdown using proper Lucide React icons.
+
+## 🗓️ Previous Session Summary
 **Date:** 2026-09-11
 **Work Done — Health Profile Enhancement:**
 - **Editable Health Profile Overview**: Added new optional fields for users (Blood Type, Target Weight, Target Sleep, and Medical Conditions) to make the profile more comprehensive.
