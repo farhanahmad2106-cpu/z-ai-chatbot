@@ -99,7 +99,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
       !localHealth.healthGoal ||
       !localHealth.targetWater
     ) {
-      showToast('Please fill all mandatory fields.');
+      showToast('Please fill all mandatory fields.', 'error');
       return;
     }
 
