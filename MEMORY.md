@@ -9,7 +9,8 @@
 **Date:** 2026-09-12
 **Work Done — Health Profile Validation:**
 - **Mandatory Field Validation**: Added logic to `handleSaveHealth` in `Profile.tsx` to prevent users from saving their health profile if they have not filled out all mandatory fields (Age, Gender, Height, Weight, Activity Level, Health Goal, Daily Target Water).
-- **Toast Notification**: Displays a warning toast saying "Please fill all mandatory fields." if the user tries to save with incomplete data.
+- **Error Toast UI**: Updated the `ToastContext` to support a new `type='error'` variant (red styling with an `AlertCircle` icon).
+- **Validation Feedback**: The validation check now triggers the new error toast saying "Please fill all mandatory fields." if the user tries to save with incomplete data, providing much clearer feedback than the default success checkmark.
 
 ## 🗓️ Previous Session Summary
 **Date:** 2026-09-12
