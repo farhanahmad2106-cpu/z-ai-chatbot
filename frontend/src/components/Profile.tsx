@@ -90,6 +90,19 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
   };
 
   const handleSaveHealth = async () => {
+    if (
+      !localHealth.age ||
+      !localHealth.gender ||
+      !localHealth.height ||
+      !localHealth.weight ||
+      !localHealth.activityLevel ||
+      !localHealth.healthGoal ||
+      !localHealth.targetWater
+    ) {
+      showToast('Please fill all mandatory fields.');
+      return;
+    }
+
     setIsSavingHealth(true);
     try {
       await updateHealthProfile(localHealth);
