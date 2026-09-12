@@ -65,6 +65,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
   const [isHealthModalOpen, setIsHealthModalOpen] = useState(false);
   const [isSavingHealth, setIsSavingHealth] = useState(false);
   const [localHealth, setLocalHealth] = useState(healthProfile);
+  const [saveAttemptCount, setSaveAttemptCount] = useState(0);
 
   useEffect(() => {
     setLocalHealth(healthProfile);
@@ -86,6 +87,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
 
   const handleOpenHealthModal = () => {
     setLocalHealth(healthProfile);
+    setSaveAttemptCount(0);
     setIsHealthModalOpen(true);
   };
 
@@ -99,11 +101,13 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
       !localHealth.healthGoal ||
       !localHealth.targetWater
     ) {
+      setSaveAttemptCount(prev => prev + 1);
       showToast('Please fill all mandatory fields.', 'error');
       return;
     }
 
     setIsSavingHealth(true);
+    setSaveAttemptCount(0);
     try {
       await updateHealthProfile(localHealth);
       setIsHealthModalOpen(false);
@@ -211,6 +215,14 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
       </div>
     );
   }
+
+  const getValidationClass = (value: any) => {
+    if (saveAttemptCount === 0) return 'border-slate-700 focus:border-emerald-500';
+    const isFilled = !!value;
+    const baseClass = isFilled ? 'border-emerald-500' : 'border-rose-500';
+    const animationClass = saveAttemptCount % 2 === 0 ? 'animate-shake' : 'animate-shake-alt';
+    return `${baseClass} ${animationClass}`;
+  };
 
   return (
     <div className="max-w-4xl mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
@@ -617,7 +629,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
                     value={localHealth.age}
                     onChange={e => setLocalHealth({ ...localHealth, age: e.target.value })}
                     placeholder="e.g. 25"
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                    className={`w-full bg-slate-800 border rounded-xl px-3 py-2 text-sm text-white focus:outline-none transition-all ${getValidationClass(localHealth.age)}`}
                   />
                 </div>
                 <div>
@@ -625,7 +637,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
                   <select 
                     value={localHealth.gender}
                     onChange={e => setLocalHealth({ ...localHealth, gender: e.target.value })}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                    className={`w-full bg-slate-800 border rounded-xl px-3 py-2 text-sm text-white focus:outline-none transition-all ${getValidationClass(localHealth.gender)}`}
                   >
                     <option value="">-- Select --</option>
                     <option value="Male">Male</option>
@@ -644,7 +656,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
                     value={localHealth.height}
                     onChange={e => setLocalHealth({ ...localHealth, height: e.target.value })}
                     placeholder="e.g. 175"
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                    className={`w-full bg-slate-800 border rounded-xl px-3 py-2 text-sm text-white focus:outline-none transition-all ${getValidationClass(localHealth.height)}`}
                   />
                 </div>
                 <div>
@@ -654,7 +666,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
                     value={localHealth.weight}
                     onChange={e => setLocalHealth({ ...localHealth, weight: e.target.value })}
                     placeholder="e.g. 70"
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                    className={`w-full bg-slate-800 border rounded-xl px-3 py-2 text-sm text-white focus:outline-none transition-all ${getValidationClass(localHealth.weight)}`}
                   />
                 </div>
               </div>
@@ -665,7 +677,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
                 <select 
                   value={localHealth.activityLevel || 'Moderately Active'}
                   onChange={e => setLocalHealth({ ...localHealth, activityLevel: e.target.value })}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                  className={`w-full bg-slate-800 border rounded-xl px-3 py-2 text-sm text-white focus:outline-none transition-all ${getValidationClass(localHealth.activityLevel)}`}
                 >
                   <option value="Sedentary">Sedentary (Little or no exercise)</option>
                   <option value="Lightly Active">Lightly Active (1-3 days/week exercise)</option>
@@ -681,7 +693,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
                 <select 
                   value={localHealth.healthGoal || 'Healthy Lifestyle'}
                   onChange={e => setLocalHealth({ ...localHealth, healthGoal: e.target.value })}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                  className={`w-full bg-slate-800 border rounded-xl px-3 py-2 text-sm text-white focus:outline-none transition-all ${getValidationClass(localHealth.healthGoal)}`}
                 >
                   <option value="Weight Loss">Weight Loss & Fat Burn</option>
                   <option value="Muscle Gain">Muscle Gain & Hypertrophy</option>
@@ -701,7 +713,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
                     value={localHealth.targetWater || '2.5'}
                     onChange={e => setLocalHealth({ ...localHealth, targetWater: e.target.value })}
                     placeholder="e.g. 2.5"
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                    className={`w-full bg-slate-800 border rounded-xl px-3 py-2 text-sm text-white focus:outline-none transition-all ${getValidationClass(localHealth.targetWater)}`}
                   />
                 </div>
                 <div>
