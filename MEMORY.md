@@ -8,6 +8,11 @@
 ## 🗓️ Last Session Summary
 **Date:** 2026-09-14
 **Work Done — End-to-End Verification & Hardening of Crowdsourced Food Moderation Pipeline:**
+- **Hardening OCR Service & IDE Language Server Compatibility (`backend/services/ocr_service.py`)**:
+  - Implemented safe dual-mode import with `# type: ignore` for `google.genai` and `google.genai.types` to eradicate IDE type-checker/Pylance missing import errors.
+  - Added direct HTTP REST API fallback with `httpx` to `_call_gemini`, ensuring vision OCR functions seamlessly even if `google-genai` package is unavailable in the execution environment.
+  - Added `.vscode/settings.json` with `python.analysis.extraPaths` for seamless IDE resolution of local packages and `backend/`.
+  - Re-verified complete pipeline via `tests/test_food_moderation_e2e.py` (100% PASS).
 - **Pipeline Architecture & Grounding**:
   - Validated full-lifecycle crowdsourced scan ingestion via `POST /api/scan/analyze` with multi-tier vision OCR (`gemini-2.5-flash`).
   - Enforced strict pre-approval status isolation: scanned uncataloged packaged food items persist into MongoDB Atlas `foods` collection with `is_verified: False`, `requires_moderation: True`, `status: 'pending_review'`, and are completely hidden from public `/api/foods` and `/api/search/food` queries without triggering AI hallucination fallback duplicates.

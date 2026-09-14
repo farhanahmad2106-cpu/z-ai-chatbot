@@ -3,9 +3,19 @@ import json
 import base64
 import asyncio
 import httpx
-from typing import Dict, Any
-from google import genai
-from google.genai import types
+from typing import Dict, Any, Optional
+
+try:
+    from google import genai  # type: ignore
+    from google.genai import types  # type: ignore
+except ImportError:
+    try:
+        import google.genai as genai  # type: ignore
+        from google.genai import types  # type: ignore
+    except ImportError:
+        genai = None  # type: ignore
+        types = None  # type: ignore
+
 from schemas.scan import OCRAnalysisResponse
 from fastapi import HTTPException
 
@@ -117,23 +127,70 @@ async def _call_nvidia_nim(base64_image: str, mime_type: str) -> str:
 
 
 async def _call_gemini(image_bytes: bytes, mime_type: str) -> str:
-    """Tertiary: Gemini Cloud API via google-genai Client"""
+    """Tertiary: Gemini Cloud API (SDK + REST Fallback)"""
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("GEMINI_API_KEY missing")
         
-    client = genai.Client(api_key=api_key)
-    part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
-    
-    loop = asyncio.get_running_loop()
-    def _run_gen():
-        return client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=[SYSTEM_PROMPT, part],
-            config=types.GenerateContentConfig(response_mime_type="application/json")
-        )
-    resp = await loop.run_in_executor(None, _run_gen)
-    return resp.text or ""
+    # Method 1: Try google.genai SDK if available
+    if genai is not None and types is not None:
+        try:
+            client = genai.Client(api_key=api_key)
+            part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
+            loop = asyncio.get_running_loop()
+            def _run_gen():
+                return client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=[SYSTEM_PROMPT, part],
+                    config=types.GenerateContentConfig(response_mime_type="application/json")
+                )
+            resp = await loop.run_in_executor(None, _run_gen)
+            if resp and resp.text:
+                return resp.text
+        except Exception as sdk_err:
+            print(f"[OCR Service] Gemini SDK call failed, trying REST fallback: {sdk_err}")
+
+    # Method 2: High-reliability direct REST API fallback (Zero external SDK requirement)
+    base64_data = base64.b64encode(image_bytes).decode("utf-8")
+    for model_name in ["gemini-2.5-flash", "gemini-1.5-flash"]:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {
+                            "inline_data": {
+                                "mime_type": mime_type,
+                                "data": base64_data
+                            }
+                        },
+                        {
+                            "text": SYSTEM_PROMPT
+                        }
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.1,
+                "response_mime_type": "application/json"
+            }
+        }
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(url, json=payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if parts and "text" in parts[0]:
+                            return parts[0]["text"]
+                else:
+                    print(f"[OCR Service] Gemini REST ({model_name}) HTTP {resp.status_code}: {resp.text[:150]}")
+        except Exception as rest_err:
+            print(f"[OCR Service] Gemini REST ({model_name}) error: {rest_err}")
+
+    raise RuntimeError("Both Gemini SDK and REST fallback failed.")
 
 def _parse_llm_json(raw_text: str) -> OCRAnalysisResponse:
     """Cleans up markdown ticks and parses the LLM output into the Pydantic schema."""
