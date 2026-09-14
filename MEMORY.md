@@ -1,13 +1,33 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-14 (Session: Admin Operations & Telemetry Hub)
+> **Last Updated:** 2026-09-14 (Session: Crowdsourced Food Moderation Pipeline Operational Verification)
 
 ---
 
 ## 🗓️ Last Session Summary
 **Date:** 2026-09-14
-**Work Done — Enterprise Admin Operations & Telemetry Hub (Single-Page React + FastAPI Integration):**
+**Work Done — End-to-End Verification & Hardening of Crowdsourced Food Moderation Pipeline:**
+- **Pipeline Architecture & Grounding**:
+  - Validated full-lifecycle crowdsourced scan ingestion via `POST /api/scan/analyze` with multi-tier vision OCR (`gemini-2.5-flash`).
+  - Enforced strict pre-approval status isolation: scanned uncataloged packaged food items persist into MongoDB Atlas `foods` collection with `is_verified: False`, `requires_moderation: True`, `status: 'pending_review'`, and are completely hidden from public `/api/foods` and `/api/search/food` queries without triggering AI hallucination fallback duplicates.
+  - Hardened `backend/routes/admin.py`:
+    - Synchronized document properties (`product_name` and `name`, INS additives arrays, allergens, estimated macros) for seamless presentation in `FoodModerationTab.tsx`.
+    - `POST /api/admin/foods/{id}/approve` transitions document state to `is_verified: True`, `status: 'Safe'`, `requires_moderation: False`, and populates audit trails `reviewed_by` and `approved_at`.
+  - Added public search alias `GET /api/search/food` mapping to `get_foods`.
+  - Upgraded model routing to `gemini-2.5-flash` in `ocr_service.py` and `main.py` using `google.genai` SDK for fast sub-5s response latency.
+- **End-to-End Test Suite Execution (`tests/test_food_moderation_e2e.py`)**:
+  - Test Image Fixture: Generated high-fidelity packaging fixture `tests/fixtures/unlisted_local_snack.jpg` ("Bhikharam Chandmal Bhujia" containing palm oil, gram flour, salt, red chilli, cloves, INS 330, INS 627, INS 631, and INS 319).
+  - Step 1: Scan Ingestion (`POST /api/scan/analyze`) -> **PASS** (HTTP 200, structured parsing with 11 ingredients, 4 INS additives, estimated macros).
+  - Step 1.4: Pre-Approval Isolation (`GET /api/foods?search=Bhikharam` & `/api/search/food?q=Bhikharam`) -> **PASS** (0 results, confirmed hidden from public catalog).
+  - Step 2: Database Layer Verification (MongoDB Atlas `foods` collection) -> **PASS** (`is_verified: False`, `submitted_by: 'test_user'`, `raw_ocr_text`: 659 chars, `detected_ins_additives`: 4, `requires_moderation: True`).
+  - Step 3: Admin Operations Queue Inspection (`GET /api/admin/foods/pending`) -> **PASS** (Item identified with raw OCR preview, INS additive chips, allergen tags, and macronutrient metrics).
+  - Step 4: Approval API Execution (`POST /api/admin/foods/{id}/approve`) -> **PASS** (HTTP 200, record updated to `is_verified: True`, `reviewed_by: 'farhanahmad2106@gmail.com'`, `approved_at` timestamp recorded).
+  - Step 4.4: Post-Approval Global Visibility (`GET /api/foods?search=Bhikharam` & `/api/search/food?q=Bhikharam`) -> **PASS** (Item immediately queryable with safety score 88 and complete macro breakdown).
+- **Build Verification**:
+  - `npm --prefix frontend run build` -> Passed cleanly (1810 modules transformed, 6.29s).
+  - Python compilation on all backend services -> Passed cleanly (0 errors).
+
 - **Deprecation of Standalone Next.js App**: Safely purged the legacy `admin-dashboard/` Next.js directory. Consolidated all administrative views natively into the React 19 + Vite frontend (`frontend/src/`) and FastAPI backend (`backend/`).
 - **Backend Schemas & RBAC (`backend/schemas/admin.py` & `backend/routes/admin.py`)**:
   - Engineered granular RBAC models (`AdminPermissions`, `AdminUserResponse`, `AdminInviteRequest`, `CrowdsourcedFoodReview`, `SystemLogEntry`, `OtaDispatchRequest`).
@@ -319,8 +339,12 @@
 | `frontend/src/components/admin/tabs/SystemLogsTab.tsx` | Monospace structured exception stream viewer | **2026-09-14** |
 | `frontend/src/components/admin/tabs/AdminOtaManager.tsx` | EAS update inspector & GitHub Actions hotfixes | **2026-09-14** |
 | `backend/main.py` | FastAPI app, router registrations, and collections | **2026-09-14** |
+| `backend/schemas/scan.py` | OCR analysis response models and macronutrient schemas | **2026-09-14** |
+| `backend/services/ocr_service.py` | Multi-tier vision OCR pipeline (Gemini 2.5 Flash, NVIDIA, Sarvam) | **2026-09-14** |
+| `backend/routes/scan.py` | Multipart image ingestion & isolated unverified food queuing | **2026-09-14** |
 | `backend/schemas/admin.py` | Admin RBAC & governance Pydantic schemas | **2026-09-14** |
 | `backend/routes/admin.py` | Protected admin endpoints with RBAC dependency | **2026-09-14** |
+
 | `backend/requirements.txt` | Python dependencies (pinned) | 2026-07-30 |
 | `backend/seed_1000.py` | 1000 Indian food DB seeder | 2026-06-25 |
 | `backend/mock_foods.json` | Fallback food data (local) | 2026-06-25 |

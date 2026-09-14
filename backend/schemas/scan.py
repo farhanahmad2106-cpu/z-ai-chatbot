@@ -12,4 +12,12 @@ class OCRAnalysisResponse(BaseModel):
     nutrition_per_100g: Dict[str, float] = Field(
         description="Estimated nutrition per 100g. e.g., {'calories': 0.0, 'protein': 0.0, 'carbs': 0.0, 'fat': 0.0, 'sodium': 0.0, 'sugar': 0.0}"
     )
+    estimated_macros: Optional[Dict[str, float]] = Field(
+        default=None,
+        description="Macronutrient breakdown alias matching nutrition_per_100g."
+    )
+    brand: Optional[str] = Field(default="Local Brand", description="Extracted brand name.")
+    food_id: Optional[str] = Field(default=None, description="MongoDB Document ID if stored in queue.")
+    is_verified: bool = Field(default=False, description="Verification state of the food item.")
     requires_user_review: bool = Field(default=True, description="Flag indicating if the user should review the parsed data.")
+

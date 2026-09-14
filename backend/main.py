@@ -2,6 +2,9 @@ from dotenv import load_dotenv
 import os
 
 # Load environment variables FIRST before importing sub-modules
+backend_env = os.path.join(os.path.dirname(__file__), ".env")
+if os.path.exists(backend_env):
+    load_dotenv(backend_env)
 load_dotenv()
 
 from fastapi import FastAPI, HTTPException, Query, Depends
@@ -66,7 +69,7 @@ if GEMINI_API_KEY:
         print(f"Warning: Failed to initialize Gemini client: {e}")
 else:
     print("Warning: GEMINI_API_KEY not found. Gemini functions will be bypassed/disabled.")
-MODEL_NAME = "gemini-2.0-flash" 
+MODEL_NAME = "gemini-2.5-flash"
 
 # --- DATABASE SETUP ---
 MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
@@ -212,14 +215,45 @@ async def get_foods(search: str = ""):
             ]
         }
         if search:
-            query["$and"].append({"name": {"$regex": search, "$options": "i"}})
+            query["$and"].append({
+                "$or": [
+                    {"name": {"$regex": search, "$options": "i"}},
+                    {"product_name": {"$regex": search, "$options": "i"}},
+                    {"brand": {"$regex": search, "$options": "i"}},
+                ]
+            })
         cursor = foods_collection.find(query).limit(50)
         results = await cursor.to_list(length=50)
         for doc in results:
             doc["_id"] = str(doc["_id"])
+            if not doc.get("name") and doc.get("product_name"):
+                doc["name"] = doc["product_name"]
+
+        # If verified food items exist, return them directly
+        if results:
+            return results
+
+        # If no verified food items were found and an unverified crowdsourced item exists,
+        # strictly isolate it from public results (never return it, never trigger AI fallback)
+        if search:
+            pending_item = await foods_collection.find_one({
+                "$and": [
+                    {
+                        "$or": [
+                            {"name": {"$regex": search.strip(), "$options": "i"}},
+                            {"product_name": {"$regex": search.strip(), "$options": "i"}},
+                            {"brand": {"$regex": search.strip(), "$options": "i"}},
+                        ]
+                    },
+                    {"is_verified": False}
+                ]
+            })
+            if pending_item:
+                return []
     except Exception as e:
         print(f"Database query failed, using local mock: {e}")
         db_error = True
+
 
     if db_error or not results:
         results = get_local_mock_foods(search)
@@ -231,6 +265,13 @@ async def get_foods(search: str = ""):
                 return fallback
             return [fallback]
     return results
+
+
+@app.get("/api/search/food")
+async def search_food_alias(search: str = Query("", alias="q")):
+    """Public search endpoint alias for food items."""
+    return await get_foods(search=search)
+
 
 async def try_ollama_fallback_food(prompt: str) -> Optional[dict]:
     print("Attempting AI fallback using local Ollama model...")
