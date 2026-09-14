@@ -8,7 +8,8 @@ import {
   HelpCircle, 
   ChevronRight,
   Search,
-  Scan
+  Scan,
+  ShieldAlert
 } from 'lucide-react';
 
 
@@ -18,7 +19,8 @@ interface ProfileDropdownProps {
   currentUser: any;
   tier?: string;
   streak?: number;
-  onNavigate: (tab: 'dashboard' | 'search' | 'scan' | 'profile' | 'settings' | 'pricing') => void;
+  isAdmin?: boolean;
+  onNavigate: (tab: 'dashboard' | 'search' | 'scan' | 'profile' | 'settings' | 'pricing' | 'admin') => void;
   onLogout: () => void;
   onOpenHelp: () => void;
 }
@@ -29,6 +31,7 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({
   onClose,
   tier = 'free',
   streak = 0,
+  isAdmin = false,
   onNavigate,
   onLogout,
   onOpenHelp,
@@ -122,6 +125,19 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({
               Upgrade
             </span>
           </button>
+
+          {isAdmin && (
+            <button
+              onClick={() => { onNavigate('admin'); onClose(); }}
+              className="w-full text-left px-4 py-2.5 text-sm text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 transition-colors flex items-center justify-between group cursor-pointer border-t border-slate-800/80"
+            >
+              <div className="flex items-center gap-2.5">
+                <ShieldAlert className="w-4 h-4 text-emerald-400" />
+                <span className="font-bold font-mono text-xs uppercase tracking-wider">Admin Operations</span>
+              </div>
+              <ChevronRight className="w-3.5 h-3.5 text-emerald-500 group-hover:translate-x-0.5 transition-all" />
+            </button>
+          )}
         </div>
 
         {/* Preferences & Help Options */}

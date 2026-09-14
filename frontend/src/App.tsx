@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { User, Flame } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { User, Flame, ShieldAlert } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import Search from './components/Search';
 import Scan from './components/Scan';
@@ -10,13 +10,23 @@ import PaymentStatus from './components/PaymentStatus';
 import LoginModal from './components/auth/LoginModal';
 import ProfileDropdown from './components/ProfileDropdown';
 import HelpModal from './components/HelpModal';
+import AdminDashboard from './components/admin/AdminDashboard';
+import AdminRouteGuard from './components/admin/AdminRouteGuard';
 import { useAuth } from './context/AuthContext';
+import { useAdminAuth } from './context/AdminAuthContext';
 import { useUserStats } from './context/UserStatsContext';
 import { useUserProfile } from './context/UserProfileContext';
 
+export type AppTab = 'dashboard' | 'search' | 'scan' | 'profile' | 'settings' | 'pricing' | 'admin';
+
 function App() {
-  // Simple tab-based navigation state for the MVP
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'search' | 'scan' | 'profile' | 'settings' | 'pricing'>('dashboard');
+  // Simple tab-based navigation state with /admin path support
+  const [activeTab, setActiveTab] = useState<AppTab>(() => {
+    if (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')) {
+      return 'admin';
+    }
+    return 'dashboard';
+  });
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
   const [scanImageData, setScanImageData] = useState<string | null>(null);
@@ -30,10 +40,38 @@ function App() {
     errorMessage?: string;
   } | null>(null);
 
-
   const { currentUser, setShowLoginModal, logout } = useAuth();
+  const { isAdmin } = useAdminAuth();
   const { streak, tier } = useUserStats();
   const { settings } = useUserProfile();
+
+  const navigateToTab = useCallback((tab: AppTab) => {
+    setActiveTab(tab);
+    if (typeof window !== 'undefined') {
+      if (tab === 'admin') {
+        if (window.location.pathname !== '/admin') {
+          window.history.pushState(null, '', '/admin');
+        }
+      } else {
+        if (window.location.pathname === '/admin') {
+          window.history.pushState(null, '', '/');
+        }
+      }
+    }
+  }, []);
+
+  // --- URL Path Sync: Support direct navigation to /admin or browser back/forward ---
+  useEffect(() => {
+    const onPopState = () => {
+      if (window.location.pathname.startsWith('/admin')) {
+        setActiveTab('admin');
+      } else {
+        setActiveTab((prev) => (prev === 'admin' ? 'dashboard' : prev));
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   // --- Theme Switching: Wire settings.darkMode → data-theme on root element ---
   useEffect(() => {
@@ -106,7 +144,8 @@ function App() {
                     currentUser={currentUser}
                     tier={tier}
                     streak={streak}
-                    onNavigate={(tab) => setActiveTab(tab)}
+                    isAdmin={isAdmin}
+                    onNavigate={(tab) => navigateToTab(tab)}
                     onLogout={() => {
                       if (window.confirm("Are you sure you want to log out?")) {
                         logout();
@@ -128,23 +167,32 @@ function App() {
 
           <nav className="flex space-x-4 sm:space-x-6 text-sm font-semibold w-full md:w-auto justify-center md:justify-start pt-1 pb-1 md:pt-0 md:pb-0">
             <button 
-              onClick={() => setActiveTab('dashboard')} 
+              onClick={() => navigateToTab('dashboard')} 
               className={`pb-1 transition-all whitespace-nowrap ${activeTab === 'dashboard' ? 'text-emerald-400 border-b-2 border-emerald-500' : 'text-gray-400 hover:text-white'}`}
             >
               Dashboard
             </button>
             <button 
-              onClick={() => setActiveTab('search')} 
+              onClick={() => navigateToTab('search')} 
               className={`pb-1 transition-all whitespace-nowrap ${activeTab === 'search' ? 'text-emerald-400 border-b-2 border-emerald-500' : 'text-gray-400 hover:text-white'}`}
             >
               Search
             </button>
             <button 
-              onClick={() => setActiveTab('scan')} 
+              onClick={() => navigateToTab('scan')} 
               className={`pb-1 transition-all whitespace-nowrap ${activeTab === 'scan' ? 'text-emerald-400 border-b-2 border-emerald-500' : 'text-gray-400 hover:text-white'}`}
             >
               Scan
             </button>
+            {isAdmin && (
+              <button 
+                onClick={() => navigateToTab('admin')} 
+                className={`pb-1 transition-all whitespace-nowrap flex items-center gap-1.5 font-mono text-xs uppercase tracking-wider ${activeTab === 'admin' ? 'text-emerald-400 border-b-2 border-emerald-500 font-bold' : 'text-emerald-500/80 hover:text-emerald-300'}`}
+              >
+                <ShieldAlert className="w-3.5 h-3.5 text-emerald-400" />
+                Admin
+              </button>
+            )}
           </nav>
 
           <div className="hidden md:flex items-center gap-3">
@@ -178,7 +226,8 @@ function App() {
                     currentUser={currentUser}
                     tier={tier}
                     streak={streak}
-                    onNavigate={(tab) => setActiveTab(tab)}
+                    isAdmin={isAdmin}
+                    onNavigate={(tab) => navigateToTab(tab)}
                     onLogout={() => {
                       if (window.confirm("Are you sure you want to log out?")) {
                         logout();
@@ -209,11 +258,10 @@ function App() {
           subscriptionId={paymentResult.subscriptionId}
           errorMessage={paymentResult.errorMessage}
           onClose={() => setPaymentResult(null)}
-          onRetry={paymentResult.status === 'failure' ? () => { setPaymentResult(null); setActiveTab('pricing'); } : undefined}
-          onGoToDashboard={() => { setPaymentResult(null); setActiveTab('dashboard'); }}
+          onRetry={paymentResult.status === 'failure' ? () => { setPaymentResult(null); navigateToTab('pricing'); } : undefined}
+          onGoToDashboard={() => { setPaymentResult(null); navigateToTab('dashboard'); }}
         />
       )}
-
 
       {/* Render the Active Tab Page */}
       <main className="py-8 px-4">
@@ -221,22 +269,27 @@ function App() {
           <Dashboard
             onNavigateToScan={(imgData) => {
               setScanImageData(imgData);
-              setActiveTab('scan');
+              navigateToTab('scan');
             }}
-            onGoToPricing={() => setActiveTab('pricing')}
+            onGoToPricing={() => navigateToTab('pricing')}
           />
         )}
-        {activeTab === 'search' && <Search onNavigateToDashboard={() => setActiveTab('dashboard')} />}
+        {activeTab === 'search' && <Search onNavigateToDashboard={() => navigateToTab('dashboard')} />}
         {activeTab === 'scan' && (
           <Scan
-            onNavigateToSearch={() => setActiveTab('search')}
+            onNavigateToSearch={() => navigateToTab('search')}
             initialImage={scanImageData}
             onClearInitialImage={() => setScanImageData(null)}
           />
         )}
-        {activeTab === 'profile' && <Profile onBack={() => setActiveTab('dashboard')} onGoToPricing={() => setActiveTab('pricing')} />}
-        {activeTab === 'settings' && <Settings onBack={() => setActiveTab('dashboard')} />}
-        {activeTab === 'pricing' && <PricingPage onClose={() => setActiveTab('dashboard')} />}
+        {activeTab === 'profile' && <Profile onBack={() => navigateToTab('dashboard')} onGoToPricing={() => navigateToTab('pricing')} />}
+        {activeTab === 'settings' && <Settings onBack={() => navigateToTab('dashboard')} />}
+        {activeTab === 'pricing' && <PricingPage onClose={() => navigateToTab('dashboard')} />}
+        {activeTab === 'admin' && (
+          <AdminRouteGuard onExit={() => navigateToTab('dashboard')}>
+            <AdminDashboard onExit={() => navigateToTab('dashboard')} />
+          </AdminRouteGuard>
+        )}
       </main>
     </div>
   );

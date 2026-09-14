@@ -1,12 +1,18 @@
-import cv2
-import numpy as np
-import pytesseract
+try:
+    import cv2
+    import numpy as np
+    import pytesseract
+    from PIL import Image
+except ImportError:
+    cv2 = None
+    np = None
+    pytesseract = None
+    Image = None
 import os
-from PIL import Image
 import io
 
 # If on Windows, configure the Tesseract path
-if os.name == 'nt':
+if os.name == 'nt' and pytesseract:
     # Default installation path on Windows. User should update if installed elsewhere.
     pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
@@ -14,6 +20,8 @@ def extract_text_from_image(image_bytes: bytes) -> str:
     """
     Preprocesses the image using OpenCV and extracts text using Tesseract.
     """
+    if cv2 is None or np is None or pytesseract is None:
+        return ""
     # 1. Convert bytes to numpy array then to OpenCV image
     nparr = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)

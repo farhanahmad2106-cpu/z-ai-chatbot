@@ -20,10 +20,11 @@ from firebase_admin import credentials, auth as firebase_auth
 from datetime import datetime, timezone, timedelta
 from fastapi import Header, Request
 
-# --- FREEMIUM: Import subscription and webhook routers ---
+# --- FREEMIUM & ADMIN: Import routers ---
 from routes.subscriptions import router as subscriptions_router
 from routes.webhooks import router as webhooks_router
 from routes.scan import router as scan_router
+from routes.admin import router as admin_router, log_system_event
 from middleware.quota_check import check_scan_quota, get_user_quota_status
 from services.ai_router import route_scan_by_tier
 from services.ocr_engine import extract_text_from_image
@@ -32,10 +33,11 @@ from models import ParsedIngredients
 
 app = FastAPI(title="Z-SeHealth API")
 
-# --- FREEMIUM: Register routers ---
+# --- Register routers ---
 app.include_router(subscriptions_router)
 app.include_router(webhooks_router)
 app.include_router(scan_router)
+app.include_router(admin_router)
 
 # --- CORS SETUP ---
 app.add_middleware(
@@ -76,6 +78,9 @@ mongo_client = AsyncIOMotorClient(
 db = mongo_client["Z-sehealth"]
 foods_collection = db["foods"]
 users_collection = db["users"]
+admins_collection = db["admins"]
+system_logs_collection = db["system_logs"]
+transactions_collection = db["transactions"]
 
 # --- FIREBASE SETUP ---
 try:
@@ -97,6 +102,9 @@ async def background_db_init():
     try:
         # Create search index for instant queries
         await foods_collection.create_index([("name", 1)], background=True)
+        await admins_collection.create_index([("email", 1)], unique=True, background=True)
+        await system_logs_collection.create_index([("timestamp", -1)], background=True)
+        await system_logs_collection.create_index([("level", 1)], background=True)
         count = await foods_collection.count_documents({})
         if count == 0:
             print("Database is empty. Automatically seeding items in background...")
@@ -197,7 +205,14 @@ async def get_foods(search: str = ""):
     results = []
     db_error = False
     try:
-        query = {"name": {"$regex": search, "$options": "i"}} if search else {}
+        query: dict = {
+            "$and": [
+                {"$or": [{"is_verified": True}, {"is_verified": {"$exists": False}}]},
+                {"status": {"$ne": "rejected"}}
+            ]
+        }
+        if search:
+            query["$and"].append({"name": {"$regex": search, "$options": "i"}})
         cursor = foods_collection.find(query).limit(50)
         results = await cursor.to_list(length=50)
         for doc in results:

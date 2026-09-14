@@ -12,11 +12,16 @@ This document outlines the features currently implemented in the Z-SeHealth appl
 * **Meal Logging:** Save analyzed foods directly to the user's daily meal log.
 
 ## Features Built Today
-* **User Profile Menu:** A dedicated, stylish profile dropdown menu for managing user settings and account details.
-* **Dashboard Quick Scan (Camera Integration):** A live camera container built directly into the Dashboard. Users can click to capture a photo of ingredients and are seamlessly redirected to the Scan page with the image ready for analysis.
-* **Robust API Fallback Pipeline:** A highly resilient backend AI chain. If the local Ollama instance fails or is turned off, the system automatically fails over to the NVIDIA API.
-* **Multiple NVIDIA API Key Support:** The backend now supports 5+ NVIDIA API keys (e.g., `NVIDIA_API_KEY_1`, `NVIDIA_API_KEY_2`). If one key hits a rate limit, the system gracefully shifts to the next key before finally resorting to the Gemini API as a last resort.
-* **Configurable AI Models:** Vision and text models are now fully configurable via `.env` variables (`NVIDIA_VISION_MODEL` and `NVIDIA_TEXT_MODEL`), allowing for instant upgrades when new models (like Llama 3.2 Vision) are released.
+* **Enterprise Admin Operations & Telemetry Hub:** Full-stack administrative operations suite built directly into the React 19 + Vite frontend (`/admin`) and FastAPI backend.
+  * **RBAC & Security Clearance Layer:** Master Super Admin (`Farhan Ahmad`) with exclusive roster governance; granular capability flags for moderators (`canManageUsers`, `canApproveFoods`, `canTriggerOTA`, `canViewRevenue`, `canViewLogs`).
+  * **Brutalist Admin Route Guard:** `AdminRouteGuard.tsx` rejects non-admin callers with a 403 Forbidden terminal protocol view.
+  * **Crowdsourced Food Safety Moderation:** Side-by-side review of raw OCR inputs against parsed INS additives, allergens, and safety scores; single-click approval commits items to the global SWR searchable food index (`is_verified: true`).
+  * **User Governance & Quota Reset Engine:** Searchable, paginated user table with tier pill badges, 20-scan quota usage progress bars, instant quota resets back to 0, and account suspension / ban toggles with audit reason notes.
+  * **Super Admin Team Management:** Exclusive tab for Farhan Ahmad to invite moderators via email, configure granular permission capabilities, view last login timestamps, and revoke access.
+  * **Real-time System Telemetry & Logs:** Monospace exception stream querying MongoDB `system_logs` with level filters (`CRASH`/`ERROR`, `FAILOVER`/`WARNING`, `INFO`), grep search, and structured JSON trace modal.
+  * **EAS Mobile OTA Hotfix Controller:** Channel switcher (production/staging), live release inspector, and instant OTA remote hotfix trigger via GitHub Actions repository dispatches.
+  * **Platform KPIs & Revenue Analytics:** Live overview cards tracking Total Users, Active Users Today, Scans Executed, Moderation Queue, Tier Breakdown, and Estimated MRR (₹366/₹732/₹998).
+  * **Next.js Boilerplate Deprecation:** Safely cleaned up and removed `admin-dashboard/` to maintain a lean, single-page React app.
 
 ## Future Feature Ideas (Coming Next)
 * **Smart Meal Planning:** Generate weekly meal plans and automated grocery lists based on the foods you frequently scan.

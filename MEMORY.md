@@ -1,11 +1,43 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-12 (Session: Health Profile Validation)
+> **Last Updated:** 2026-09-14 (Session: Admin Operations & Telemetry Hub)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-14
+**Work Done — Enterprise Admin Operations & Telemetry Hub (Single-Page React + FastAPI Integration):**
+- **Deprecation of Standalone Next.js App**: Safely purged the legacy `admin-dashboard/` Next.js directory. Consolidated all administrative views natively into the React 19 + Vite frontend (`frontend/src/`) and FastAPI backend (`backend/`).
+- **Backend Schemas & RBAC (`backend/schemas/admin.py` & `backend/routes/admin.py`)**:
+  - Engineered granular RBAC models (`AdminPermissions`, `AdminUserResponse`, `AdminInviteRequest`, `CrowdsourcedFoodReview`, `SystemLogEntry`, `OtaDispatchRequest`).
+  - Implemented `get_current_admin` security dependency with automatic bootstrap for Master Super Admin (`Farhan Ahmad` / `farhanahmad2106@gmail.com`).
+  - Added endpoints:
+    - `POST /api/admin/auth/verify`: Verifies Firebase session against MongoDB Atlas `admins` collection.
+    - `GET /api/admin/team` & `POST /api/admin/team/invite`: Super Admin team management.
+    - `PATCH /api/admin/team/{admin_id}` & `DELETE /api/admin/team/{admin_id}`: Manage permissions & revoke access (guarded against Super Admin self-demotion).
+    - `GET /api/admin/foods/pending`, `POST /api/admin/foods/{food_id}/approve`, `POST /api/admin/foods/{food_id}/reject`: Crowdsourced food safety moderation.
+    - `GET /api/admin/users`, `POST /api/admin/users/{user_id}/reset-quota`, `POST /api/admin/users/{user_id}/toggle-ban`: User governance.
+    - `GET /api/admin/logs`: Monospace system telemetry & exception viewer stream.
+    - `GET /api/admin/analytics/overview`: Aggregated MRR, users, and food catalog stats.
+    - `GET /api/admin/ota/releases` & `POST /api/admin/ota/dispatch`: EAS OTA hotfix releases & GitHub Actions dispatch.
+- **Frontend Architecture & Brutalist UI (`frontend/src/`)**:
+  - Built `AdminAuthContext.tsx` handling token verification and granular permission flags.
+  - Built `AdminRouteGuard.tsx` presenting a high-tech brutalist 403 Forbidden screen to unauthorized callers.
+  - Integrated `/admin` URL synchronization and route switcher into `App.tsx` and `ProfileDropdown.tsx`.
+  - Built modular Admin Hub tabs in `frontend/src/components/admin/`:
+    - `AdminDashboard.tsx`: Primary shell with Super Admin badge, telemetry indicator, and tab navigation.
+    - `tabs/OverviewTab.tsx`: Real-time KPI cards (Users, Scans, Pending Moderation, MRR) and tier distribution bar.
+    - `tabs/FoodModerationTab.tsx`: Side-by-side OCR review and single-click global database approval.
+    - `tabs/UserManagementTab.tsx`: Paginated, searchable user table with scan quota progress bars, instant quota reset, and account ban toggles.
+    - `tabs/AdminTeamTab.tsx` (*Super Admin Exclusive*): Invite new admins, assign capability checkboxes, view last logins, and revoke access.
+    - `tabs/SystemLogsTab.tsx`: Monospace, color-coded error viewer with log level filters, grep search, and structured JSON payload inspection modal.
+    - `tabs/AdminOtaManager.tsx`: Channel switcher, release inspector, and instant OTA remote hotfix trigger via GitHub Actions.
+- **Build & Syntax Verification**:
+  - `npm --prefix frontend run build` passed cleanly with 0 errors (1810 modules transformed, 20.54s).
+  - `py_compile` on `backend/schemas/admin.py`, `backend/routes/admin.py`, and `backend/main.py` passed cleanly with 0 errors.
+
+## 🗓️ Previous Session Summary
 **Date:** 2026-09-12
 **Work Done — Health Profile Validation:**
 - **Mandatory Field Validation**: Added logic to `handleSaveHealth` in `Profile.tsx` to prevent users from saving their health profile if they have not filled out all mandatory fields (Age, Gender, Height, Weight, Activity Level, Health Goal, Daily Target Water).
@@ -265,36 +297,44 @@
 
 | File | Purpose | Last Modified |
 |---|---|---|
-| `frontend/src/App.tsx` | Root app, sticky navbar, tab-based routing | 2026-07-30 |
+| `frontend/src/App.tsx` | Root app, sticky navbar, tab-based routing + `/admin` route guard | **2026-09-14** |
 | `frontend/src/config.ts` | `API_BASE` constant (single source of truth) | 2026-07-30 |
 | `frontend/src/firebase.ts` | Firebase app + Auth initialization | 2026-06-25 |
 | `frontend/src/index.css` | Tailwind v4 import, CSS variables, custom utilities | 2026-06-25 |
 | `frontend/src/components/Dashboard.tsx` | Dashboard UI + quick scan camera | 2026-07-30 |
-| `frontend/src/components/Search.tsx` | Search + multi-meal selection | **2026-07-30** |
+| `frontend/src/components/Search.tsx` | Search + multi-meal selection | 2026-07-30 |
 | `frontend/src/components/Scan.tsx` | AI food scanning | 2026-07-30 |
 | `frontend/src/components/Profile.tsx` | Health profile editing | 2026-06-25 |
 | `frontend/src/components/Settings.tsx` | App settings | 2026-06-25 |
 | `frontend/src/components/auth/LoginModal.tsx` | Firebase login UI | 2026-06-25 |
+| `frontend/src/components/ProfileDropdown.tsx` | User dropdown menu + Admin Operations link | **2026-09-14** |
 | `frontend/src/context/AuthContext.tsx` | Firebase auth state | 2026-06-25 |
-| `frontend/src/context/UserStatsContext.tsx` | Daily stats + logMeal + logMultipleMeals | **2026-07-30** |
-| `frontend/src/context/UserProfileContext.tsx` | User health profile + settings | 2026-07-30 |
-| `backend/main.py` | All FastAPI routes + AI fallback chain | **2026-08-28** |
+| `frontend/src/context/AdminAuthContext.tsx` | Admin RBAC state & token verification | **2026-09-14** |
+| `frontend/src/components/admin/AdminRouteGuard.tsx` | Brutalist 403 access control screen | **2026-09-14** |
+| `frontend/src/components/admin/AdminDashboard.tsx` | Admin master shell & active tab controller | **2026-09-14** |
+| `frontend/src/components/admin/tabs/OverviewTab.tsx` | Real-time platform KPIs & MRR analytics | **2026-09-14** |
+| `frontend/src/components/admin/tabs/FoodModerationTab.tsx` | Crowdsourced OCR review & global approval | **2026-09-14** |
+| `frontend/src/components/admin/tabs/UserManagementTab.tsx` | User table, scan quota resets & ban toggles | **2026-09-14** |
+| `frontend/src/components/admin/tabs/AdminTeamTab.tsx` | Super Admin team invite, permissions & revoke | **2026-09-14** |
+| `frontend/src/components/admin/tabs/SystemLogsTab.tsx` | Monospace structured exception stream viewer | **2026-09-14** |
+| `frontend/src/components/admin/tabs/AdminOtaManager.tsx` | EAS update inspector & GitHub Actions hotfixes | **2026-09-14** |
+| `backend/main.py` | FastAPI app, router registrations, and collections | **2026-09-14** |
+| `backend/schemas/admin.py` | Admin RBAC & governance Pydantic schemas | **2026-09-14** |
+| `backend/routes/admin.py` | Protected admin endpoints with RBAC dependency | **2026-09-14** |
 | `backend/requirements.txt` | Python dependencies (pinned) | 2026-07-30 |
 | `backend/seed_1000.py` | 1000 Indian food DB seeder | 2026-06-25 |
 | `backend/mock_foods.json` | Fallback food data (local) | 2026-06-25 |
 | `backend/.env` | Local secrets (NOT committed) | — |
 | `backend/.env.example` | Secret key template | 2026-07-30 |
-| `RULES.md` | Development rules and conventions | **2026-07-30** |
-| `MEMORY.md` | This file — project state | **2026-09-03** |
-| `Z-SeHealth_project_features.md` | Feature list and roadmap | 2026-07-30 |
-| `app.json` | Expo updates config & runtimeVersion policy | **2026-09-03** |
-| `eas.json` | EAS build and channel matrix (dev/preview/prod) | **2026-09-03** |
-| `src/services/updateManager.ts` | OTA update listener, downloader & lifecycle hook | **2026-09-03** |
-| `src/store/telemetryStore.ts` | Hardware metrics & OTA error logging store | **2026-09-03** |
-| `App.tsx` | Mobile root integration with OTA toast UI | **2026-09-03** |
-| `.github/workflows/ota-deploy.yml` | GitHub Actions automated OTA deploy pipeline | **2026-09-03** |
-| `admin-dashboard/app/api/ota/route.ts` | Next.js 14 Route Handler for EAS updates | **2026-09-03** |
-| `admin-dashboard/app/components/OtaManager.tsx` | Admin Portal brutalist OTA control center | **2026-09-03** |
+| `RULES.md` | Development rules and conventions | 2026-07-30 |
+| `MEMORY.md` | This file — project state | **2026-09-14** |
+| `Z-SeHealth_project_features.md` | Feature list and roadmap | **2026-09-14** |
+| `app.json` | Expo updates config & runtimeVersion policy | 2026-09-03 |
+| `eas.json` | EAS build and channel matrix (dev/preview/prod) | 2026-09-03 |
+| `src/services/updateManager.ts` | OTA update listener, downloader & lifecycle hook | 2026-09-03 |
+| `src/store/telemetryStore.ts` | Hardware metrics & OTA error logging store | 2026-09-03 |
+| `App.tsx` | Mobile root integration with OTA toast UI | 2026-09-03 |
+| `.github/workflows/ota-deploy.yml` | GitHub Actions automated OTA deploy pipeline | 2026-09-03 |
 
 ---
 
@@ -302,7 +342,7 @@
 
 | Method | Endpoint | Auth Required | Purpose |
 |---|---|---|---|
-| `GET` | `/api/foods?search=` | ❌ | Search food items (DB + AI fallback) |
+| `GET` | `/api/foods?search=` | ❌ | Search food items (DB + AI fallback, verified only) |
 | `POST` | `/api/translate` | ❌ | Batch translate ingredient text |
 | `POST` | `/api/scan` | ❌ | Analyze food image via AI vision |
 | `POST` | `/api/auth/sync` | ❌ | Sync Firebase user to MongoDB |
@@ -310,10 +350,62 @@
 | `POST` | `/api/user/log_meal` | ✅ | Log a meal + estimate macros via AI |
 | `GET` | `/api/user/profile` | ✅ | Get user health profile + settings |
 | `POST` | `/api/user/profile` | ✅ | Save user health profile + settings |
+| `POST` | `/api/admin/auth/verify` | 🛡️ Admin | Verify admin session & load RBAC permissions |
+| `GET` | `/api/admin/team` | 👑 Super Admin | List all team moderators & admins |
+| `POST` | `/api/admin/team/invite` | 👑 Super Admin | Invite new administrator or moderator |
+| `PATCH` | `/api/admin/team/{admin_id}` | 👑 Super Admin | Update admin permissions / active state |
+| `DELETE` | `/api/admin/team/{admin_id}` | 👑 Super Admin | Revoke & remove administrator |
+| `GET` | `/api/admin/foods/pending` | 🛡️ Mod | Fetch unverified crowdsourced scans |
+| `POST` | `/api/admin/foods/{food_id}/approve` | 🛡️ Mod | Approve food item to global DB |
+| `POST` | `/api/admin/foods/{food_id}/reject` | 🛡️ Mod | Reject / archive invalid OCR extraction |
+| `GET` | `/api/admin/users` | 🛡️ Mod | Paginated users list with tier & quotas |
+| `POST` | `/api/admin/users/{user_id}/reset-quota` | 🛡️ Mod | Reset user scan counter to 0/20 |
+| `POST` | `/api/admin/users/{user_id}/toggle-ban` | 🛡️ Mod | Toggle account suspension / ban |
+| `GET` | `/api/admin/logs` | 🛡️ Mod | Query system telemetry & exception stream |
+| `GET` | `/api/admin/analytics/overview` | 🛡️ Admin | Real-time KPIs, active subs & estimated MRR |
+| `GET` | `/api/admin/ota/releases` | 🛡️ Mod | Query active EAS update releases |
+| `POST` | `/api/admin/ota/dispatch` | 🛡️ Mod | Dispatch GitHub Actions OTA hotfix build |
 
 ---
 
 ## 🗃️ MongoDB Collections
+
+### `admins` collection (RBAC Isolated)
+```json
+{
+  "_id": "ObjectId",
+  "email": "farhanahmad2106@gmail.com",
+  "name": "Farhan Ahmad",
+  "uid": "firebase_uid",
+  "is_super_admin": true,
+  "is_active": true,
+  "permissions": {
+    "canManageAdmins": true,
+    "canManageUsers": true,
+    "canApproveFoods": true,
+    "canTriggerOTA": true,
+    "canViewRevenue": true,
+    "canViewLogs": true
+  },
+  "created_at": "2026-09-14T00:00:00Z",
+  "last_login": "2026-09-14T12:00:00Z"
+}
+```
+
+### `system_logs` collection (Telemetry & Exceptions)
+```json
+{
+  "_id": "ObjectId",
+  "timestamp": "2026-09-14T12:00:00Z",
+  "level": "ERROR",
+  "service": "AI_Router",
+  "message": "NVIDIA API rate limited (429), failing over to Gemini Flash",
+  "details": {
+    "model": "meta/llama-3.1-8b-instruct",
+    "fallback_attempt": 2
+  }
+}
+```
 
 ### `users` collection
 ```json
