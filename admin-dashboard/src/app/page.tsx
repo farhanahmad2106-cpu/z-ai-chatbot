@@ -27,7 +27,7 @@ interface LogEntry {
   message: string;
 }
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://127.0.0.1:8765';
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://z-sehealth-backend.onrender.com';
 
 const DUMMY_SUMMARY: SystemSummary = {
   total_conversations: 42,
