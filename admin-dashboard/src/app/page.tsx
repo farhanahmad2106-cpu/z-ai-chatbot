@@ -83,8 +83,8 @@ export default function AdminDashboardPage() {
   // 1. SWR Cache & Initial Load
   useEffect(() => {
     // Load cached or dummy data immediately so dashboard renders in 0ms!
-    const cachedSummary = localStorage.getItem('z_sehealth_cached_summary');
-    const cachedFlags = localStorage.getItem('z_sehealth_cached_flags');
+    const cachedSummary = localStorage.getItem('zai_cached_summary');
+    const cachedFlags = localStorage.getItem('zai_cached_flags');
 
     if (cachedSummary && cachedFlags) {
       setSummary(JSON.parse(cachedSummary));
@@ -149,7 +149,7 @@ export default function AdminDashboardPage() {
       if (sumRes.ok) {
         const sumData = await sumRes.json();
         setSummary(sumData);
-        localStorage.setItem('z_sehealth_cached_summary', JSON.stringify(sumData));
+        localStorage.setItem('zai_cached_summary', JSON.stringify(sumData));
       }
 
       // 2. Fetch flags
@@ -159,7 +159,7 @@ export default function AdminDashboardPage() {
       if (flagRes.ok) {
         const flagData = await flagRes.json();
         setFlags(flagData);
-        localStorage.setItem('z_sehealth_cached_flags', JSON.stringify(flagData));
+        localStorage.setItem('zai_cached_flags', JSON.stringify(flagData));
       }
 
       // 3. Fetch logs

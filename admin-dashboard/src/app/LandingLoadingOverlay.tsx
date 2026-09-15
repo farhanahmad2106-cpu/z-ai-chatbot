@@ -105,13 +105,13 @@ export const LandingLoadingOverlay: React.FC<LandingLoadingOverlayProps> = ({
 
   return (
     <div style={styles.overlayContainer}>
-      {/* Top Header / Navigation Bar matching Z-SeHealth */}
+      {/* Top Header / Navigation Bar */}
       <header style={styles.header}>
         <div style={styles.brandRow}>
           <div style={styles.logoBadge}>
             <span style={styles.logoIcon}>Z</span>
           </div>
-          <span style={styles.brandTitle}>Z-SeHealth</span>
+          <span style={styles.brandTitle}>Z-AI Chatbot</span>
         </div>
 
         <nav style={styles.navLinks}>
@@ -151,7 +151,7 @@ export const LandingLoadingOverlay: React.FC<LandingLoadingOverlayProps> = ({
             &ldquo;{currentQuote?.text || 'Loading inspirational quote...'}&rdquo;
           </p>
 
-          <p style={styles.quoteAuthor}>— {currentQuote?.author || 'Z-SeHealth'}</p>
+          <p style={styles.quoteAuthor}>— {currentQuote?.author || 'Z-AI'}</p>
 
           {/* 7-Second Visual Progress Bar */}
           <div style={styles.progressTrack}>

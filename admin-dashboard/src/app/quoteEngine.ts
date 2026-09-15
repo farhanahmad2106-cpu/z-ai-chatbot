@@ -8,7 +8,7 @@ export interface QuoteRecord {
 
 export type QuoteHistoryMap = Record<string, QuoteRecord>;
 
-const LOCAL_STORAGE_KEY = 'z_sehealth_quote_history';
+const LOCAL_STORAGE_KEY = 'zai_quote_history';
 const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
 
 export function getQuoteHistory(): QuoteHistoryMap {
