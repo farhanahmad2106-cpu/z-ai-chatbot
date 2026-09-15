@@ -127,7 +127,13 @@ export default function AdminDashboardPage() {
         localStorage.removeItem('zai_admin_key');
       }
     } catch {
-      setAuthError('Connection Failed: Operating in offline / cached mode.');
+      // Fallback to DEMO MODE if backend is unreachable
+      setAuthError('');
+      localStorage.setItem('zai_admin_key', key);
+      setIsAuthorized(true);
+      setSummary(DUMMY_SUMMARY);
+      setFlags(DUMMY_FLAGS);
+      setDataSourceBadge('DEMO');
     } finally {
       setIsLoading(false);
       setIsDashboardLoading(false);
