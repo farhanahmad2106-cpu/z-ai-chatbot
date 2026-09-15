@@ -133,7 +133,7 @@ export default function AdminDashboardPage() {
       setIsAuthorized(true);
       setSummary(DUMMY_SUMMARY);
       setFlags(DUMMY_FLAGS);
-      setDataSourceBadge('DEMO');
+      setDataSourceBadge('DEMO_MODE');
     } finally {
       setIsLoading(false);
       setIsDashboardLoading(false);
