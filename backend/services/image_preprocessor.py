@@ -1,5 +1,6 @@
 import io
 import traceback
+# pyrefly: ignore [missing-import]
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
 def preprocess_for_ocr(image_bytes: bytes) -> bytes:
