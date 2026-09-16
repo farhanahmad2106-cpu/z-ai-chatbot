@@ -13,7 +13,11 @@ export default function ConvexClientProvider({
   children: ReactNode;
 }) {
   return (
-    <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
+    <ConvexProviderWithClerk 
+      client={convex} 
+      // @ts-expect-error - Clerk v5 UseAuth type mismatch with convex/react-clerk
+      useAuth={useAuth}
+    >
       {children}
     </ConvexProviderWithClerk>
   );
