@@ -10,7 +10,7 @@ export default clerkMiddleware((auth, request) => {
     
     // Admin role check
     const { sessionClaims } = auth()
-    if (sessionClaims?.metadata?.role !== 'admin') {
+    if ((sessionClaims?.metadata as any)?.role !== 'admin') {
       // Return 403 or redirect to some unauthorized page
       // Normally you would redirect to a specific URL, e.g., the user dashboard, 
       // but returning a redirect Response works.
