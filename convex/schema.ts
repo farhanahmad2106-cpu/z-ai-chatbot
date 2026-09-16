@@ -81,4 +81,14 @@ export default defineSchema({
     error_message: v.optional(v.string()),
   })
     .index("by_owner_timestamp", ["owner_token", "timestamp"]),
+
+  // ── Users (Authentication & Roles) ─────────────────────────────────────────
+  users: defineTable({
+    tokenIdentifier: v.string(), // Clerk User ID (e.g. "user_2aX...")
+    role: v.union(v.literal("admin"), v.literal("user")),
+    email: v.optional(v.string()),
+    name: v.optional(v.string()),
+  })
+    .index("by_token", ["tokenIdentifier"])
+    .index("by_role", ["role"]),
 });
