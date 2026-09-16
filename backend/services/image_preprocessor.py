@@ -1,6 +1,6 @@
 import io
 import traceback
-from PIL import Image, ImageEnhance, ImageFilter, ExifTags
+from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
 def preprocess_for_ocr(image_bytes: bytes) -> bytes:
     """
@@ -13,17 +13,7 @@ def preprocess_for_ocr(image_bytes: bytes) -> bytes:
         
         # 1. Normalize Orientation (EXIF)
         try:
-            for orientation in ExifTags.TAGS.keys():
-                if ExifTags.TAGS[orientation] == 'Orientation':
-                    break
-            exif = img._getexif()
-            if exif is not None and orientation in exif:
-                if exif[orientation] == 3:
-                    img = img.rotate(180, expand=True)
-                elif exif[orientation] == 6:
-                    img = img.rotate(270, expand=True)
-                elif exif[orientation] == 8:
-                    img = img.rotate(90, expand=True)
+            img = ImageOps.exif_transpose(img)
         except Exception as e:
             # Safely ignore EXIF errors
             print(f"[ImagePreprocessor] EXIF handling error: {e}")
