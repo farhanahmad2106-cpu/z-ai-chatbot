@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Home, User, History, CreditCard, HelpCircle } from "lucide-react";
+import { SignedIn, SignedOut, UserButton, SignInButton } from "@clerk/nextjs";
 
 export default function Sidebar() {
   return (
@@ -59,9 +60,15 @@ export default function Sidebar() {
         </ul>
       </nav>
       <div className="p-6">
-        <div className="bg-gray-800 rounded-xl p-4 shadow-lg border border-gray-700">
-          <p className="text-sm text-gray-400">Logged in as</p>
-          <p className="font-semibold mt-1 truncate">user@example.com</p>
+        <div className="bg-gray-800 rounded-xl p-4 shadow-lg border border-gray-700 flex items-center justify-center">
+          <SignedIn>
+            <UserButton showName appearance={{ elements: { userButtonBox: "flex-row-reverse text-white", userButtonOuterIdentifier: "text-white font-semibold ml-2" } }} />
+          </SignedIn>
+          <SignedOut>
+            <SignInButton mode="modal">
+              <button className="text-white font-semibold hover:text-blue-400 transition-colors">Sign In</button>
+            </SignInButton>
+          </SignedOut>
         </div>
       </div>
     </div>
