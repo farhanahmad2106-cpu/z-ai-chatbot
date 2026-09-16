@@ -5,6 +5,8 @@ import asyncio
 import httpx
 from typing import Dict, Any, Optional
 
+from services.image_preprocessor import preprocess_for_ocr
+
 try:
     from google import genai  # type: ignore
     from google.genai import types  # type: ignore
@@ -25,7 +27,12 @@ CRITICAL RULE: First, determine if the provided image contains food packaging, a
 If the image does NOT contain any text related to food ingredients or nutrition (e.g., it is a picture of a human, scenery, or random objects), you MUST return empty arrays for ingredients, additives, and allergens, and 0 for all nutrition fields. Do NOT hallucinate ingredients or extract random text as food ingredients.
 
 If it IS a valid food label:
-Extract all ingredients strictly from the text, identify INS/E-number additives, and flag common allergens from the OCR text. Only extract what is explicitly written on the label.
+The image may contain small Indian consumer-product sachets, mouth fresheners, candy packets, spice/masala pouches, or other compact packaging. Ingredients and additive information may be printed in very small fonts on reflective, glossy, wrinkled, curved, or partially occluded surfaces.
+
+Carefully inspect all available text. When characters are partially obscured, use surrounding visible characters and context to reconstruct text only when the reconstruction is strongly supported by the image. Identify additive/INS codes such as INS 954, INS 950, INS 150d, and INS 330 when visibly present. Preserve exact additive codes without normalizing them.
+
+Do not hallucinate missing ingredients, quantities, additive numbers, product claims, or nutritional information. If text cannot be reliably read, mark it as uncertain or unreadable rather than inventing it.
+Preserve the distinction between text that is clearly visible and text that has been inferred from context.
 
 Output MUST be valid JSON matching the OCRAnalysisResponse schema exactly:
 {
@@ -48,6 +55,12 @@ async def extract_and_analyze(image_bytes: bytes, mime_type: str) -> OCRAnalysis
     2. Secondary: NVIDIA NIM Pool
     3. Tertiary: Google Gemini Cloud
     """
+    # Preprocess image for OCR (contrast/sharpening/orientation)
+    if mime_type in ["image/jpeg", "image/png", "image/webp"]:
+        image_bytes = preprocess_for_ocr(image_bytes)
+        # Force mime_type to JPEG since preprocessor outputs JPEG
+        mime_type = "image/jpeg"
+        
     base64_image = base64.b64encode(image_bytes).decode("utf-8")
     
     # Tier 1: Try Sarvam AI / Edge (Simulated / Placeholder for actual client call)

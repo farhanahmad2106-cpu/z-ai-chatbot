@@ -1,7 +1,7 @@
 import { ErrorBoundary } from './ErrorBoundary';
 import { parseScannedIngredients } from '../utils/ingredientParser';
 import { useState, useRef, useMemo, useEffect } from 'react';
-import { SlidersHorizontal, X, Globe, Search as MiniSearch, Loader2, AlertTriangle } from 'lucide-react';
+import { SlidersHorizontal, X, Globe, Search as MiniSearch, Loader2, AlertTriangle, Camera } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
 import { useToast } from '../context/ToastContext';
@@ -46,6 +46,9 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
   const [translating, setTranslating] = useState(false);
   const [translatedList, setTranslatedList] = useState<string[] | null>(null);
   const [scanMode, setScanMode] = useState<'food' | 'ingredients'>('food');
+  const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [zoomRange, setZoomRange] = useState<{ min: number, max: number } | null>(null);
+  const [hasHardwareZoom, setHasHardwareZoom] = useState(false);
   
   // Refs for the video element and the hidden canvas used to capture the image frame
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -79,6 +82,9 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
     setImage(null);
     setAnalysisResult(null); // Clear previous results when starting new capture
     setIsCameraActive(true);
+    setZoomLevel(1);
+    setHasHardwareZoom(false);
+    setZoomRange(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { facingMode: 'environment' } 
@@ -87,12 +93,43 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
+      
+      // Feature-detect zoom capabilities
+      const track = stream.getVideoTracks()[0];
+      if (track) {
+        const capabilities = track.getCapabilities ? track.getCapabilities() : {};
+        if (capabilities && 'zoom' in capabilities) {
+          const zCap = capabilities.zoom as { min: number; max: number };
+          setHasHardwareZoom(true);
+          setZoomRange(zCap);
+        }
+      }
     } catch (err) {
       console.error("Error accessing camera: ", err);
       showToast("Could not access camera. Please check permissions.");
       setIsCameraActive(false);
     }
   };
+
+  const handleZoom = async (desiredZoom: number) => {
+    let finalZoom = desiredZoom;
+    if (hasHardwareZoom && zoomRange) {
+      finalZoom = Math.min(Math.max(desiredZoom, zoomRange.min), zoomRange.max);
+      if (streamRef.current) {
+        const track = streamRef.current.getVideoTracks()[0];
+        try {
+          await track.applyConstraints({
+            advanced: [{ zoom: finalZoom } as any]
+          });
+        } catch (e) {
+          console.warn("Hardware zoom failed, falling back to digital.", e);
+          setHasHardwareZoom(false);
+        }
+      }
+    }
+    setZoomLevel(finalZoom);
+  };
+
 
   // 2. Capture a frame from the live video stream
   const capturePhoto = () => {
@@ -102,14 +139,36 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
       const context = canvas.getContext('2d');
 
       if (context) {
-        // Set canvas dimensions to match the video stream
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        // Draw current video frame onto canvas
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        let captureWidth = video.videoWidth;
+        let captureHeight = video.videoHeight;
+        let sX = 0;
+        let sY = 0;
+
+        // Canvas Digital Crop Fallback
+        if (!hasHardwareZoom && zoomLevel > 1) {
+          const cropFactor = 1 / zoomLevel;
+          captureWidth = video.videoWidth * cropFactor;
+          captureHeight = video.videoHeight * cropFactor;
+          sX = (video.videoWidth - captureWidth) / 2;
+          sY = (video.videoHeight - captureHeight) / 2;
+        }
+
+        // Produce approximately 1080 max dimension, preserving aspect ratio
+        let outWidth = 1080;
+        let outHeight = 1080;
+        if (captureWidth > captureHeight) {
+           outHeight = Math.round((captureHeight / captureWidth) * 1080);
+        } else {
+           outWidth = Math.round((captureWidth / captureHeight) * 1080);
+        }
+
+        canvas.width = outWidth;
+        canvas.height = outHeight;
+
+        context.drawImage(video, sX, sY, captureWidth, captureHeight, 0, 0, outWidth, outHeight);
         
-        // Convert canvas image to base64 string
-        const imageDataUrl = canvas.toDataURL('image/png');
+        // Encode as JPEG with q=0.95
+        const imageDataUrl = canvas.toDataURL('image/jpeg', 0.95);
         setImage(imageDataUrl);
         stopCamera();
       }
@@ -326,6 +385,14 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
           accept="image/*" 
           className="hidden" 
         />
+        <input
+          type="file"
+          accept="image/*"
+          capture="environment"
+          id="native-highres-camera"
+          className="hidden"
+          onChange={handleFileChange}
+        />
         <canvas ref={canvasRef} className="hidden" />
 
         {/* Condition 1: Live Camera Stream view */}
@@ -338,13 +405,45 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
                 playsInline 
                 className="w-full h-full object-cover"
               />
-              {scanMode === 'ingredients' && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-4">
-                  <div className="w-full max-w-[90%] h-32 border-2 border-emerald-500 border-dashed rounded-xl flex items-center justify-center bg-emerald-500/10">
-                    <p className="text-emerald-400 font-bold text-xs bg-slate-900/80 px-3 py-1 rounded-full drop-shadow-md">Align text within frame</p>
-                  </div>
+              
+              {/* Zoom Controls */}
+              <div className="absolute top-2 left-0 right-0 flex justify-center z-10">
+                <div className="flex bg-slate-900/80 backdrop-blur-md rounded-full border border-slate-700 overflow-hidden shadow-lg">
+                  {[1, 1.5, 2].map((zl) => (
+                    <button
+                      key={zl}
+                      onClick={() => handleZoom(zl)}
+                      className={`px-3 py-1.5 text-xs font-bold transition-colors ${
+                        zoomLevel === zl 
+                          ? 'bg-emerald-600 text-white' 
+                          : 'text-gray-300 hover:bg-slate-800'
+                      }`}
+                    >
+                      {zl === 2 ? '2x Macro' : `${zl}x`}
+                    </button>
+                  ))}
                 </div>
-              )}
+              </div>
+
+              {/* Viewfinder Guidance */}
+              <div className="absolute bottom-4 left-0 right-0 px-4 text-center z-10 pointer-events-none">
+                <p className="bg-slate-950/80 backdrop-blur-md text-emerald-400 text-[10px] font-bold px-3 py-1.5 rounded-xl border border-emerald-500/30 inline-block shadow-lg">
+                  ⚠️ For small sachets, hold phone 15–20 cm away and use 2x zoom.
+                </p>
+              </div>
+
+              {/* Scan Reticle */}
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-4">
+                <div className="w-48 h-48 border-2 border-emerald-500/50 rounded-2xl flex items-center justify-center relative">
+                    <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-emerald-500 rounded-tl-xl"></div>
+                    <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-emerald-500 rounded-tr-xl"></div>
+                    <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-emerald-500 rounded-bl-xl"></div>
+                    <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-emerald-500 rounded-br-xl"></div>
+                  {scanMode === 'ingredients' && (
+                    <p className="text-emerald-400 font-bold text-xs bg-slate-900/80 px-3 py-1 rounded-full drop-shadow-md absolute">Align text here</p>
+                  )}
+                </div>
+              </div>
             </div>
             <div className="flex gap-4">
               <button 
@@ -424,6 +523,16 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
               >
                 Browse Files
               </button>
+            </div>
+
+            <div className="mt-4">
+              <label 
+                htmlFor="native-highres-camera"
+                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900/90 border border-emerald-500/30 rounded-xl text-xs font-semibold text-emerald-400 hover:bg-emerald-500/10 cursor-pointer transition-all active:scale-95"
+              >
+                <Camera className="w-4 h-4" />
+                High-Res Camera — Small Packets
+              </label>
             </div>
           </div>
         )}

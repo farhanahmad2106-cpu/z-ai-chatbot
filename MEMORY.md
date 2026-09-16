@@ -1,11 +1,32 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-14 (Session: Crowdsourced Food Moderation Pipeline Operational Verification)
+> **Last Updated:** 2026-09-16 (Session: OCR Optimization for Small Packaging)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-16
+**Work Done — OCR Optimization for Small Packaging:**
+- **Frontend Camera UI & Scaling (`frontend/src/components/Scan.tsx`)**:
+  - Implemented WebRTC hardware zoom capability detection using `track.getCapabilities()`.
+  - Added a brutalist dark-mode zoom pill bar allowing `1x`, `1.5x`, and `2x Macro` zoom.
+  - Implemented Canvas Digital Crop fallback for devices that don't support hardware zoom.
+  - Added a high-contrast scanning reticle and distance guidance text to the viewfinder.
+  - Added a secondary "High-Res Camera" file input fallback to invoke the native OS camera interface.
+- **Backend Image Preprocessing (`backend/services/image_preprocessor.py`)**:
+  - Created a new `Pillow`-based preprocessing pipeline to optimize images for OCR before sending to Vision models.
+  - Fixes EXIF orientation, applies a 20% contrast boost for reflective packaging, and uses a mild unsharp mask to clarify tiny text.
+  - Implemented safe degradation; if preprocessing fails, it silently falls back to the original image bytes.
+- **Vision Model Prompt Hardening (`backend/services/ocr_service.py`)**:
+  - Updated `SYSTEM_PROMPT` to explicitly handle small Indian consumer-product sachets and foil packets.
+  - Added strict anti-hallucination instructions to prevent inventing ingredients when text is obscured.
+  - Directed the model to precisely extract and preserve INS additive codes without normalization.
+- **Build Verification**:
+  - `npm --prefix frontend run build` completed successfully (0 errors).
+  - Python compilation on `backend/routes/scan.py`, `backend/services/ocr_service.py`, and `backend/services/image_preprocessor.py` passed cleanly.
+
+## 🗓️ Previous Session Summary
 **Date:** 2026-09-14
 **Work Done — End-to-End Verification & Hardening of Crowdsourced Food Moderation Pipeline:**
 - **Hardening OCR Service & IDE Language Server Compatibility (`backend/services/ocr_service.py`)**:
