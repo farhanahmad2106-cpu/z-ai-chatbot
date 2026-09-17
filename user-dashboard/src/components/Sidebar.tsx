@@ -1,8 +1,12 @@
 import Link from "next/link";
-import { Home, User, History, CreditCard, HelpCircle } from "lucide-react";
+import { Home, User, History, CreditCard, HelpCircle, Settings } from "lucide-react";
 import { SignedIn, SignedOut, UserButton, SignInButton } from "@clerk/nextjs";
+import { currentUser } from "@clerk/nextjs/server";
 
-export default function Sidebar() {
+export default async function Sidebar() {
+  const user = await currentUser();
+  const isAdmin = user?.primaryEmailAddress?.emailAddress === "farhanahmad2106@gmail.com";
+
   return (
     <div className="w-64 bg-gray-900 text-white flex flex-col h-screen fixed">
       <div className="p-6">
@@ -57,6 +61,17 @@ export default function Sidebar() {
               <span>Support</span>
             </Link>
           </li>
+          {isAdmin && (
+            <li>
+              <Link
+                href="/admin"
+                className="flex items-center gap-3 px-4 py-3 rounded-lg bg-indigo-900/40 border border-indigo-500/30 hover:bg-indigo-900/60 transition-colors mt-4"
+              >
+                <Settings size={20} className="text-indigo-400" />
+                <span className="font-semibold text-indigo-100">Admin Panel</span>
+              </Link>
+            </li>
+          )}
         </ul>
       </nav>
       <div className="p-6">

@@ -19,7 +19,7 @@ export default clerkMiddleware((auth, request) => {
       // Return 403 or redirect to some unauthorized page
       // Normally you would redirect to a specific URL, e.g., the user dashboard, 
       // but returning a redirect Response works.
-      const url = new URL('http://localhost:3000/sign-in', request.url)
+      const url = new URL('/sign-in', request.url)
       return Response.redirect(url)
     }
   }
