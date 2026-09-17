@@ -22,12 +22,14 @@ from schemas.scan import OCRAnalysisResponse
 from fastapi import HTTPException
 
 # Configure standard prompts
-SYSTEM_PROMPT = """You are an expert food technologist and data extraction system.
-CRITICAL RULE: First, determine if the provided image contains food packaging, a nutrition label, or an ingredient list. 
-If the image does NOT contain any text related to food ingredients or nutrition (e.g., it is a picture of a human, scenery, or random objects), you MUST return empty arrays for ingredients, additives, and allergens, and 0 for all nutrition fields. Do NOT hallucinate ingredients or extract random text as food ingredients.
+SYSTEM_PROMPT = """You are an expert food technologist, pharmacist, and data extraction system.
+CRITICAL RULE: First, determine if the provided image contains food packaging, a nutrition label, a medicine blister pack/bottle, or an ingredient list. 
+If the image does NOT contain any text related to food/medicine ingredients or nutrition (e.g., it is a picture of a human, scenery, or random objects), you MUST return empty arrays for ingredients, additives, and allergens, and 0 for all nutrition fields. Do NOT hallucinate ingredients or extract random text as ingredients.
 
-If it IS a valid food label:
-The image may contain small Indian consumer-product sachets, mouth fresheners, candy packets, spice/masala pouches, or other compact packaging. Ingredients and additive information may be printed in very small fonts on reflective, glossy, wrinkled, curved, or partially occluded surfaces.
+CRITICAL RULE 2: You MUST ONLY extract actual consumable ingredients (food ingredients, active ingredients, inactive ingredients, additives, excipients). You MUST NEVER include visual descriptions of the image, the packaging, or the person holding it as ingredients. Do NOT include phrases like "The Image Shows A Hand", "Blister Pack", "Silver Foil", "Rectangular Shape", "QR Code", "Warning Label", etc. in the parsed_ingredients or detected_ins_additives arrays. Only include the actual chemical or food names listed on the label.
+
+If it IS a valid food or medicine label:
+The image may contain small Indian consumer-product sachets, medicine blister packs, mouth fresheners, candy packets, spice/masala pouches, or other compact packaging. Ingredients and additive information may be printed in very small fonts on reflective, glossy, wrinkled, curved, or partially occluded surfaces.
 
 Carefully inspect all available text. When characters are partially obscured, use surrounding visible characters and context to reconstruct text only when the reconstruction is strongly supported by the image. Identify additive/INS codes such as INS 954, INS 950, INS 150d, and INS 330 when visibly present. Preserve exact additive codes without normalizing them.
 

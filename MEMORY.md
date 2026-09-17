@@ -1,7 +1,16 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-16 (Session: OCR Optimization for Small Packaging)
+> **Last Updated:** 2026-09-17 (Session: Prompt Fix for Medicine Scans)
+
+---
+
+## 🗓️ Last Session Summary
+**Date:** 2026-09-17
+**Work Done — Prompt Fix for Medicine Scans:**
+- **Vision Model Prompt Fix (`backend/services/ocr_service.py`)**:
+  - Updated `SYSTEM_PROMPT` to handle both food and medicine labels.
+  - Added strict instructions forbidding the AI from extracting physical visual descriptions (e.g., "The Image Shows A Hand", "Blister Pack", "Silver Foil", "Rectangular Shape") as ingredients.
 
 ---
 
