@@ -11,6 +11,7 @@ import hashlib
 import hmac
 from fastapi import APIRouter, Request, HTTPException
 from datetime import datetime, timezone
+import pymongo.errors
 
 def get_razorpay_webhook_secret() -> str:
     return os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
@@ -38,8 +39,10 @@ def _verify_razorpay_signature(body: bytes, signature: str) -> bool:
     """Verify Razorpay webhook HMAC-SHA256 signature."""
     secret = get_razorpay_webhook_secret()
     if not secret:
-        print("⚠️ RAZORPAY_WEBHOOK_SECRET not set — webhook verification skipped (unsafe!)")
-        return True  # Allow in dev when secret not set; ALWAYS set in production
+        print("⚠️ RAZORPAY_WEBHOOK_SECRET not set — rejecting webhook (HTTP 500)")
+        raise HTTPException(status_code=500, detail="Webhook configuration error")
+    if not signature:
+        return False
     expected = hmac.new(
         secret.encode("utf-8"),
         body,
@@ -56,6 +59,14 @@ def _get_users_collection():
         return main_module.users_collection
     raise RuntimeError("users_collection not available")
 
+def _get_transactions_collection():
+    """Lazy import to avoid circular dependency with main.py."""
+    import sys
+    main_module = sys.modules.get("main") or sys.modules.get("__main__")
+    if main_module and hasattr(main_module, "transactions_collection"):
+        return main_module.transactions_collection
+    raise RuntimeError("transactions_collection not available")
+
 
 @router.post("/razorpay")
 async def razorpay_webhook(request: Request):
@@ -69,11 +80,11 @@ async def razorpay_webhook(request: Request):
     - subscription.updated    → Log plan change
     """
     body = await request.body()
-    signature = request.headers.get("X-Razorpay-Signature", "")
+    signature = request.headers.get("x-razorpay-signature")
 
     # ⚠️ CRITICAL: Verify HMAC signature
-    if not _verify_razorpay_signature(body, signature):
-        print("Razorpay webhook: invalid signature — rejecting")
+    if not signature or not _verify_razorpay_signature(body, signature):
+        print("Razorpay webhook: invalid or missing signature — rejecting")
         raise HTTPException(status_code=400, detail="Invalid webhook signature")
 
     try:
@@ -87,16 +98,30 @@ async def razorpay_webhook(request: Request):
     plan_id = entity.get("plan_id", "")
     tier_map = get_tier_plan_map()
     tier = tier_map.get(plan_id, "free")
-
+    
+    event_id = request.headers.get("x-razorpay-event-id") or payload.get("id")
 
     print(f"Razorpay Webhook received: event={event}, sub_id={subscription_id}, tier={tier}")
 
+    if not subscription_id or not event_id:
+        print("Webhook: no subscription_id or event_id in payload — ignoring")
+        return {"status": "ok"}
+        
+    transactions_collection = _get_transactions_collection()
+    
+    try:
+        await transactions_collection.insert_one({
+            "_id": event_id,
+            "event": event,
+            "subscription_id": subscription_id,
+            "timestamp": datetime.now(timezone.utc)
+        })
+    except pymongo.errors.DuplicateKeyError:
+        print(f"Webhook {event_id} already processed. Skipping.")
+        return {"status": "ok"}
+
     users_collection = _get_users_collection()
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-
-    if not subscription_id:
-        print("Webhook: no subscription_id in payload — ignoring")
-        return {"status": "ok"}
 
     if event == "subscription.activated":
         # ✅ Grant premium access immediately

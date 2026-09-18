@@ -1,11 +1,27 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-17 (Session: Legal Compliance Document Suite)
+> **Last Updated:** 2026-09-18 (Session: Razorpay Webhook Security Remediation)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-18
+**Work Done — Razorpay Webhook Security Remediation:**
+- **Strict Signature Verification (`backend/routes/webhooks.py`)**:
+  - Removed `if not secret` insecure fallback bypass. Throws 500 if `RAZORPAY_WEBHOOK_SECRET` is missing.
+  - Signature `x-razorpay-signature` is now verified against the raw request body bytes.
+  - Missing or invalid signatures immediately throw 400.
+- **Atomic Idempotency (`backend/routes/webhooks.py`)**:
+  - Added atomic `insert_one` against the `transactions` collection using `X-Razorpay-Event-Id`.
+  - Catches `pymongo.errors.DuplicateKeyError` to prevent double-crediting user tiers or quotas during duplicate/concurrent webhook delivery.
+- **Test Suite (`tests/test_webhooks.py`)**:
+  - Created a test suite testing 7 required security scenarios (valid, forged, missing sig, missing secret, duplicate, concurrent duplicate, raw body validation).
+  - All tests passed.
+
+---
+
+## 🗓️ Previous Session Summary
 **Date:** 2026-09-17
 **Work Done — Legal Compliance Document Suite (`.zayd_docs/`):**
 - **Generated 6 production-grade legal/compliance documents** after thorough codebase verification:
