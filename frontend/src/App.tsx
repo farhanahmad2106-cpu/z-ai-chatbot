@@ -16,14 +16,21 @@ import { useAuth } from './context/AuthContext';
 import { useAdminAuth } from './context/AdminAuthContext';
 import { useUserStats } from './context/UserStatsContext';
 import { useUserProfile } from './context/UserProfileContext';
+import Footer from './components/Footer';
+import LegalViewer from './components/legal/LegalViewer';
 
-export type AppTab = 'dashboard' | 'search' | 'scan' | 'profile' | 'settings' | 'pricing' | 'admin';
+export type AppTab = 'dashboard' | 'search' | 'scan' | 'profile' | 'settings' | 'pricing' | 'admin' | 'privacy' | 'terms' | 'refund' | 'cookies';
 
 function App() {
-  // Simple tab-based navigation state with /admin path support
+  // Simple tab-based navigation state with /admin and legal path support
   const [activeTab, setActiveTab] = useState<AppTab>(() => {
-    if (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')) {
-      return 'admin';
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname;
+      if (path.startsWith('/admin')) return 'admin';
+      if (path.startsWith('/privacy')) return 'privacy';
+      if (path.startsWith('/terms')) return 'terms';
+      if (path.startsWith('/refund')) return 'refund';
+      if (path.startsWith('/cookies')) return 'cookies';
     }
     return 'dashboard';
   });
@@ -48,25 +55,37 @@ function App() {
   const navigateToTab = useCallback((tab: AppTab) => {
     setActiveTab(tab);
     if (typeof window !== 'undefined') {
-      if (tab === 'admin') {
-        if (window.location.pathname !== '/admin') {
-          window.history.pushState(null, '', '/admin');
-        }
-      } else {
-        if (window.location.pathname === '/admin') {
-          window.history.pushState(null, '', '/');
-        }
+      const paths: Record<string, string> = {
+        'admin': '/admin',
+        'privacy': '/privacy',
+        'terms': '/terms',
+        'refund': '/refund',
+        'cookies': '/cookies'
+      };
+      
+      const newPath = paths[tab] || '/';
+      if (window.location.pathname !== newPath) {
+        window.history.pushState(null, '', newPath);
       }
     }
   }, []);
 
-  // --- URL Path Sync: Support direct navigation to /admin or browser back/forward ---
+  // --- URL Path Sync: Support direct navigation and browser back/forward ---
   useEffect(() => {
     const onPopState = () => {
-      if (window.location.pathname.startsWith('/admin')) {
+      const path = window.location.pathname;
+      if (path.startsWith('/admin')) {
         setActiveTab('admin');
+      } else if (path.startsWith('/privacy')) {
+        setActiveTab('privacy');
+      } else if (path.startsWith('/terms')) {
+        setActiveTab('terms');
+      } else if (path.startsWith('/refund')) {
+        setActiveTab('refund');
+      } else if (path.startsWith('/cookies')) {
+        setActiveTab('cookies');
       } else {
-        setActiveTab((prev) => (prev === 'admin' ? 'dashboard' : prev));
+        setActiveTab('dashboard');
       }
     };
     window.addEventListener('popstate', onPopState);
@@ -290,7 +309,19 @@ function App() {
             <AdminDashboard onExit={() => navigateToTab('dashboard')} />
           </AdminRouteGuard>
         )}
+        {(activeTab === 'privacy' || activeTab === 'terms' || activeTab === 'refund' || activeTab === 'cookies') && (
+          <LegalViewer 
+            activeDoc={activeTab} 
+            onNavigate={(doc) => navigateToTab(doc)} 
+            onBackToApp={() => navigateToTab('dashboard')} 
+          />
+        )}
       </main>
+
+      {/* Shared Footer (hidden on admin dashboard for space) */}
+      {activeTab !== 'admin' && (
+        <Footer onNavigate={(doc) => navigateToTab(doc)} />
+      )}
     </div>
   );
 }
