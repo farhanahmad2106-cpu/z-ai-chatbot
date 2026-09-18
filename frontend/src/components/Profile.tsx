@@ -15,9 +15,11 @@ import {
   Link as LinkIcon, 
   Utensils,
   Plus,
-  Sparkles
+  Sparkles,
+  Trash2
 } from 'lucide-react';
 import SubscriptionBadge from './SubscriptionBadge';
+import HealthConsentModal from './profile/HealthConsentModal';
 
 interface ProfileProps {
   onBack?: () => void;
@@ -58,7 +60,15 @@ const COMMON_ALLERGIES = [
 
 const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
   const { currentUser, updateUserProfile, logout } = useAuth();
-  const { healthProfile, updateHealthProfile, preferences, updatePreferences } = useUserProfile();
+  const { 
+    healthProfile, 
+    updateHealthProfile, 
+    preferences, 
+    updatePreferences,
+    hasValidHealthConsent,
+    recordConsent,
+    deleteHealthProfile 
+  } = useUserProfile();
   const { showToast } = useToast();
 
   // --- Health Profile Modal State & Calculator ---
@@ -66,6 +76,14 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
   const [isSavingHealth, setIsSavingHealth] = useState(false);
   const [localHealth, setLocalHealth] = useState(healthProfile);
   const [saveAttemptCount, setSaveAttemptCount] = useState(0);
+
+  // --- Consent & Health Deletion State ---
+  const [isConsentModalOpen, setIsConsentModalOpen] = useState(false);
+  const [pendingHealthSave, setPendingHealthSave] = useState<any>(null);
+  const [pendingDietSave, setPendingDietSave] = useState<any>(null);
+  const [isRecordingConsent, setIsRecordingConsent] = useState(false);
+  const [isDeleteHealthModalOpen, setIsDeleteHealthModalOpen] = useState(false);
+  const [isDeletingHealth, setIsDeletingHealth] = useState(false);
 
   // --- Danger Zone State ---
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -148,15 +166,30 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
       return;
     }
 
+    const hasMedicalConditions = Boolean(
+      localHealth.medicalConditions && localHealth.medicalConditions.trim() !== ''
+    );
+
+    // Consent gate: if user is newly saving medical conditions without valid 1.0 consent
+    if (hasMedicalConditions && !hasValidHealthConsent) {
+      setPendingHealthSave(localHealth);
+      setIsConsentModalOpen(true);
+      return;
+    }
+
     setIsSavingHealth(true);
     setSaveAttemptCount(0);
     try {
-      await updateHealthProfile(localHealth);
-      setIsHealthModalOpen(false);
-      showToast('Health profile updated successfully!');
+      const ok = await updateHealthProfile(localHealth);
+      if (ok) {
+        setIsHealthModalOpen(false);
+        showToast('Health profile updated successfully!');
+      } else {
+        showToast('Failed to update health profile.', 'error');
+      }
     } catch (err) {
       console.error(err);
-      showToast('Failed to update health profile.');
+      showToast('Failed to update health profile.', 'error');
     } finally {
       setIsSavingHealth(false);
     }
@@ -233,19 +266,115 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
   };
 
   const handleSaveDietaryPreferences = async () => {
-    setIsSavingDiet(true);
-    try {
-      await updatePreferences({
+    const hasAllergies = Array.isArray(selectedAllergies) && selectedAllergies.length > 0;
+
+    // Consent gate: if user is saving allergy information without valid 1.0 consent
+    if (hasAllergies && !hasValidHealthConsent) {
+      setPendingDietSave({
         diet: selectedDiet,
         allergies: selectedAllergies,
       });
-      setIsDietModalOpen(false);
-      showToast('Dietary preferences updated!');
+      setIsConsentModalOpen(true);
+      return;
+    }
+
+    setIsSavingDiet(true);
+    try {
+      const ok = await updatePreferences({
+        diet: selectedDiet,
+        allergies: selectedAllergies,
+      });
+      if (ok) {
+        setIsDietModalOpen(false);
+        showToast('Dietary preferences updated!');
+      } else {
+        showToast('Failed to save dietary preferences.', 'error');
+      }
     } catch (err) {
       console.error(err);
-      showToast('Failed to save dietary preferences.');
+      showToast('Failed to save dietary preferences.', 'error');
     } finally {
       setIsSavingDiet(false);
+    }
+  };
+
+  // --- Consent Modal Handlers ---
+  const handleDeclineConsent = () => {
+    setIsConsentModalOpen(false);
+    if (pendingHealthSave) {
+      // Revert medical conditions to previous persisted state
+      setLocalHealth(prev => ({
+        ...prev,
+        medicalConditions: healthProfile.medicalConditions || ''
+      }));
+      setPendingHealthSave(null);
+    }
+    if (pendingDietSave) {
+      // Revert allergies to previous persisted state
+      setSelectedAllergies(preferences.allergies || []);
+      setPendingDietSave(null);
+    }
+    showToast('Health Vault consent declined. Medical and allergy data was not saved.');
+  };
+
+  const handleConsentAndSave = async () => {
+    setIsRecordingConsent(true);
+    try {
+      const ok = await recordConsent('granted');
+      if (!ok) {
+        showToast('Failed to record consent. Protected data was not saved.', 'error');
+        return;
+      }
+
+      if (pendingHealthSave) {
+        const saved = await updateHealthProfile(pendingHealthSave);
+        if (saved) {
+          setIsHealthModalOpen(false);
+          showToast('Health profile and consent saved successfully!');
+        } else {
+          showToast('Consent recorded, but failed to save health profile.', 'error');
+        }
+        setPendingHealthSave(null);
+      }
+
+      if (pendingDietSave) {
+        const saved = await updatePreferences(pendingDietSave);
+        if (saved) {
+          setIsDietModalOpen(false);
+          showToast('Dietary preferences and consent saved successfully!');
+        } else {
+          showToast('Consent recorded, but failed to save dietary preferences.', 'error');
+        }
+        setPendingDietSave(null);
+      }
+
+      setIsConsentModalOpen(false);
+    } catch (err) {
+      console.error('Consent & save error:', err);
+      showToast('An error occurred while saving consent.', 'error');
+    } finally {
+      setIsRecordingConsent(false);
+    }
+  };
+
+  // --- Delete Health Profile & Withdraw Consent ---
+  const handleDeleteHealthProfile = async () => {
+    setIsDeletingHealth(true);
+    try {
+      const ok = await deleteHealthProfile();
+      if (ok) {
+        setLocalHealth(prev => ({ ...prev, medicalConditions: '' }));
+        setSelectedAllergies([]);
+        showToast('Health profile deleted and consent withdrawn.', 'success');
+      } else {
+        showToast('Failed to delete health profile.', 'error');
+      }
+    } catch (err) {
+      console.error('Delete health error:', err);
+      showToast('Failed to delete health profile.', 'error');
+    } finally {
+      setIsDeletingHealth(false);
+      setIsDeleteHealthModalOpen(false);
     }
   };
 
@@ -412,12 +541,21 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
               </div>
             )}
             
-            <button 
-              onClick={handleOpenHealthModal} 
-              className="relative z-10 px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm font-bold transition-all border border-slate-700 w-full flex items-center justify-center gap-2 cursor-pointer hover:border-emerald-500/50 active:scale-95 shadow-sm"
-            >
-              <Edit2 className="w-4 h-4 text-emerald-400" /> Edit Health Profile Credentials
-            </button>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button 
+                onClick={handleOpenHealthModal} 
+                className="flex-1 relative z-10 px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm font-bold transition-all border border-slate-700 flex items-center justify-center gap-2 cursor-pointer hover:border-emerald-500/50 active:scale-95 shadow-sm"
+              >
+                <Edit2 className="w-4 h-4 text-emerald-400" /> Edit Health Profile Credentials
+              </button>
+              <button
+                onClick={() => setIsDeleteHealthModalOpen(true)}
+                className="px-4 py-3 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 hover:text-white rounded-xl text-sm font-semibold transition-all border border-rose-800/60 flex items-center justify-center gap-2 cursor-pointer active:scale-95 shadow-sm"
+                title="Withdraw consent and delete all health profile credentials"
+              >
+                <Trash2 className="w-4 h-4 text-rose-400" /> Delete Health Profile
+              </button>
+            </div>
           </div>
 
           {/* Dietary Preferences Card */}
@@ -891,6 +1029,50 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
                 onClick={() => { setIsDeleteModalOpen(false); setDeleteConfirmation(''); }}
                 className="px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm font-semibold cursor-pointer transition-colors"
                 disabled={isDeleting}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Health Vault Consent Gate Modal */}
+      <HealthConsentModal
+        isOpen={isConsentModalOpen}
+        onDecline={handleDeclineConsent}
+        onConsentAndSave={handleConsentAndSave}
+        isSubmitting={isRecordingConsent}
+      />
+
+      {/* Delete Health Profile Confirmation Modal */}
+      {isDeleteHealthModalOpen && (
+        <div 
+          className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-[70]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-health-title"
+        >
+          <div className="bg-slate-900 rounded-3xl p-6 max-w-md w-full border border-rose-800 shadow-2xl space-y-4">
+            <h3 id="delete-health-title" className="text-lg font-bold text-rose-400 flex items-center gap-2">
+              <Trash2 className="w-5 h-5 text-rose-400" />
+              Delete Health Profile & Withdraw Consent
+            </h3>
+            <p className="text-xs text-gray-300 leading-relaxed">
+              This will irreversibly delete your biometric and medical data (medical conditions, allergies, health targets) from your Health Vault and record consent withdrawal pursuant to the DPDP Act 2023.
+            </p>
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={handleDeleteHealthProfile}
+                disabled={isDeletingHealth}
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 cursor-pointer shadow-md"
+              >
+                {isDeletingHealth ? 'Deleting...' : 'Confirm Delete & Withdraw'}
+              </button>
+              <button
+                onClick={() => setIsDeleteHealthModalOpen(false)}
+                disabled={isDeletingHealth}
+                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-gray-300 rounded-xl text-xs font-semibold cursor-pointer"
               >
                 Cancel
               </button>

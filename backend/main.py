@@ -84,6 +84,7 @@ users_collection = db["users"]
 admins_collection = db["admins"]
 system_logs_collection = db["system_logs"]
 transactions_collection = db["transactions"]
+consents_collection = db["consents"]
 
 # --- FIREBASE SETUP ---
 try:
@@ -783,6 +784,12 @@ async def get_user_stats(uid: str = Depends(get_current_user_id)):
         "stats": stats
     }
 
+class ConsentUpdateRequest(BaseModel):
+    consent_type: str = "health_vault"
+    version: str = "1.0"
+    action: str = "granted"  # "granted" or "withdrawn"
+    mechanism: str = "health_vault_modal_checkbox"
+
 @app.get("/api/user/profile")
 async def get_user_profile(uid: str = Depends(get_current_user_id)):
     user = await users_collection.find_one({"uid": uid})
@@ -793,12 +800,105 @@ async def get_user_profile(uid: str = Depends(get_current_user_id)):
     health_profile = user.get("health_profile", {"age": None, "gender": None, "height": None, "weight": None})
     preferences = user.get("preferences", {"diet": "None", "allergies": []})
     settings = user.get("settings", {"notificationsEnabled": True, "darkMode": True, "language": "English"})
+    health_vault_consent = user.get("health_vault_consent")
     
     return {
         "health_profile": health_profile,
         "preferences": preferences,
-        "settings": settings
+        "settings": settings,
+        "health_vault_consent": health_vault_consent
     }
+
+@app.post("/api/user/consent")
+async def update_user_consent(request: ConsentUpdateRequest, uid: str = Depends(get_current_user_id)):
+    user = await users_collection.find_one({"uid": uid})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    now_ts = datetime.now(timezone.utc).isoformat()
+    
+    consent_record = {
+        "uid": uid,
+        "consent_type": request.consent_type,
+        "policy_version": request.version,
+        "action": request.action,
+        "consent_mechanism": request.mechanism,
+        "timestamp": now_ts,
+        "withdrawal_timestamp": now_ts if request.action == "withdrawn" else None
+    }
+    
+    # 1. Audit log in consents collection
+    await consents_collection.insert_one(consent_record)
+    
+    # 2. Update user profile state
+    user_consent_state = {
+        "status": request.action,
+        "version": request.version,
+        "timestamp": now_ts,
+        "mechanism": request.mechanism,
+        "withdrawal_timestamp": now_ts if request.action == "withdrawn" else None
+    }
+    
+    await users_collection.update_one(
+        {"uid": uid},
+        {"$set": {"health_vault_consent": user_consent_state}}
+    )
+    
+    return {
+        "status": "success",
+        "message": f"Consent {request.action} recorded",
+        "consent": user_consent_state
+    }
+
+@app.delete("/api/user/health-profile")
+async def delete_health_profile(uid: str = Depends(get_current_user_id)):
+    user = await users_collection.find_one({"uid": uid})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    now_ts = datetime.now(timezone.utc).isoformat()
+    
+    # Log withdrawal in consents audit collection
+    await consents_collection.insert_one({
+        "uid": uid,
+        "consent_type": "health_vault",
+        "policy_version": "1.0",
+        "action": "withdrawn",
+        "consent_mechanism": "delete_health_profile_button",
+        "timestamp": now_ts,
+        "withdrawal_timestamp": now_ts
+    })
+    
+    default_health = {
+        "age": None,
+        "gender": None,
+        "height": None,
+        "weight": None,
+        "activityLevel": "Moderately Active",
+        "healthGoal": "Healthy Lifestyle",
+        "targetWater": "2.5",
+        "dailyCalorieTarget": "2000",
+        "medicalConditions": ""
+    }
+    
+    await users_collection.update_one(
+        {"uid": uid},
+        {
+            "$set": {
+                "health_profile": default_health,
+                "preferences.allergies": [],
+                "health_vault_consent": {
+                    "status": "withdrawn",
+                    "version": "1.0",
+                    "timestamp": now_ts,
+                    "mechanism": "delete_health_profile_button",
+                    "withdrawal_timestamp": now_ts
+                }
+            }
+        }
+    )
+    
+    return {"status": "success", "message": "Health profile deleted and consent withdrawn"}
 
 @app.post("/api/user/profile")
 async def update_user_profile(request: dict, uid: str = Depends(get_current_user_id)):
@@ -806,11 +906,33 @@ async def update_user_profile(request: dict, uid: str = Depends(get_current_user
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
+    user_consent = user.get("health_vault_consent") or {}
+    has_valid_consent = (
+        user_consent.get("status") == "granted" and 
+        user_consent.get("version") == "1.0"
+    )
+    
     updates = {}
     if "health_profile" in request:
-        updates["health_profile"] = request["health_profile"]
+        hp = dict(request["health_profile"])
+        # If attempting to newly save non-empty medical conditions without valid consent, block it
+        if hp.get("medicalConditions") and not has_valid_consent:
+            raise HTTPException(
+                status_code=403, 
+                detail="Health Vault consent (version 1.0) is required to store medical conditions pursuant to DPDP Act 2023."
+            )
+        updates["health_profile"] = hp
+        
     if "preferences" in request:
-        updates["preferences"] = request["preferences"]
+        prefs = dict(request["preferences"])
+        # If attempting to save non-empty allergies without valid consent, block it
+        if prefs.get("allergies") and len(prefs.get("allergies", [])) > 0 and not has_valid_consent:
+            raise HTTPException(
+                status_code=403, 
+                detail="Health Vault consent (version 1.0) is required to store allergy information pursuant to DPDP Act 2023."
+            )
+        updates["preferences"] = prefs
+        
     if "settings" in request:
         updates["settings"] = request["settings"]
         
@@ -845,7 +967,12 @@ async def delete_user_account(uid: str = Depends(get_current_user_id)):
     except Exception as e:
         print(f"Error anonymizing foods for user {uid}: {e}")
         
-    # 3. Delete Profile and Embedded Health Vault
+    # 3. Delete Profile, Embedded Health Vault, and Consent Audit Logs
+    try:
+        await consents_collection.delete_many({"uid": uid})
+    except Exception as e:
+        print(f"Error purging consents for user {uid}: {e}")
+        
     delete_result = await users_collection.delete_one({"uid": uid})
     if delete_result.deleted_count == 0:
         raise HTTPException(status_code=500, detail="Failed to delete database record")

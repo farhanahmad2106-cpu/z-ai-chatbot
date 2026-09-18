@@ -140,6 +140,17 @@ export default function IngredientReviewModal({
 
         </div>
 
+        {/* Crowdsourced Food Ingestion Disclosure */}
+        <div className="mx-6 mb-2 p-4 bg-slate-800/60 border border-slate-700 rounded-2xl text-xs text-gray-300 leading-relaxed flex items-start gap-3">
+          <Info className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-bold text-white text-xs">Crowdsourced Database Ingestion Disclosure</p>
+            <p className="text-gray-400">
+              This product is not yet in our verified global database. Submitting will save it to your records while ingredient details are queued for administrator moderation review. Submissions are associated with your account for moderation purposes until approved (<code className="text-emerald-400 font-mono">is_verified: false</code>) and are not visible to other users until verified.
+            </p>
+          </div>
+        </div>
+
         {/* Footer Actions */}
         <div className="p-4 border-t border-zinc-800 bg-zinc-950 flex justify-end gap-3">
           <button

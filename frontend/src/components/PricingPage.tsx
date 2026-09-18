@@ -253,6 +253,31 @@ export default function PricingPage({ onClose }: PricingPageProps) {
                 })}
               </div>
 
+              {/* Razorpay Pre-Payment Legal Consent */}
+              {plan.id !== 'free' && !isCurrent && (
+                <p className="text-[11px] text-gray-400 leading-relaxed text-center px-1">
+                  By proceeding, you agree to the{' '}
+                  <a 
+                    href="/terms" 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="text-emerald-400 underline hover:text-emerald-300 transition-colors"
+                  >
+                    Terms of Service
+                  </a>
+                  {' '}and acknowledge our{' '}
+                  <a 
+                    href="/refund" 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="text-emerald-400 underline hover:text-emerald-300 transition-colors"
+                  >
+                    Refund Policy
+                  </a>
+                  {' '}(digital scan quotas are non-refundable once utilized). Payment is processed securely by Razorpay. Food safety score is an informational indicator and not medical advice.
+                </p>
+              )}
+
               {/* CTA Button */}
               <button
                 onClick={() => handleUpgrade(plan.id)}

@@ -6,6 +6,33 @@
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-18 (Session 4)
+**Work Done — UI Compliance Specification Implementation (`.zayd_docs/UI_COMPLIANCE_SPEC.md`):**
+- **Camera Viewfinder & Scanner Disclaimers (`frontend/src/components/Scan.tsx`)**:
+  - Added fixed, unobtrusive viewfinder micro-disclaimer directly beneath reticle overlay: `"AI analysis is indicative and aligns with FSSAI standards. For severe or anaphylactic allergies, inspect physical packaging before consumption."`
+  - Added post-scan results disclaimer card with `AlertTriangle` warning about OCR/AI model limitations and medical consultation.
+- **Health Vault Consent Gate (`frontend/src/components/Profile.tsx`, `frontend/src/components/profile/HealthConsentModal.tsx`)**:
+  - Created `HealthConsentModal` with DPDP Act (2023) alignment, focus trapping, Escape key listener, accessibility attributes (`role="dialog"`, `aria-modal="true"`, `aria-labelledby`), and explicit opt-in checkbox (unchecked by default).
+  - Implemented consent versioning (`HEALTH_VAULT_CONSENT_VERSION = "1.0"`) and client cache synchronization (`z_sehealth_vault_consent_v1`).
+  - Gated saving of sensitive medical conditions and severe allergy flags behind active consent.
+  - Implemented "Decline & Cancel" (reverts sensitive inputs) and "Delete Health Profile" (withdraws consent and clears health data).
+- **Backend Consent Persistence & Auditability (`backend/main.py`)**:
+  - Added `consents_collection = db["consents"]` for immutable audit logging.
+  - Implemented `POST /api/user/consent` recording user ID, consent type, version 1.0, action ("granted"/"withdrawn"), mechanism, and UTC ISO timestamp.
+  - Implemented `DELETE /api/user/health-profile` for consent withdrawal and clearing health records.
+  - Added server-side validation in `POST /api/user/profile` preventing unconsented storage of medical conditions or allergies (returns HTTP 403) while allowing non-health profile edits.
+  - Updated `DELETE /api/user/account` to purge user consent audit logs.
+- **Razorpay Pre-Payment Legal Consent (`frontend/src/components/PricingPage.tsx`)**:
+  - Rendered explicit legal pre-payment microcopy above upgrade button for all paid tiers, linking to `/terms` and `/refund` in new tabs (`target="_blank" rel="noopener noreferrer"`).
+- **Crowdsourced Food Ingestion Disclosure (`frontend/src/components/IngredientReviewModal.tsx`)**:
+  - Rendered ingestion and moderation disclosure above confirmation actions, accurately stating that unverified products are queued for administrator review (`is_verified: false`, `status: pending_review`) and associated with the account for moderation.
+- **Verification & Automated Tests (`tests/test_compliance_consent.py`)**:
+  - Added 5 automated tests covering consent granting, audit logging, unauthorized sensitive update blocking, non-sensitive unblocked updates, valid consent updates, and health profile deletion/withdrawal. All tests passed.
+  - `npm --prefix frontend run build` completed with 0 errors.
+
+---
+
+## 🗓️ Previous Session Summary
 **Date:** 2026-09-18 (Session 3)
 **Work Done — Razorpay Admin Refund Workflow (Compliance Gap R-01):**
 - **Backend Schema (`backend/schemas/subscription.py`)**:

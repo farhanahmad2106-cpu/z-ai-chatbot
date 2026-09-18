@@ -52,7 +52,7 @@ PREDEFINED_MODS = [
 
 # --- LAZY COLLECTION HELPERS ---
 def _get_db():
-    main_module = sys.modules.get("main") or sys.modules.get("__main__")
+    main_module = sys.modules.get("backend.main") or sys.modules.get("main") or sys.modules.get("__main__")
     if main_module and hasattr(main_module, "db"):
         return main_module.db
     raise RuntimeError("MongoDB database not available from main")

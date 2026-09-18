@@ -444,6 +444,13 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
                   )}
                 </div>
               </div>
+
+              {/* Viewfinder Compliance Micro-Disclaimer */}
+              <div className="absolute bottom-2 left-0 right-0 px-4 text-center z-20 pointer-events-none">
+                <p className="bg-slate-900/80 backdrop-blur-md border border-slate-700/50 text-slate-300 text-xs px-3 py-1.5 rounded-full text-center max-w-sm mx-auto leading-relaxed shadow-lg">
+                  AI analysis is indicative and aligns with FSSAI standards. For severe or anaphylactic allergies, inspect physical packaging before consumption.
+                </p>
+              </div>
             </div>
             <div className="flex gap-4">
               <button 
@@ -707,6 +714,14 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
                 </div>
               </div>
             )}
+
+            {/* Scanner Compliance Disclaimer */}
+            <div className="mt-6 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-300/90 leading-relaxed font-medium">
+                ⚠️ AI analysis is indicative only. OCR and AI models may misread, omit, or misidentify ingredients. Always inspect the physical packaging and allergen declaration for severe allergies. This is not medical advice. Consult a healthcare professional for allergy-related decisions.
+              </p>
+            </div>
           </div>
         </div>
       )}
@@ -770,6 +785,14 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
                   <span className="text-sm text-gray-400">No ingredients parsed.</span>
                 )}
               </div>
+            </div>
+
+            {/* Scanner Compliance Disclaimer */}
+            <div className="mt-6 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-300/90 leading-relaxed font-medium">
+                ⚠️ AI analysis is indicative only. OCR and AI models may misread, omit, or misidentify ingredients. Always inspect the physical packaging and allergen declaration for severe allergies. This is not medical advice. Consult a healthcare professional for allergy-related decisions.
+              </p>
             </div>
           </div>
         </div>

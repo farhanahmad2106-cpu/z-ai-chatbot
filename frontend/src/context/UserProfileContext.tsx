@@ -1,6 +1,15 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import { useAuth } from './AuthContext';
 import { API_BASE } from '../config';
+import { HEALTH_VAULT_CONSENT_KEY, HEALTH_VAULT_CONSENT_VERSION } from '../constants/compliance';
+
+export interface ConsentRecord {
+  status: 'granted' | 'withdrawn';
+  version: string;
+  timestamp: string;
+  mechanism?: string;
+  withdrawal_timestamp?: string | null;
+}
 
 export interface HealthProfile {
   age: number | string;
@@ -32,10 +41,14 @@ interface UserProfileContextType {
   healthProfile: HealthProfile;
   preferences: Preferences;
   settings: Settings;
+  consentRecord: ConsentRecord | null;
+  hasValidHealthConsent: boolean;
   loadingProfile: boolean;
   updateHealthProfile: (data: Partial<HealthProfile>) => Promise<boolean>;
   updatePreferences: (data: Partial<Preferences>) => Promise<boolean>;
   updateSettings: (data: Partial<Settings>) => Promise<boolean>;
+  recordConsent: (action: 'granted' | 'withdrawn', mechanism?: string) => Promise<boolean>;
+  deleteHealthProfile: () => Promise<boolean>;
 }
 
 const defaultHealth: HealthProfile = { 
@@ -67,7 +80,30 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
   const [healthProfile, setHealthProfile] = useState<HealthProfile>(defaultHealth);
   const [preferences, setPreferences] = useState<Preferences>(defaultPreferences);
   const [settings, setSettings] = useState<Settings>(defaultSettings);
+  const [consentRecord, setConsentRecord] = useState<ConsentRecord | null>(() => {
+    // Initial cache check
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem(HEALTH_VAULT_CONSENT_KEY);
+        if (raw) return JSON.parse(raw);
+      } catch (e) {
+        console.warn('Failed to parse local consent cache', e);
+      }
+    }
+    return null;
+  });
   const [loadingProfile, setLoadingProfile] = useState(false);
+
+  // Server state takes precedence; local state is synchronization/performance aid
+  const hasValidHealthConsent = useMemo(() => {
+    if (consentRecord) {
+      return (
+        consentRecord.status === 'granted' &&
+        consentRecord.version === HEALTH_VAULT_CONSENT_VERSION
+      );
+    }
+    return false;
+  }, [consentRecord]);
 
   useEffect(() => {
     if (currentUser) {
@@ -76,6 +112,10 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
       setHealthProfile(defaultHealth);
       setPreferences(defaultPreferences);
       setSettings(defaultSettings);
+      setConsentRecord(null);
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(HEALTH_VAULT_CONSENT_KEY);
+      }
     }
   }, [currentUser]);
 
@@ -92,11 +132,99 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
         setHealthProfile({ ...defaultHealth, ...(data.health_profile || {}) });
         setPreferences({ ...defaultPreferences, ...(data.preferences || {}) });
         setSettings({ ...defaultSettings, ...(data.settings || {}) });
+        
+        // Sync consent from server
+        if (data.health_vault_consent) {
+          const serverConsent: ConsentRecord = data.health_vault_consent;
+          setConsentRecord(serverConsent);
+          if (typeof window !== 'undefined') {
+            if (serverConsent.status === 'granted' && serverConsent.version === HEALTH_VAULT_CONSENT_VERSION) {
+              localStorage.setItem(HEALTH_VAULT_CONSENT_KEY, JSON.stringify(serverConsent));
+            } else {
+              localStorage.removeItem(HEALTH_VAULT_CONSENT_KEY);
+            }
+          }
+        } else {
+          setConsentRecord(null);
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem(HEALTH_VAULT_CONSENT_KEY);
+          }
+        }
       }
     } catch (error) {
       console.error("Failed to fetch user profile", error);
     } finally {
       setLoadingProfile(false);
+    }
+  };
+
+  const recordConsent = async (action: 'granted' | 'withdrawn', mechanism: string = 'health_vault_modal_checkbox'): Promise<boolean> => {
+    if (!currentUser) return false;
+    try {
+      const token = await currentUser.getIdToken();
+      const response = await fetch(`${API_BASE}/api/user/consent`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          consent_type: 'health_vault',
+          version: HEALTH_VAULT_CONSENT_VERSION,
+          action,
+          mechanism
+        })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const updatedConsent: ConsentRecord = data.consent;
+        setConsentRecord(updatedConsent);
+        if (typeof window !== 'undefined') {
+          if (action === 'granted') {
+            localStorage.setItem(HEALTH_VAULT_CONSENT_KEY, JSON.stringify(updatedConsent));
+          } else {
+            localStorage.removeItem(HEALTH_VAULT_CONSENT_KEY);
+          }
+        }
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error("Failed to record consent", error);
+      return false;
+    }
+  };
+
+  const deleteHealthProfile = async (): Promise<boolean> => {
+    if (!currentUser) return false;
+    try {
+      const token = await currentUser.getIdToken();
+      const response = await fetch(`${API_BASE}/api/user/health-profile`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (response.ok) {
+        setHealthProfile(defaultHealth);
+        setPreferences(prev => ({ ...prev, allergies: [] }));
+        const withdrawnConsent: ConsentRecord = {
+          status: 'withdrawn',
+          version: HEALTH_VAULT_CONSENT_VERSION,
+          timestamp: new Date().toISOString(),
+          mechanism: 'delete_health_profile_button',
+          withdrawal_timestamp: new Date().toISOString()
+        };
+        setConsentRecord(withdrawnConsent);
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem(HEALTH_VAULT_CONSENT_KEY);
+        }
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error("Failed to delete health profile", error);
+      return false;
     }
   };
 
@@ -122,13 +250,22 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
   const updateHealthProfile = async (data: Partial<HealthProfile>) => {
     const newProfile = { ...healthProfile, ...data };
     setHealthProfile(newProfile); // optimistic UI
-    return updateProfileData({ health_profile: newProfile });
+    const ok = await updateProfileData({ health_profile: newProfile });
+    if (!ok) {
+      // Revert if failed
+      fetchProfile();
+    }
+    return ok;
   };
 
   const updatePreferences = async (data: Partial<Preferences>) => {
     const newPrefs = { ...preferences, ...data };
     setPreferences(newPrefs);
-    return updateProfileData({ preferences: newPrefs });
+    const ok = await updateProfileData({ preferences: newPrefs });
+    if (!ok) {
+      fetchProfile();
+    }
+    return ok;
   };
 
   const updateSettings = async (data: Partial<Settings>) => {
@@ -141,10 +278,14 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
     healthProfile,
     preferences,
     settings,
+    consentRecord,
+    hasValidHealthConsent,
     loadingProfile,
     updateHealthProfile,
     updatePreferences,
-    updateSettings
+    updateSettings,
+    recordConsent,
+    deleteHealthProfile
   };
 
   return (
