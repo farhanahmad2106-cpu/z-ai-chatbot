@@ -6,6 +6,24 @@
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-18 (Session 3)
+**Work Done — Razorpay Admin Refund Workflow (Compliance Gap R-01):**
+- **Backend Schema (`backend/schemas/subscription.py`)**:
+  - Created `RefundRequest` schema and `RefundReasonEnum` to enforce strict validation.
+- **Webhook Updates (`backend/routes/webhooks.py`)**:
+  - Modified the webhook listener to correctly parse and store `payment_id` and `amount` into the MongoDB `transactions` collection.
+- **Admin Refund API (`backend/routes/admin.py`)**:
+  - Implemented `POST /api/admin/subscriptions/refund` protected by `canManageAdmins` (Super Admin privilege).
+  - Included strict state validation (avoids over-refunding) and integrates with the Razorpay Python SDK.
+  - Ensures accurate transaction state mutations, logging refunds within the `transactions` array, and automatically downgrading user tiers to `free` on full refunds.
+- **Frontend Dashboard (`frontend/src/components/admin/tabs/UserManagementTab.tsx`)**:
+  - Added a new UI action to process refunds with a modal to securely enter `payment_id`, amount (for partial refunds), and reason.
+- **Automated Tests (`tests/test_admin_refunds.py`)**:
+  - Authored a comprehensive test suite covering validation failures, success conditions, partial refunds, amount overflows, and external gateway errors.
+
+---
+
+## 🗓️ Previous Session Summary
 **Date:** 2026-09-18 (Session 2)
 **Work Done — User Account & Health Vault Erasure (DPDP Gaps P-01 & A-01):**
 - **Backend Erasure Endpoint (`backend/main.py`)**:
