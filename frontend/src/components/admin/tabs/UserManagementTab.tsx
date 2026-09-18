@@ -11,6 +11,7 @@ import {
   ChevronRight,
   AlertTriangle,
   CheckCircle2,
+  Banknote,
 } from 'lucide-react';
 import { useAdminAuth } from '../../../context/AdminAuthContext';
 import { API_BASE } from '../../../config';
@@ -47,6 +48,12 @@ export default function UserManagementTab() {
   // Ban confirmation modal
   const [banModalTarget, setBanModalTarget] = useState<UserRecord | null>(null);
   const [banReason, setBanReason] = useState<string>('');
+
+  // Refund modal
+  const [refundModalTarget, setRefundModalTarget] = useState<UserRecord | null>(null);
+  const [refundPaymentId, setRefundPaymentId] = useState<string>('');
+  const [refundAmount, setRefundAmount] = useState<string>('');
+  const [refundReason, setRefundReason] = useState<string>('');
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -135,6 +142,49 @@ export default function UserManagementTab() {
       setBanReason('');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Ban action failed';
+      setNotice({ text: msg, type: 'error' });
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleRefund = async () => {
+    if (!refundModalTarget || !permissions.canManageAdmins) return; // Super admin required
+    if (!refundPaymentId.trim() || !refundReason.trim()) return;
+
+    setActionLoadingId(refundModalTarget.id);
+    setNotice(null);
+    try {
+      const headers = await getAdminAuthHeader();
+      
+      const payload: any = {
+        payment_id: refundPaymentId.trim(),
+        reason: refundReason
+      };
+      
+      if (refundAmount.trim()) {
+        payload.amount = parseInt(refundAmount, 10);
+      }
+
+      const res = await fetch(`${API_BASE}/api/admin/subscriptions/refund`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || `Refund failed: HTTP ${res.status}`);
+      
+      setNotice({ text: `Refund successful. ${data.user_downgraded ? 'User downgraded to free tier.' : ''}`, type: 'success' });
+      setRefundModalTarget(null);
+      setRefundPaymentId('');
+      setRefundAmount('');
+      setRefundReason('');
+      
+      // Refresh list to show potential tier changes
+      fetchUsers();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Refund failed';
       setNotice({ text: msg, type: 'error' });
     } finally {
       setActionLoadingId(null);
@@ -373,6 +423,23 @@ export default function UserManagementTab() {
                           >
                             <RotateCcw className="w-3.5 h-3.5" />
                           </button>
+
+                          {u.tier !== 'free' && permissions.canManageAdmins && (
+                            <button
+                              onClick={() => {
+                                setRefundModalTarget(u);
+                                setRefundPaymentId('');
+                                setRefundAmount('');
+                                setRefundReason('');
+                              }}
+                              disabled={actionLoadingId === u.id}
+                              className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 transition-all cursor-pointer disabled:opacity-50"
+                              title="Process Refund"
+                            >
+                              <Banknote className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
                           <button
                             onClick={() => {
                               setBanModalTarget(u);
@@ -477,6 +544,88 @@ export default function UserManagementTab() {
                 }`}
               >
                 {banModalTarget.is_banned ? 'Confirm Re-Activation' : 'Confirm Suspension'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Refund Modal */}
+      {refundModalTarget && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-xl z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-2xl flex items-center justify-center bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                <Banknote className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-lg font-bold font-outfit uppercase tracking-tight text-white">
+                  Process Refund
+                </h4>
+                <p className="text-xs text-slate-400 font-mono">
+                  {refundModalTarget.email} • Tier: {refundModalTarget.tier}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-[11px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">
+                  Razorpay Payment ID *
+                </label>
+                <input
+                  type="text"
+                  value={refundPaymentId}
+                  onChange={(e) => setRefundPaymentId(e.target.value)}
+                  placeholder="pay_..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">
+                  Amount in Paise (Optional)
+                </label>
+                <input
+                  type="number"
+                  value={refundAmount}
+                  onChange={(e) => setRefundAmount(e.target.value)}
+                  placeholder="Leave empty for full refund"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">
+                  Reason *
+                </label>
+                <select
+                  value={refundReason}
+                  onChange={(e) => setRefundReason(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 font-mono cursor-pointer"
+                >
+                  <option value="">Select Reason</option>
+                  <option value="duplicate_charge">Duplicate Charge</option>
+                  <option value="customer_request">Customer Request</option>
+                  <option value="disputed_transaction">Disputed Transaction</option>
+                  <option value="unused_quota_cancellation">Unused Quota Cancellation</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setRefundModalTarget(null)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-bold uppercase text-slate-400 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRefund}
+                disabled={actionLoadingId === refundModalTarget.id || !refundPaymentId.trim() || !refundReason.trim()}
+                className="flex-1 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide cursor-pointer bg-emerald-500 hover:bg-emerald-400 text-slate-950 disabled:opacity-50"
+              >
+                Refund Payment
               </button>
             </div>
           </div>

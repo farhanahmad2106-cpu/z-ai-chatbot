@@ -19,6 +19,10 @@ from fastapi import APIRouter, Header, HTTPException, Depends, Query, status
 import httpx
 import firebase_admin
 from firebase_admin import auth as firebase_auth
+import razorpay
+
+from schemas.subscription import RefundRequest
+from routes.subscriptions import get_razorpay_key_id, get_razorpay_key_secret
 
 from schemas.admin import (
     AdminPermissions,
@@ -960,4 +964,126 @@ async def dispatch_ota_update(
         "message": f"OTA dispatch payload validated for channel '{dispatch_req.channel}'. Configure GITHUB_PAT in .env for live remote trigger.",
         "channel": dispatch_req.channel,
         "payload": dispatch_req.model_dump(),
+    }
+
+
+# --- 9. FINTECH ADMIN: REFUND WORKFLOW ---
+@router.post("/subscriptions/refund")
+async def process_refund(
+    request: RefundRequest,
+    admin: Dict[str, Any] = Depends(require_permission("canManageAdmins")),
+):
+    """
+    Administrator-initiated Razorpay refund workflow.
+    Requires Super Admin privileges.
+    """
+    transactions_col = _get_transactions_collection()
+    users_col = _get_users_collection()
+
+    # 1. Resolve Transaction
+    tx = await transactions_col.find_one({"payment_id": request.payment_id})
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found for the given payment ID.")
+
+    # 2. Check Refund Eligibility
+    original_amount = tx.get("amount") or 0
+    refunds = tx.get("refunds", [])
+    already_refunded_amount = sum(r.get("amount", 0) for r in refunds)
+    
+    # If no amount is provided, we assume full refund of remaining amount
+    refund_amount = request.amount
+    is_full_refund = False
+    
+    if refund_amount is None:
+        is_full_refund = True
+        if original_amount <= 0:
+            raise HTTPException(status_code=400, detail="Cannot infer full refund amount for 0-amount transaction.")
+        refund_amount = original_amount - already_refunded_amount
+    else:
+        if refund_amount == (original_amount - already_refunded_amount):
+            is_full_refund = True
+
+    if refund_amount <= 0:
+        raise HTTPException(status_code=400, detail="Requested refund amount must be greater than zero.")
+        
+    if already_refunded_amount >= original_amount:
+        raise HTTPException(status_code=409, detail="Transaction has already been fully refunded.")
+        
+    if (already_refunded_amount + refund_amount) > original_amount:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Requested refund ({refund_amount}) exceeds remaining refundable amount ({original_amount - already_refunded_amount})."
+        )
+
+    # 3. Call Razorpay
+    key_id = get_razorpay_key_id()
+    key_secret = get_razorpay_key_secret()
+    if not key_id or not key_secret:
+        raise HTTPException(status_code=500, detail="Razorpay credentials not configured.")
+
+    client = razorpay.Client(auth=(key_id, key_secret))
+    
+    payload = {
+        "notes": {"reason": request.reason.value}
+    }
+    if not is_full_refund:
+        payload["amount"] = refund_amount
+
+    try:
+        rzp_refund = client.payment.refund(request.payment_id, payload)
+    except Exception as e:
+        await log_system_event("ERROR", "FinTech", f"Razorpay refund failed for {request.payment_id}: {str(e)}")
+        raise HTTPException(status_code=502, detail="Refund failed at gateway")
+
+    # 4. Update MongoDB Transaction
+    refund_record = {
+        "refund_id": rzp_refund.get("id"),
+        "amount": refund_amount,
+        "reason": request.reason.value,
+        "admin_email": admin.get("email"),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "status": rzp_refund.get("status")
+    }
+
+    await transactions_col.update_one(
+        {"_id": tx["_id"]},
+        {"$push": {"refunds": refund_record}}
+    )
+
+    # 5. Resolve User & Apply Downgrade (Only if Full Refund AND matches active subscription)
+    user_downgraded = False
+    if is_full_refund:
+        subscription_id = tx.get("subscription_id")
+        if subscription_id:
+            user = await users_col.find_one({"subscription.razorpay_subscription_id": subscription_id})
+            if user:
+                # Confirm this is their active subscription
+                if user.get("subscription", {}).get("status") == "active":
+                    await users_col.update_one(
+                        {"_id": user["_id"]},
+                        {
+                            "$set": {
+                                "tier": "free",
+                                "subscription.status": "refunded",
+                                "usage.scan_limit": 20
+                            }
+                        }
+                    )
+                    user_downgraded = True
+
+    await log_system_event(
+        "INFO", 
+        "FinTech", 
+        f"Admin {admin.get('email')} refunded {refund_amount} for payment {request.payment_id}"
+    )
+
+    return {
+        "success": True,
+        "message": "Refund successful",
+        "payment_id": request.payment_id,
+        "refund_id": rzp_refund.get("id"),
+        "refunded_amount": refund_amount,
+        "status": rzp_refund.get("status"),
+        "reason": request.reason.value,
+        "user_downgraded": user_downgraded
     }

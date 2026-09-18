@@ -93,11 +93,16 @@ async def razorpay_webhook(request: Request):
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
     event = payload.get("event", "")
-    entity = payload.get("payload", {}).get("subscription", {}).get("entity", {})
-    subscription_id = entity.get("id", "")
-    plan_id = entity.get("plan_id", "")
+    subscription_entity = payload.get("payload", {}).get("subscription", {}).get("entity", {})
+    payment_entity = payload.get("payload", {}).get("payment", {}).get("entity", {})
+    
+    subscription_id = subscription_entity.get("id", "")
+    plan_id = subscription_entity.get("plan_id", "")
     tier_map = get_tier_plan_map()
     tier = tier_map.get(plan_id, "free")
+    
+    payment_id = payment_entity.get("id")
+    amount = payment_entity.get("amount")
     
     event_id = request.headers.get("x-razorpay-event-id") or payload.get("id")
 
@@ -114,6 +119,9 @@ async def razorpay_webhook(request: Request):
             "_id": event_id,
             "event": event,
             "subscription_id": subscription_id,
+            "payment_id": payment_id,
+            "amount": amount,
+            "refunds": [],
             "timestamp": datetime.now(timezone.utc)
         })
     except pymongo.errors.DuplicateKeyError:
@@ -168,7 +176,7 @@ async def razorpay_webhook(request: Request):
 
     elif event == "subscription.cancelled":
         # Set end_date — user keeps premium until end of billing period
-        end_date = entity.get("end_at")
+        end_date = subscription_entity.get("end_at")
         if end_date:
             # Razorpay sends Unix timestamp
             end_date_str = datetime.fromtimestamp(int(end_date), tz=timezone.utc).strftime("%Y-%m-%d")
