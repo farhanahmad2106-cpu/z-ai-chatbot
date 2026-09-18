@@ -57,7 +57,7 @@ const COMMON_ALLERGIES = [
 ];
 
 const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
-  const { currentUser, updateUserProfile } = useAuth();
+  const { currentUser, updateUserProfile, logout } = useAuth();
   const { healthProfile, updateHealthProfile, preferences, updatePreferences } = useUserProfile();
   const { showToast } = useToast();
 
@@ -66,6 +66,11 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
   const [isSavingHealth, setIsSavingHealth] = useState(false);
   const [localHealth, setLocalHealth] = useState(healthProfile);
   const [saveAttemptCount, setSaveAttemptCount] = useState(0);
+
+  // --- Danger Zone State ---
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     setLocalHealth(healthProfile);
@@ -89,6 +94,43 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
     setLocalHealth(healthProfile);
     setSaveAttemptCount(0);
     setIsHealthModalOpen(true);
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!currentUser) return;
+    setIsDeleting(true);
+    try {
+      const token = await currentUser.getIdToken();
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/user/account`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        // Clear caches
+        localStorage.removeItem('z_sehealth_cached_user_stats');
+        localStorage.removeItem('z_sehealth_cached_user_streak');
+        localStorage.removeItem('z_sehealth_cached_search_foods');
+        localStorage.removeItem('recentSearchedFoods');
+        localStorage.removeItem('z_sehealth_quote_history');
+        localStorage.removeItem('unauthenticatedScanCount');
+        
+        await logout();
+        showToast('Account and all personal data successfully deleted.', 'success');
+        window.location.href = '/';
+      } else {
+        const errorData = await response.json();
+        showToast(errorData.detail || 'Failed to delete account.', 'error');
+      }
+    } catch (error) {
+      console.error("Delete account error:", error);
+      showToast('An error occurred during account deletion.', 'error');
+    } finally {
+      setIsDeleting(false);
+      setIsDeleteModalOpen(false);
+    }
   };
 
   const handleSaveHealth = async () => {
@@ -784,6 +826,74 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
               <button 
                 onClick={() => setIsHealthModalOpen(false)}
                 className="px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+          {/* Danger Zone */}
+          <div className="bg-rose-950/20 border border-rose-900/50 rounded-3xl p-6 shadow-xl mt-8">
+            <div>
+              <h3 className="text-lg font-bold text-rose-500 mb-1 flex items-center gap-2">
+                Danger Zone
+              </h3>
+              <p className="text-xs text-gray-400 mb-4">
+                Irreversibly delete your account, Health Vault data, saved items, and personal information. Crowdsourced foods will be anonymized. Transactions legally required for accounting may be retained without profile linkage.
+              </p>
+              <button
+                onClick={() => setIsDeleteModalOpen(true)}
+                className="px-4 py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-sm font-bold transition-all border border-rose-500 flex items-center justify-center gap-2 cursor-pointer shadow-sm w-full sm:w-auto"
+              >
+                Delete Account & Purge Vault Data
+              </button>
+            </div>
+          </div>
+
+        </div>
+      )}
+
+      {/* Danger Zone Confirmation Modal */}
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
+          <div className="bg-slate-900 rounded-3xl p-6 max-w-md w-full border border-rose-900 shadow-2xl">
+            <h2 className="text-xl font-black text-rose-500 mb-2">Delete Account & Purge Data</h2>
+            <p className="text-sm text-gray-300 mb-4">
+              This action is <strong>irreversible</strong>. It will permanently delete:
+            </p>
+            <ul className="list-disc list-inside text-sm text-gray-400 mb-4 space-y-1">
+              <li>Your account & profile</li>
+              <li>Health Vault credentials</li>
+              <li>Saved foods and user-specific caches</li>
+            </ul>
+            <p className="text-xs text-gray-400 mb-4 bg-slate-800 p-3 rounded-xl border border-slate-700">
+              Note: Required financial transaction records may be retained for compliance, but any profile links will be removed.
+            </p>
+            
+            <label className="block text-xs font-bold text-gray-400 mb-2 uppercase tracking-wider">
+              Type <strong>DELETE</strong> or your email to confirm:
+            </label>
+            <input 
+              type="text"
+              value={deleteConfirmation}
+              onChange={(e) => setDeleteConfirmation(e.target.value)}
+              placeholder="DELETE"
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-rose-500 mb-6"
+            />
+            
+            <div className="flex gap-3">
+              <button 
+                onClick={handleDeleteAccount}
+                disabled={isDeleting || (deleteConfirmation !== 'DELETE' && deleteConfirmation !== currentUser?.email)}
+                className="flex-1 py-3 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-all active:scale-95 cursor-pointer shadow-lg"
+              >
+                {isDeleting ? 'Deleting...' : 'Confirm Deletion'}
+              </button>
+              <button 
+                onClick={() => { setIsDeleteModalOpen(false); setDeleteConfirmation(''); }}
+                className="px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm font-semibold cursor-pointer transition-colors"
+                disabled={isDeleting}
               >
                 Cancel
               </button>

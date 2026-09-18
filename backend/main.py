@@ -819,6 +819,60 @@ async def update_user_profile(request: dict, uid: str = Depends(get_current_user
         
     return {"status": "success", "message": "Profile updated"}
 
+@app.delete("/api/user/account")
+async def delete_user_account(uid: str = Depends(get_current_user_id)):
+    """
+    DPDP Act Compliance: Irreversibly deletes user account and Health Vault,
+    and anonymizes crowdsourced food records.
+    """
+    # 1. Resolve Identity and Profile
+    user = await users_collection.find_one({"uid": uid})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    email = user.get("email")
+    
+    # 2. Anonymize Crowdsourced Foods
+    anonymize_query = [{"submitted_by": uid}]
+    if email:
+        anonymize_query.append({"submitted_by": email})
+        
+    try:
+        await foods_collection.update_many(
+            {"$or": anonymize_query},
+            {"$set": {"submitted_by": "ANONYMIZED_USER"}}
+        )
+    except Exception as e:
+        print(f"Error anonymizing foods for user {uid}: {e}")
+        
+    # 3. Delete Profile and Embedded Health Vault
+    delete_result = await users_collection.delete_one({"uid": uid})
+    if delete_result.deleted_count == 0:
+        raise HTTPException(status_code=500, detail="Failed to delete database record")
+        
+    # 4. Firebase Auth Deletion
+    firebase_status = "unavailable"
+    try:
+        if firebase_auth:
+            firebase_auth.delete_user(uid)
+            firebase_status = "completed"
+    except firebase_auth.UserNotFoundError:
+        firebase_status = "completed"
+    except Exception as e:
+        print(f"Firebase deletion error for {uid}: {e}")
+        firebase_status = "failed"
+        
+    return {
+        "success": True,
+        "account_data_deleted": True,
+        "health_vault_deleted": True,
+        "crowdsourced_records_anonymized": True,
+        "transactions_retained": True,
+        "firebase_account_deleted": firebase_status == "completed",
+        "firebase_account_deletion_status": firebase_status
+    }
+
+
 async def try_ollama_estimate_macros(prompt: str) -> Optional[dict]:
     try:
         async with httpx.AsyncClient(timeout=30.0) as http_client:

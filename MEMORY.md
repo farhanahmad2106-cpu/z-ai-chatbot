@@ -6,6 +6,24 @@
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-18 (Session 2)
+**Work Done — User Account & Health Vault Erasure (DPDP Gaps P-01 & A-01):**
+- **Backend Erasure Endpoint (`backend/main.py`)**:
+  - Implemented `DELETE /api/user/account`.
+  - Added secure token extraction and canonical identity resolution.
+  - Implemented complete purge of `users_collection` (which cascades to embedded Health Vault data).
+  - Configured `foods_collection` anonymization (replaces ownership links with `"ANONYMIZED_USER"`).
+  - Integrated `firebase_admin.auth` for server-side IDP account deletion.
+- **Frontend Danger Zone (`frontend/src/components/Profile.tsx`)**:
+  - Built a distinct "Danger Zone" section with double-confirmation modal (requiring typing `DELETE` or user email).
+  - Clears all user-specific `localStorage` keys and Firebase auth session upon completion.
+- **Test Suite (`tests/test_account_deletion.py`)**:
+  - Added full test suite simulating success, partial failure (Firebase unreachable), and unauthorized requests.
+  - All tests passed.
+
+---
+
+## 🗓️ Previous Session Summary
 **Date:** 2026-09-18
 **Work Done — Razorpay Webhook Security Remediation:**
 - **Strict Signature Verification (`backend/routes/webhooks.py`)**:
