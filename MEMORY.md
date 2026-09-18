@@ -1,16 +1,27 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-17 (Session: Prompt Fix for Medicine Scans)
+> **Last Updated:** 2026-09-17 (Session: Legal Compliance Document Suite)
 
 ---
 
 ## 🗓️ Last Session Summary
 **Date:** 2026-09-17
-**Work Done — Prompt Fix for Medicine Scans:**
-- **Vision Model Prompt Fix (`backend/services/ocr_service.py`)**:
-  - Updated `SYSTEM_PROMPT` to handle both food and medicine labels.
-  - Added strict instructions forbidding the AI from extracting physical visual descriptions (e.g., "The Image Shows A Hand", "Blister Pack", "Silver Foil", "Rectangular Shape") as ingredients.
+**Work Done — Legal Compliance Document Suite (`.zayd_docs/`):**
+- **Generated 6 production-grade legal/compliance documents** after thorough codebase verification:
+  1. `PRIVACY_POLICY.md` — 20-section Privacy Policy under DPDP Act 2023, IT Act 2000 framework with verified data flows, LocalStorage inventory, AI provider disclosures, and health data protections
+  2. `TERMS_OF_SERVICE.md` — 23-section Terms of Service with medical disclaimer, allergy warnings, safety score disclaimer, acceptable use policy, verified pricing (₹366/₹732/₹998), and Indian law jurisdiction
+  3. `REFUND_POLICY.md` — 13-section Refund & Cancellation Policy with verified Razorpay subscription flow, webhook failure handling, and proper distinction between Z-SeHealth policies vs statutory requirements
+  4. `COOKIE_POLICY.md` — 8-section Cookie & Local Storage Policy with complete LocalStorage key inventory verified from codebase, quote rotation formula (3×i days), Firebase authentication storage explanation
+  5. `UI_COMPLIANCE_SPEC.md` — 9-section frontend implementation spec with exact JSX copy for scanner disclaimer, Health Vault consent modal, Razorpay checkout consent, legal footer, WCAG 2.1 AA colour contrast ratios calculated, and consent audit schema
+  6. `IMPLEMENTATION_GAP_REGISTER.md` — 39 identified implementation gaps across 8 categories (Privacy, Auth, Payments, AI, Frontend, Backend, Legal Delivery, Accessibility) with priority ratings (3 Critical, 14 High, 19 Medium, 3 Low)
+- **Codebase verification performed before drafting:**
+  - Verified pricing from `PricingPage.tsx` and `subscriptions.py` (Starter ₹366/80 scans, Pro ₹732/200 scans, Elite ₹998/500 scans)
+  - Verified scan quota logic in `quota_check.py` (monthly reset, not lifetime)
+  - Verified Razorpay webhook HMAC verification in `webhooks.py`
+  - Verified all LocalStorage keys from `Search.tsx`, `UserStatsContext.tsx`, `quoteEngine.ts`, `Scan.tsx`
+  - Verified AI fallback chain from `ai_router.py` and `ocr_service.py`
+  - Verified health profile fields from `Profile.tsx` and MongoDB `users` schema
 
 ---
 
