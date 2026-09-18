@@ -39,7 +39,7 @@ def _verify_razorpay_signature(body: bytes, signature: str) -> bool:
     """Verify Razorpay webhook HMAC-SHA256 signature."""
     secret = get_razorpay_webhook_secret()
     if not secret:
-        print("⚠️ RAZORPAY_WEBHOOK_SECRET not set — rejecting webhook (HTTP 500)")
+        print("[WARN] RAZORPAY_WEBHOOK_SECRET not set -- rejecting webhook (HTTP 500)")
         raise HTTPException(status_code=500, detail="Webhook configuration error")
     if not signature:
         return False
@@ -132,7 +132,7 @@ async def razorpay_webhook(request: Request):
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     if event == "subscription.activated":
-        # ✅ Grant premium access immediately
+        # [OK] Grant premium access immediately
         scan_limit = TIER_SCAN_LIMITS.get(tier, 20)
         await users_collection.update_one(
             {"subscription.razorpay_subscription_id": subscription_id},
@@ -146,10 +146,10 @@ async def razorpay_webhook(request: Request):
                 "usage.scans_used_this_month": 0,
             }}
         )
-        print(f"✅ Subscription activated: tier={tier}, sub_id={subscription_id}")
+        print(f"[OK] Subscription activated: tier={tier}, sub_id={subscription_id}")
 
     elif event == "subscription.charged":
-        # ✅ Monthly renewal successful — reset scan counter
+        # [OK] Monthly renewal successful — reset scan counter
         scan_limit = TIER_SCAN_LIMITS.get(tier, 20)
         await users_collection.update_one(
             {"subscription.razorpay_subscription_id": subscription_id},
@@ -160,10 +160,10 @@ async def razorpay_webhook(request: Request):
                 "usage.scan_limit": scan_limit,
             }}
         )
-        print(f"✅ Subscription renewed: tier={tier}, sub_id={subscription_id}")
+        print(f"[OK] Subscription renewed: tier={tier}, sub_id={subscription_id}")
 
     elif event == "subscription.charged.failed":
-        # ❌ Charge failed — downgrade to free tier
+        # [ERROR] Charge failed — downgrade to free tier
         await users_collection.update_one(
             {"subscription.razorpay_subscription_id": subscription_id},
             {"$set": {
@@ -172,7 +172,7 @@ async def razorpay_webhook(request: Request):
                 "usage.scan_limit": 20,
             }}
         )
-        print(f"⚠️ Charge failed — downgraded to free: sub_id={subscription_id}")
+        print(f"[WARN] Charge failed — downgraded to free: sub_id={subscription_id}")
 
     elif event == "subscription.cancelled":
         # Set end_date — user keeps premium until end of billing period

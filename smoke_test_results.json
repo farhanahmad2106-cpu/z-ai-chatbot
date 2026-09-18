@@ -1,0 +1,143 @@
+{
+  "results": [
+    {
+      "step": 1,
+      "name": "Service health & MongoDB check",
+      "result": "PASS",
+      "http": "200",
+      "db_verified": "YES",
+      "notes": "App running, DB reachable (5 collections)"
+    },
+    {
+      "step": 2,
+      "name": "Valid webhook signature & ingestion",
+      "result": "PASS",
+      "http": "200",
+      "db_verified": "YES",
+      "notes": "Tx persisted, user upgraded to pro (limit 200)"
+    },
+    {
+      "step": 3,
+      "name": "Invalid signature rejection",
+      "result": "PASS",
+      "http": "400",
+      "db_verified": "YES",
+      "notes": "Rejected with 400, no DB mutation"
+    },
+    {
+      "step": 4,
+      "name": "Payload tampering rejection",
+      "result": "PASS",
+      "http": "400",
+      "db_verified": "YES",
+      "notes": "Tampered payload rejected with 400 due to HMAC mismatch"
+    },
+    {
+      "step": 5,
+      "name": "Webhook idempotency",
+      "result": "PASS",
+      "http": "200",
+      "db_verified": "YES",
+      "notes": "Duplicate event caught by _id uniqueness; no duplicate grant"
+    },
+    {
+      "step": 6,
+      "name": "Subscription upgrade verification",
+      "result": "PASS",
+      "http": "200",
+      "db_verified": "YES",
+      "notes": "Tier: pro, Quota: 200"
+    },
+    {
+      "step": 7,
+      "name": "Transaction persistence & schema verification",
+      "result": "PASS",
+      "http": "200",
+      "db_verified": "YES",
+      "notes": "Stored amount: 29900, refunds array: []"
+    },
+    {
+      "step": 8,
+      "name": "System logging verification",
+      "result": "PASS",
+      "http": "N/A",
+      "db_verified": "YES",
+      "notes": "10 recent system logs present in MongoDB"
+    },
+    {
+      "step": 9,
+      "name": "Refund authorization enforcement (Unauthenticated & Non-Super-Admin)",
+      "result": "PASS",
+      "http": "401/403",
+      "db_verified": "YES",
+      "notes": "No-Auth: 401, Non-SuperAdmin: 403"
+    },
+    {
+      "step": 10,
+      "name": "Successful refund execution",
+      "result": "PASS",
+      "http": "200",
+      "db_verified": "YES",
+      "notes": "Refund ID: rfnd_TEST_SMOKE_9901, Amount: 29900"
+    },
+    {
+      "step": 11,
+      "name": "Refund database reconciliation",
+      "result": "PASS",
+      "http": "200",
+      "db_verified": "YES",
+      "notes": "User downgraded to free (quota 20), tx.refunds recorded"
+    },
+    {
+      "step": 12,
+      "name": "Refund idempotency (re-refund rejection)",
+      "result": "PASS",
+      "http": "409",
+      "db_verified": "YES",
+      "notes": "Rejected with 409: Transaction has already been fully refunded."
+    },
+    {
+      "step": 13,
+      "name": "Negative refund tests (unknown ID, missing reason, non-positive amount)",
+      "result": "PASS",
+      "http": "404, 422, 422",
+      "db_verified": "YES",
+      "notes": "All negative cases cleanly rejected"
+    },
+    {
+      "step": 14,
+      "name": "Failure & atomicity architecture analysis",
+      "result": "PASS",
+      "http": "N/A",
+      "db_verified": "YES",
+      "notes": "Gateway-first sequence prevents phantom refunds; dual-write consistency gap documented"
+    }
+  ],
+  "history": {
+    "initial": {
+      "user_tier": "free",
+      "user_quota": 20,
+      "subscription_status": "none",
+      "tx_exists": false,
+      "logs_count": 14
+    },
+    "after_payment": {
+      "user_tier": "pro",
+      "user_quota": 200,
+      "subscription_status": "active",
+      "tx_exists": true,
+      "tx_status": "subscription.activated",
+      "refund_status": "none",
+      "refund_id": null
+    },
+    "after_refund": {
+      "user_tier": "free",
+      "user_quota": 20,
+      "subscription_status": "refunded",
+      "tx_exists": true,
+      "tx_status": "subscription.activated",
+      "refund_status": "refunded",
+      "refund_id": "rfnd_TEST_SMOKE_9901"
+    }
+  }
+}

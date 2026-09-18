@@ -1,11 +1,27 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-18 (Session: Razorpay Webhook Security Remediation)
+> **Last Updated:** 2026-09-18 (Session: FinTech & Payment Lifecycle Operational Smoke Test)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-18 (Session 5)
+**Work Done — FinTech & Payment Lifecycle Operational Smoke Test (Steps 1–16 Complete):**
+- **Controlled Operational Smoke Test Suite (`tests/smoke_test_runner.py`)**:
+  - Implemented end-to-end asynchronous test harness validating all 16 steps of the payment and refund lifecycle against MongoDB Atlas (`Z-sehealth` database) and FastAPI.
+  - Verified HMAC-SHA256 signature calculation, valid webhook event processing (`subscription.activated`), payment capture, transaction persistence, and user subscription upgrade (`tier: "pro"`, `scan_limit: 200`).
+  - Tested negative security boundaries: forged/invalid webhook signature (HTTP 400), payload tampering with valid signature mismatch (HTTP 400), and unauthenticated/non-SuperAdmin refund access (HTTP 401/403).
+  - Verified webhook event idempotency using `_id: event_id` unique constraint in `transactions_collection`, preventing duplicate credits.
+  - Verified Super Admin refund authorization (`POST /api/admin/subscriptions/refund`), external gateway error resilience (HTTP 502 without phantom DB mutations), and successful full refund reconciliation (user downgrade to `free`, `scan_limit: 20`, `subscription.status: "refunded"`).
+- **Bug Fixes & Hardening**:
+  - **Refund Idempotency Re-order (`backend/routes/admin.py`)**: Fixed defect where an already fully-refunded transaction returned HTTP 400 ("Requested refund amount must be greater than zero") on full refund requests because `amount <= 0` was checked before `already_refunded_amount >= original_amount`. Moved the check to return proper `HTTP 409 Conflict: Transaction has already been fully refunded`.
+  - **Windows Charmap Print Safety (`backend/routes/webhooks.py`)**: Replaced non-ASCII emoji prints (`✅`, `⚠️`, `❌`) with ASCII safe tags (`[OK]`, `[WARN]`, `[ERROR]`), preventing Windows standard output `UnicodeEncodeError`.
+  - **Unit Test Suite Hardening (`tests/test_admin_refunds.py`)**: Resolved test fixture namespace mismatch (`routes.admin` vs `backend.routes.admin`), patched `log_system_event`, and added required mock `_id` and test environment keys. All 15 unit tests pass cleanly.
+
+---
+
+## 🗓️ Previous Session Summary
 **Date:** 2026-09-18 (Session 4)
 **Work Done — UI Compliance Specification Implementation (`.zayd_docs/UI_COMPLIANCE_SPEC.md`):**
 - **Camera Viewfinder & Scanner Disclaimers (`frontend/src/components/Scan.tsx`)**:

@@ -989,6 +989,9 @@ async def process_refund(
     original_amount = tx.get("amount") or 0
     refunds = tx.get("refunds", [])
     already_refunded_amount = sum(r.get("amount", 0) for r in refunds)
+
+    if already_refunded_amount >= original_amount:
+        raise HTTPException(status_code=409, detail="Transaction has already been fully refunded.")
     
     # If no amount is provided, we assume full refund of remaining amount
     refund_amount = request.amount
@@ -1005,10 +1008,7 @@ async def process_refund(
 
     if refund_amount <= 0:
         raise HTTPException(status_code=400, detail="Requested refund amount must be greater than zero.")
-        
-    if already_refunded_amount >= original_amount:
-        raise HTTPException(status_code=409, detail="Transaction has already been fully refunded.")
-        
+
     if (already_refunded_amount + refund_amount) > original_amount:
         raise HTTPException(
             status_code=400, 

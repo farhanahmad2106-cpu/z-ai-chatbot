@@ -1,4 +1,8 @@
+import os
 import pytest
+os.environ["RAZORPAY_KEY_ID"] = "rzp_test_dummy_123"
+os.environ["RAZORPAY_KEY_SECRET"] = "dummy_secret_123"
+
 from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi.testclient import TestClient
 from backend.main import app
@@ -11,15 +15,21 @@ def mock_collections():
     mock_users = AsyncMock()
     mock_admins = AsyncMock()
     
-    with patch("backend.routes.admin._get_transactions_collection", return_value=mock_transactions), \
+    with patch("routes.admin._get_transactions_collection", return_value=mock_transactions), \
+         patch("routes.admin._get_users_collection", return_value=mock_users), \
+         patch("routes.admin._get_admins_collection", return_value=mock_admins), \
+         patch("routes.admin.log_system_event", new=AsyncMock()), \
+         patch("backend.routes.admin._get_transactions_collection", return_value=mock_transactions), \
          patch("backend.routes.admin._get_users_collection", return_value=mock_users), \
-         patch("backend.routes.admin._get_admins_collection", return_value=mock_admins):
+         patch("backend.routes.admin._get_admins_collection", return_value=mock_admins), \
+         patch("backend.routes.admin.log_system_event", new=AsyncMock()):
         yield mock_transactions, mock_users, mock_admins
 
 @pytest.fixture
 def mock_admin_auth(mock_collections):
     _, _, mock_admins = mock_collections
     mock_admins.find_one.return_value = {
+        "_id": "mock_admin_id_001",
         "email": "farhanahmad2106@gmail.com",
         "is_super_admin": True,
         "permissions": {"canManageAdmins": True}
@@ -30,17 +40,22 @@ def mock_admin_auth(mock_collections):
 def mock_normal_admin_auth(mock_collections):
     _, _, mock_admins = mock_collections
     mock_admins.find_one.return_value = {
+        "_id": "mock_admin_id_002",
         "email": "normal@zsehealth.internal",
         "is_super_admin": False,
         "permissions": {"canManageAdmins": False}
     }
-    return {"Authorization": "Bearer test_super_admin"}
+    with patch("routes.admin.firebase_auth.verify_id_token", return_value={"uid": "normal_uid", "email": "normal@zsehealth.internal"}), \
+         patch("backend.routes.admin.firebase_auth.verify_id_token", return_value={"uid": "normal_uid", "email": "normal@zsehealth.internal"}):
+        yield {"Authorization": "Bearer mock_normal_token"}
 
 @pytest.fixture
 def mock_razorpay():
-    with patch("backend.routes.admin.razorpay.Client") as mock_client_class:
+    with patch("routes.admin.razorpay.Client") as mock_client_class_1, \
+         patch("backend.routes.admin.razorpay.Client") as mock_client_class_2:
         mock_instance = MagicMock()
-        mock_client_class.return_value = mock_instance
+        mock_client_class_1.return_value = mock_instance
+        mock_client_class_2.return_value = mock_instance
         yield mock_instance
 
 def test_missing_auth():
