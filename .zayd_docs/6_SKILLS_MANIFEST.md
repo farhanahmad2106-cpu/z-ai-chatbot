@@ -56,17 +56,3 @@
 | Backend | `.py`, `.txt`, `.json` | `.env`, `firebase-admin-key.json` (NEVER modify) |
 | Config | `.md`, `.yaml`, `.json` | `package-lock.json` (auto-generated) |
 | Documentation | `.md` | None |
-
-### 27. Touchless Spatial Vision & Gesture Control (`skills/gesture_control.py`, `ui/gesture_pip.py`)
-- **Engine**: Google MediaPipe Hands (`model_complexity=0`, strictly CPU-bound, 0 MB GPU VRAM).
-- **Activation Boundary**: Upper 40% camera frame (typing-safe region).
-- **Gesture Mappings**:
-  - 👍 `Thumbs-Up` (held 1.5s): Toggle Gesture Tracking & PIP Overlay.
-  - ☝️ `Index Finger Pointing`: Air Mouse Cursor (EMA smoothing, Win32 `SetCursorPos`).
-  - 🤏 `Index-Thumb Pinch (<30px)`: Left Click & Drag / Voice Input Trigger.
-  - ✋ `Open Palm Lateral Wave`: Dismiss Caption Bar / Minimize HUD.
-  - ✊ `Closed Fist`: Toggle Privacy Mute.
-  - 🤫 `Index to Face ("Shh")`: Immediate Emergency Task Abort (`abort_active_task`).
-- **Hotkeys**: `Ctrl + Shift + W` (Global Toggle).
-- **Fast-Path Triggers**:
-  - `r"^(?:turn\s+(?:on|off)|enable|disable|toggle)\s+(?:gesture\s+control|air\s+mouse|camera\s+preview)$"`
