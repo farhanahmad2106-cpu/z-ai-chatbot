@@ -1,6 +1,8 @@
 import { ErrorBoundary } from './ErrorBoundary';
 import { parseScannedIngredients } from '../utils/ingredientParser';
 import { useState, useRef, useMemo, useEffect } from 'react';
+import { BrowserMultiFormatReader, BarcodeFormat, DecodeHintType } from '@zxing/library';
+
 import { SlidersHorizontal, X, Globe, Search as MiniSearch, Loader2, AlertTriangle, Camera } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
@@ -45,7 +47,11 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
   const [showMoreClicks, setShowMoreClicks] = useState(0);
   const [translating, setTranslating] = useState(false);
   const [translatedList, setTranslatedList] = useState<string[] | null>(null);
-  const [scanMode, setScanMode] = useState<'food' | 'ingredients'>('food');
+  const [scanMode, setScanMode] = useState<'barcode' | 'food' | 'ingredients'>('barcode');
+  const [barcodeQuery, setBarcodeQuery] = useState<string | null>(null);
+  const [barcodeNotFound, setBarcodeNotFound] = useState(false);
+  const zxingRef = useRef<any>(null);
+  const scanCooldownRef = useRef<boolean>(false);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [zoomRange, setZoomRange] = useState<{ min: number, max: number } | null>(null);
   const [hasHardwareZoom, setHasHardwareZoom] = useState(false);
@@ -55,6 +61,70 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  
+  const handleBarcodeDecoded = async (barcode: string) => {
+    if (scanCooldownRef.current) return;
+    scanCooldownRef.current = true;
+    
+    // Vibrate
+    if (navigator.vibrate) navigator.vibrate(50);
+    
+    setBarcodeQuery(barcode);
+    setLoading(true);
+    setScanError(null);
+    setBarcodeNotFound(false);
+
+    try {
+      // Cache lookup
+      const cached = localStorage.getItem('z_sehealth_cached_search_foods');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const match = parsed.find((f: any) => f.barcode === barcode);
+        if (match) {
+           setAnalysisResult(match);
+           setLoading(false);
+           if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+           return;
+        }
+      }
+
+      // API Cascade
+      const response = await fetch(`${API_BASE}/api/foods/barcode/${barcode}`);
+      if (response.ok) {
+        const data = await response.json();
+        setAnalysisResult(data);
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+      } else {
+        setBarcodeNotFound(true);
+        if (navigator.vibrate) navigator.vibrate([50, 100, 50, 100]);
+      }
+    } catch (err) {
+      console.error("Barcode lookup error", err);
+      setBarcodeNotFound(true);
+    } finally {
+      setLoading(false);
+      setTimeout(() => {
+        scanCooldownRef.current = false;
+      }, 2000);
+    }
+  };
+
+  const startBarcodeScanner = (videoEl: HTMLVideoElement) => {
+    if (!zxingRef.current) {
+       const hints = new Map();
+       hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+         BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A, BarcodeFormat.UPC_E, BarcodeFormat.CODE_128
+       ]);
+       zxingRef.current = new BrowserMultiFormatReader(hints, 200); // 200ms delay ~ 5fps
+    }
+    
+    zxingRef.current.decodeFromVideoElement(videoEl, (result: any, _err: any) => {
+      if (result) {
+         handleBarcodeDecoded(result.getText());
+      }
+    });
+  };
 
   const { currentUser, setShowLoginModal } = useAuth();
   const { preferences } = useUserProfile();
@@ -92,6 +162,9 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        if (scanMode === 'barcode') {
+           startBarcodeScanner(videoRef.current);
+        }
       }
       
       // Feature-detect zoom capabilities
@@ -177,8 +250,11 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
 
   // 3. Turn off the camera stream when done
   const stopCamera = () => {
+    if (zxingRef.current) {
+       zxingRef.current.reset();
+    }
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current.getTracks().forEach((track: any) => track.stop());
     }
     setIsCameraActive(false);
   };
@@ -275,7 +351,7 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
       const response = await fetch(`${API_BASE}${endpoint}`, {
         method: "POST",
         headers: headers,
-        body: JSON.stringify({ image: optimizedImage }),
+        body: JSON.stringify({ image: optimizedImage, barcode: barcodeQuery }),
       });
 
       if (!response.ok) {
@@ -362,6 +438,12 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
       {/* Mode Toggle */}
       <div className="flex justify-center gap-2 mb-6">
         <button
+          onClick={() => { setScanMode('barcode'); setAnalysisResult(null); }}
+          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${scanMode === 'barcode' ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-800 text-gray-400 hover:bg-slate-700'}`}
+        >
+          🏷️ Barcode
+        </button>
+        <button
           onClick={() => { setScanMode('food'); setAnalysisResult(null); }}
           className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${scanMode === 'food' ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-800 text-gray-400 hover:bg-slate-700'}`}
         >
@@ -433,16 +515,34 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
               </div>
 
               {/* Scan Reticle */}
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-4">
-                <div className="w-48 h-48 border-2 border-emerald-500/50 rounded-2xl flex items-center justify-center relative">
-                    <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-emerald-500 rounded-tl-xl"></div>
-                    <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-emerald-500 rounded-tr-xl"></div>
-                    <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-emerald-500 rounded-bl-xl"></div>
-                    <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-emerald-500 rounded-br-xl"></div>
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none p-4 z-10">
+                <div className={`border-2 border-emerald-500/50 flex items-center justify-center relative ${scanMode === 'barcode' ? 'w-64 h-40 rounded-xl' : 'w-48 h-48 rounded-2xl'}`}>
+                  {scanMode === 'barcode' && (
+                     <div className="absolute top-0 left-0 right-0 h-0.5 bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-[scan_2s_ease-in-out_infinite]" />
+                  )}
+                  <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-emerald-500 rounded-tl-xl"></div>
+                  <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-emerald-500 rounded-tr-xl"></div>
+                  <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-emerald-500 rounded-bl-xl"></div>
+                  <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-emerald-500 rounded-br-xl"></div>
                   {scanMode === 'ingredients' && (
                     <p className="text-emerald-400 font-bold text-xs bg-slate-900/80 px-3 py-1 rounded-full drop-shadow-md absolute">Align text here</p>
                   )}
+                  {scanMode === 'barcode' && (
+                    <p className="text-emerald-400 font-bold text-xs bg-slate-900/80 px-3 py-1 rounded-full drop-shadow-md absolute -bottom-8">Align barcode</p>
+                  )}
                 </div>
+                {barcodeNotFound && scanMode === 'barcode' && (
+                  <div className="mt-8 bg-slate-900/90 border border-slate-700 p-4 rounded-xl text-center pointer-events-auto max-w-[80%] backdrop-blur relative z-20">
+                    <AlertTriangle className="w-6 h-6 text-amber-500 mx-auto mb-2" />
+                    <p className="text-white text-sm font-bold mb-1">Product not found</p>
+                    <p className="text-gray-400 text-xs mb-3">We don't have this barcode yet.</p>
+                    <button 
+                       onClick={() => { setScanMode('food'); stopCamera(); setTimeout(startCamera, 100); }}
+                       className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold rounded-lg w-full">
+                       Switch to Back-of-Pack OCR
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Viewfinder Compliance Micro-Disclaimer */}
@@ -453,12 +553,14 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
               </div>
             </div>
             <div className="flex gap-4">
-              <button 
-                onClick={capturePhoto} 
-                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 rounded-xl font-bold text-sm transition-all active:scale-95 cursor-pointer shadow-md text-white"
-              >
-                📸 Capture Photo
-              </button>
+              {scanMode !== 'barcode' && (
+                <button 
+                  onClick={capturePhoto} 
+                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 rounded-xl font-bold text-sm transition-all active:scale-95 cursor-pointer shadow-md text-white"
+                >
+                  📸 Capture Photo
+                </button>
+              )}
               <button 
                 onClick={stopCamera} 
                 className="px-6 py-2.5 bg-rose-600 hover:bg-rose-500 rounded-xl font-bold text-sm transition-all active:scale-95 cursor-pointer text-white"

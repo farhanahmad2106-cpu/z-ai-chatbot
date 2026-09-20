@@ -106,6 +106,7 @@ async def background_db_init():
     try:
         # Create search index for instant queries
         await foods_collection.create_index([("name", 1)], background=True)
+        await foods_collection.create_index([("barcode", 1)], background=True)
         await admins_collection.create_index([("email", 1)], unique=True, background=True)
         await system_logs_collection.create_index([("timestamp", -1)], background=True)
         await system_logs_collection.create_index([("level", 1)], background=True)
@@ -203,6 +204,86 @@ def get_local_mock_foods(search: str = "") -> List[dict]:
     except Exception as e:
         print(f"Error reading mock_foods.json: {e}")
         return []
+
+@app.get("/api/foods/barcode/{barcode}")
+async def get_food_by_barcode(barcode: str):
+    """Exact barcode lookup and Open Food Facts fallback proxy."""
+    try:
+        # Check database for exact barcode match
+        food_doc = await foods_collection.find_one({
+            "barcode": barcode,
+            "$and": [
+                {"$or": [{"is_verified": True}, {"is_verified": {"$exists": False}}]},
+                {"status": {"$ne": "rejected"}}
+            ]
+        })
+        
+        if food_doc:
+            food_doc["_id"] = str(food_doc["_id"])
+            return food_doc
+            
+        # Check OFF API if missing
+        off_url = f"https://world.openfoodfacts.org/api/v2/product/{barcode}.json"
+        async with httpx.AsyncClient(timeout=15.0) as http_client:
+            resp = await http_client.get(off_url)
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("status") == 1:
+                    product = data.get("product", {})
+                    
+                    # Map OFF data to Z-SeHealth schema
+                    name = product.get("product_name") or product.get("product_name_en") or "Unknown Product"
+                    brand = product.get("brands") or "Unknown Brand"
+                    ingredients_text = product.get("ingredients_text_en") or product.get("ingredients_text") or ""
+                    
+                    parsed_ingredients = [i.strip() for i in ingredients_text.split(",") if i.strip()] if ingredients_text else []
+                    
+                    nutriments = product.get("nutriments", {})
+                    nutrition = {
+                        "calories": float(nutriments.get("energy-kcal_100g", 0)),
+                        "protein": float(nutriments.get("proteins_100g", 0)),
+                        "carbohydrates": float(nutriments.get("carbohydrates_100g", 0)),
+                        "fat": float(nutriments.get("fat_100g", 0)),
+                        "sugar": float(nutriments.get("sugars_100g", 0)),
+                        "sodium": float(nutriments.get("sodium_100g", 0))
+                    }
+
+                    additives = product.get("additives_tags", [])
+                    detected_ins_additives = []
+                    for add in additives:
+                        clean_add = add.replace("en:e", "")
+                        detected_ins_additives.append({"code": f"INS {clean_add}", "name": f"Additive {clean_add}", "risk": "low"})
+                    
+                    new_food = {
+                        "name": name,
+                        "product_name": name,
+                        "brand": brand,
+                        "barcode": barcode,
+                        "is_verified": False,
+                        "requires_moderation": True,
+                        "status": "pending_review",
+                        "source": "open_food_facts",
+                        "parsed_ingredients": parsed_ingredients,
+                        "ingredients": [{"name": ing, "safety": "Safe", "description": ""} for ing in parsed_ingredients],
+                        "detected_ins_additives": detected_ins_additives,
+                        "additives": [a["code"] for a in detected_ins_additives],
+                        "allergens": product.get("allergens_tags", []),
+                        "flagged_allergens": product.get("allergens_tags", []),
+                        "nutrition_per_100g": nutrition,
+                        "estimated_macros": nutrition,
+                        "safety_score": 75,
+                        "created_at": datetime.now(timezone.utc).isoformat()
+                    }
+                    
+                    # Insert to MongoDB
+                    insert_res = await foods_collection.insert_one(new_food)
+                    new_food["_id"] = str(insert_res.inserted_id)
+                    return new_food
+    except Exception as e:
+        print(f"Barcode lookup failed: {e}")
+        
+    raise HTTPException(status_code=404, detail="Product not found by barcode")
+
 
 @app.get("/api/foods")
 async def get_foods(search: str = ""):

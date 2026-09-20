@@ -1,7 +1,25 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-18 (Session: FinTech & Payment Lifecycle Operational Smoke Test)
+> **Last Updated:** 2026-09-20 (Session: Production Barcode Scanner Implementation)
+
+---
+
+## 🗓️ Last Session Summary
+**Date:** 2026-09-20
+**Work Done — Production Barcode Scanner Implementation:**
+- **Frontend Scanner UI & ZXing Integration (`frontend/src/components/Scan.tsx`)**:
+  - Implemented real-time product barcode detection using `@zxing/browser` and `@zxing/library`.
+  - Added a barcode/OCR mode switcher with dynamic reticle UI and laser animations.
+  - Implemented 5fps throttling and duplicate suppression (2-second cooldown) to prevent API spam.
+  - Added multi-tier lookup cascade: synchronous local cache -> verified DB search -> Open Food Facts proxy -> manual OCR fallback.
+- **Backend API & DB Indexes (`backend/main.py`, `backend/routes/scan.py`)**:
+  - Added `barcode` non-unique index to the `foods` collection.
+  - Created `GET /api/foods/barcode/{barcode}` proxy route that attempts local DB lookup before falling back to Open Food Facts, mapping OFF data to Z-SeHealth schema, and inserting it as a `pending_review` item.
+  - Modified `POST /api/scan/analyze` to accept and persist `barcode` for crowdsourced Back-of-Pack OCR records.
+- **Build Verification**:
+  - `npm --prefix frontend run build` completed successfully without TypeScript errors.
+  - Python files successfully compile.
 
 ---
 

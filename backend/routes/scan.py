@@ -1,7 +1,7 @@
 import sys
 from datetime import datetime, timezone
 from typing import Optional
-from fastapi import APIRouter, UploadFile, File, Header, HTTPException, status
+from fastapi import APIRouter, UploadFile, File, Header, HTTPException, status, Form
 from schemas.scan import OCRAnalysisResponse
 from services.ocr_service import extract_and_analyze
 import firebase_admin.auth as fb_auth
@@ -25,6 +25,7 @@ def _get_foods_collection():
 @router.post("/analyze", response_model=OCRAnalysisResponse, status_code=status.HTTP_200_OK)
 async def analyze_back_of_pack(
     image: UploadFile = File(...),
+    barcode: Optional[str] = Form(None),
     authorization: Optional[str] = Header(None)
 ):
     """
@@ -80,6 +81,7 @@ async def analyze_back_of_pack(
             "name": full_product_name,
             "product_name": full_product_name,
             "brand": brand_title,
+            "barcode": barcode,
             "is_verified": False,
             "requires_moderation": True,
 
