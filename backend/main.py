@@ -9,10 +9,10 @@ load_dotenv()
 
 from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List, Optional
+from typing import List, Optional, Literal
 import json
 import base64
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from motor.motor_asyncio import AsyncIOMotorClient
 from google import genai
 from google.genai import types
@@ -846,6 +846,51 @@ async def get_current_user_id(authorization: str = Header(None)):
     except Exception as e:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+class UserGoalsRequest(BaseModel):
+    calories: int = Field(ge=500, le=10000)
+    protein: int = Field(ge=0, le=1000)
+    carbs: int = Field(ge=0, le=2000)
+    fat: int = Field(ge=0, le=1000)
+    source: Literal["auto", "manual"] = "auto"
+
+@app.post("/api/user/goals")
+async def update_user_goals(request: UserGoalsRequest, uid: str = Depends(get_current_user_id)):
+    user = await users_collection.find_one({"uid": uid})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    goals_doc = {
+        "calories": request.calories,
+        "protein": request.protein,
+        "carbs": request.carbs,
+        "fat": request.fat,
+        "source": request.source,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    updates = {
+        "daily_goals": goals_doc,
+        "health_profile.dailyCalorieTarget": str(request.calories)
+    }
+    
+    await users_collection.update_one({"uid": uid}, {"$set": updates})
+    return {"status": "success", "daily_goals": goals_doc}
+
+@app.get("/api/user/goals")
+async def get_user_goals(uid: str = Depends(get_current_user_id)):
+    user = await users_collection.find_one({"uid": uid})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    goals = user.get("daily_goals", {
+        "calories": 2000,
+        "protein": 140,
+        "carbs": 250,
+        "fat": 70,
+        "source": "default"
+    })
+    return goals
+
 @app.get("/api/user/stats")
 async def get_user_stats(uid: str = Depends(get_current_user_id)):
     user = await users_collection.find_one({"uid": uid})
@@ -860,9 +905,18 @@ async def get_user_stats(uid: str = Depends(get_current_user_id)):
         stats = {"calories": 0, "protein": 0, "carbs": 0, "fat": 0, "last_updated": today_str}
         await users_collection.update_one({"uid": uid}, {"$set": {"stats": stats}})
         
+    goals = user.get("daily_goals", {
+        "calories": 2000,
+        "protein": 140,
+        "carbs": 250,
+        "fat": 70,
+        "source": "default"
+    })
+        
     return {
         "streak": user.get("streak", 0),
-        "stats": stats
+        "stats": stats,
+        "daily_goals": goals
     }
 
 class ConsentUpdateRequest(BaseModel):

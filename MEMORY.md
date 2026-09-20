@@ -6,6 +6,27 @@
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-20 (Session: Automated BMR/TDEE and Macronutrient Calibration System)
+**Work Done — Smart Nutrition Calibrator Implementation:**
+- **Frontend Utilities (`frontend/src/utils/macroCalculator.ts`)**:
+  - Implemented Mifflin-St Jeor equation for precise BMR and TDEE calculations based on age, gender, weight, height, and activity level.
+  - Added deterministic macro splitting based on health goals (Weight Loss, Muscle Gain, Maintenance).
+- **State Synchronization & Hydration (`frontend/src/context/UserStatsContext.tsx`, `frontend/src/components/Dashboard.tsx`)**:
+  - Integrated `dailyGoals` context utilizing local storage caching (`z_sehealth_cached_user_goals`) and backend hydration.
+  - Replaced hardcoded default macro targets in the Dashboard with dynamic user-configured `dailyGoals`.
+- **Profile UI & Smart Nutrition Calibrator (`frontend/src/components/Profile.tsx`)**:
+  - Engineered "Smart Nutrition Calibrator" section that tracks live BMR/TDEE based on Health Profile inputs.
+  - Implemented interactive Customize mode for manual override of auto-calculated calories and macro distributions.
+  - Added one-click action to sync configured daily goals with the backend.
+- **Backend API Routes (`backend/main.py`)**:
+  - Introduced `UserGoalsRequest` Pydantic model enforcing boundary validations (500 - 10,000 kcal).
+  - Developed `POST /api/user/goals` and `GET /api/user/goals` endpoints interacting with MongoDB Atlas `users_collection`.
+  - Optimized data fetching by piggybacking `daily_goals` payload within the `GET /api/user/stats` response to avoid cascading queries.
+- **Build & Verification**:
+  - Verified frontend with `npm --prefix frontend run build` (success, 0 errors).
+  - Verified backend with `python -m py_compile backend/main.py` (success, 0 errors).
+
+## 🗓️ Last Session Summary
 **Date:** 2026-09-20
 **Work Done — Production Barcode Scanner Implementation:**
 - **Frontend Scanner UI & ZXing Integration (`frontend/src/components/Scan.tsx`)**:

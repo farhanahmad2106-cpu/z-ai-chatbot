@@ -20,6 +20,8 @@ import {
 } from 'lucide-react';
 import SubscriptionBadge from './SubscriptionBadge';
 import HealthConsentModal from './profile/HealthConsentModal';
+import { useUserStats } from '../context/UserStatsContext';
+import { calculateMacros, mapProfileToMetrics, MacroTargets, roundMacroTargets } from '../utils/macroCalculator';
 
 interface ProfileProps {
   onBack?: () => void;
@@ -70,6 +72,12 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
     deleteHealthProfile 
   } = useUserProfile();
   const { showToast } = useToast();
+  const { dailyGoals, updateDailyGoals } = useUserStats();
+
+  // --- Smart Nutrition Calibrator State ---
+  const [isCustomizingMacros, setIsCustomizingMacros] = useState(false);
+  const [customMacros, setCustomMacros] = useState<MacroTargets | null>(null);
+  const [isApplyingGoals, setIsApplyingGoals] = useState(false);
 
   // --- Health Profile Modal State & Calculator ---
   const [isHealthModalOpen, setIsHealthModalOpen] = useState(false);
@@ -106,6 +114,40 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
     else if (bmi < 30) { category = 'Overweight'; color = 'text-amber-400'; }
     else { category = 'Obese'; color = 'text-rose-400'; }
     return { bmi, category, color };
+  };
+
+  const calculatedMetrics = mapProfileToMetrics(localHealth);
+  let calculatedMacros: MacroTargets | null = null;
+  try {
+    if (calculatedMetrics) {
+      calculatedMacros = roundMacroTargets(calculateMacros(calculatedMetrics));
+    }
+  } catch (e) {
+    console.warn("Macro calculation skipped due to missing/invalid fields.", e);
+  }
+  const activePreviewMacros = customMacros || calculatedMacros;
+
+  const handleApplyGoals = async () => {
+    if (!activePreviewMacros) return;
+    setIsApplyingGoals(true);
+    try {
+      const ok = await updateDailyGoals({
+        calories: activePreviewMacros.calories,
+        protein: activePreviewMacros.proteinGrams,
+        carbs: activePreviewMacros.carbsGrams,
+        fat: activePreviewMacros.fatGrams,
+        source: customMacros ? 'manual' : 'auto'
+      });
+      if (ok) {
+        showToast('Daily nutrition goals updated successfully!', 'success');
+      } else {
+        showToast('Failed to update daily goals.', 'error');
+      }
+    } catch (e) {
+      showToast('Failed to update daily goals.', 'error');
+    } finally {
+      setIsApplyingGoals(false);
+    }
   };
 
   const handleOpenHealthModal = () => {
@@ -556,6 +598,148 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
                 <Trash2 className="w-4 h-4 text-rose-400" /> Delete Health Profile
               </button>
             </div>
+          </div>
+
+          {/* Smart Nutrition Calibrator */}
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden group">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-purple-400" />
+                Smart Nutrition Calibrator
+              </h3>
+              {dailyGoals?.source && (
+                <span className="text-xs font-bold px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-gray-400 uppercase tracking-wider">
+                  Active: {dailyGoals.source}
+                </span>
+              )}
+            </div>
+
+            {!calculatedMetrics ? (
+              <div className="bg-slate-800/30 p-6 rounded-2xl border border-slate-700/30 text-center text-sm text-gray-400 mb-4">
+                Complete your profile metrics (Age, Gender, Height, Weight, Activity, Goal) to calculate nutrition targets.
+              </div>
+            ) : (
+              <div className="bg-slate-800/30 p-4 sm:p-6 rounded-2xl border border-slate-700/30 mb-4">
+                {activePreviewMacros && (
+                  <>
+                    <div className="flex justify-between items-center mb-4">
+                      <div className="flex gap-2">
+                        {customMacros ? (
+                          <span className="text-[10px] font-bold px-2 py-1 rounded bg-amber-500/20 text-amber-400 border border-amber-500/20 uppercase tracking-wide">
+                            Customized
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold px-2 py-1 rounded bg-purple-500/20 text-purple-400 border border-purple-500/20 uppercase tracking-wide">
+                            Auto-calculated
+                          </span>
+                        )}
+                        {customMacros && (
+                          <button 
+                            onClick={() => { setCustomMacros(null); setIsCustomizingMacros(false); }}
+                            className="text-[10px] font-bold px-2 py-1 rounded bg-slate-700/50 hover:bg-slate-700 text-gray-300 transition-colors uppercase tracking-wide"
+                          >
+                            Reset to Auto
+                          </button>
+                        )}
+                      </div>
+                      {!isCustomizingMacros && !customMacros && (
+                        <button 
+                          onClick={() => {
+                            if (calculatedMacros) setCustomMacros({ ...calculatedMacros });
+                            setIsCustomizingMacros(true);
+                          }}
+                          className="text-[10px] font-bold px-2 py-1 rounded bg-slate-700/50 hover:bg-slate-700 text-gray-300 transition-colors uppercase tracking-wide flex items-center gap-1 cursor-pointer"
+                        >
+                          <Edit2 className="w-3 h-3" /> Customize
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                      <div>
+                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">Estimated BMR</p>
+                        <p className="text-sm font-bold text-gray-300">{activePreviewMacros.bmr} kcal/day</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">Estimated TDEE</p>
+                        <p className="text-sm font-bold text-gray-300">{activePreviewMacros.tdee} kcal/day</p>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50 mb-4 text-center">
+                      <p className="text-[11px] text-gray-400 font-bold uppercase tracking-wider mb-1">Recommended Daily Calories</p>
+                      {isCustomizingMacros && customMacros ? (
+                        <input 
+                          type="number"
+                          value={customMacros.calories}
+                          onChange={e => setCustomMacros({ ...customMacros, calories: Number(e.target.value) })}
+                          className="bg-slate-700 border border-slate-600 rounded px-2 py-1 text-xl font-black text-white text-center w-32 focus:outline-none focus:border-purple-500 mb-1"
+                        />
+                      ) : (
+                        <p className="text-3xl font-black text-white mb-1">{activePreviewMacros.calories} <span className="text-sm text-gray-400">kcal</span></p>
+                      )}
+                      <p className="text-xs text-purple-400 font-bold">
+                        {localHealth.healthGoal === 'weight_loss' ? '500 kcal deficit' : localHealth.healthGoal === 'muscle_gain' ? '+350 kcal surplus' : 'Maintenance'}
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="bg-slate-800/30 p-2 sm:p-3 rounded-xl border border-slate-700/30 text-center">
+                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">Protein</p>
+                        {isCustomizingMacros && customMacros ? (
+                          <input 
+                            type="number"
+                            value={customMacros.proteinGrams}
+                            onChange={e => setCustomMacros({ ...customMacros, proteinGrams: Number(e.target.value) })}
+                            className="bg-slate-700 border border-slate-600 rounded px-1 py-0.5 text-sm font-bold text-white text-center w-full focus:outline-none"
+                          />
+                        ) : (
+                          <p className="text-sm font-bold text-emerald-400">{activePreviewMacros.proteinGrams}g</p>
+                        )}
+                        <p className="text-[9px] text-gray-500 mt-0.5">{Math.round((activePreviewMacros.proteinGrams * 4 / activePreviewMacros.calories) * 100)}%</p>
+                      </div>
+                      <div className="bg-slate-800/30 p-2 sm:p-3 rounded-xl border border-slate-700/30 text-center">
+                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">Carbs</p>
+                        {isCustomizingMacros && customMacros ? (
+                          <input 
+                            type="number"
+                            value={customMacros.carbsGrams}
+                            onChange={e => setCustomMacros({ ...customMacros, carbsGrams: Number(e.target.value) })}
+                            className="bg-slate-700 border border-slate-600 rounded px-1 py-0.5 text-sm font-bold text-white text-center w-full focus:outline-none"
+                          />
+                        ) : (
+                          <p className="text-sm font-bold text-blue-400">{activePreviewMacros.carbsGrams}g</p>
+                        )}
+                        <p className="text-[9px] text-gray-500 mt-0.5">{Math.round((activePreviewMacros.carbsGrams * 4 / activePreviewMacros.calories) * 100)}%</p>
+                      </div>
+                      <div className="bg-slate-800/30 p-2 sm:p-3 rounded-xl border border-slate-700/30 text-center">
+                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">Fat</p>
+                        {isCustomizingMacros && customMacros ? (
+                          <input 
+                            type="number"
+                            value={customMacros.fatGrams}
+                            onChange={e => setCustomMacros({ ...customMacros, fatGrams: Number(e.target.value) })}
+                            className="bg-slate-700 border border-slate-600 rounded px-1 py-0.5 text-sm font-bold text-white text-center w-full focus:outline-none"
+                          />
+                        ) : (
+                          <p className="text-sm font-bold text-amber-400">{activePreviewMacros.fatGrams}g</p>
+                        )}
+                        <p className="text-[9px] text-gray-500 mt-0.5">{Math.round((activePreviewMacros.fatGrams * 9 / activePreviewMacros.calories) * 100)}%</p>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            <button 
+              onClick={handleApplyGoals} 
+              disabled={!calculatedMetrics || isApplyingGoals}
+              className="w-full relative z-10 px-4 py-3 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 rounded-xl text-sm font-bold transition-all border border-purple-500/50 flex items-center justify-center gap-2 cursor-pointer active:scale-95 shadow-sm disabled:opacity-50"
+            >
+              <Sparkles className="w-4 h-4" /> 
+              {isApplyingGoals ? 'Applying...' : 'Apply Recommended Targets to Daily Goals'}
+            </button>
           </div>
 
           {/* Dietary Preferences Card */}

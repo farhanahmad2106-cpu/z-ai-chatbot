@@ -11,8 +11,19 @@ interface UserStats {
   last_updated: string;
 }
 
+export interface DailyGoals {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  source?: 'auto' | 'manual' | 'default';
+  updated_at?: string;
+}
+
 interface UserStatsContextType {
   stats: UserStats;
+  dailyGoals: DailyGoals;
+  updateDailyGoals: (goals: DailyGoals) => Promise<boolean>;
   streak: number;
   tier: string;
   scansUsed: number;
@@ -34,6 +45,14 @@ const dummyStats: UserStats = {
   carbs: 140,
   fat: 42,
   last_updated: new Date().toISOString()
+};
+
+const dummyGoals: DailyGoals = {
+  calories: 2000,
+  protein: 140,
+  carbs: 250,
+  fat: 70,
+  source: 'default'
 };
 
 const UserStatsContext = createContext<UserStatsContextType | undefined>(undefined);
@@ -68,6 +87,16 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
       }
     }
     return 1;
+  });
+
+  const [dailyGoals, setDailyGoals] = useState<DailyGoals>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('z_sehealth_cached_user_goals');
+      if (saved) {
+        try { return JSON.parse(saved); } catch (e) { console.error(e); }
+      }
+    }
+    return dummyGoals;
   });
 
   const [loadingStats, setLoadingStats] = useState<boolean>(false);
@@ -117,6 +146,10 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
           setStreak(data.streak);
           localStorage.setItem('z_sehealth_cached_user_streak', JSON.stringify(data.streak));
         }
+        if (data.daily_goals) {
+          setDailyGoals(data.daily_goals);
+          localStorage.setItem('z_sehealth_cached_user_goals', JSON.stringify(data.daily_goals));
+        }
       }
     } catch (error) {
       console.error("Failed to fetch user stats", error);
@@ -132,6 +165,7 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
     } else {
       setStats(dummyStats);
       setStreak(1);
+      setDailyGoals(dummyGoals);
       setTier('free');
       setScansUsed(0);
       setScanLimit(20);
@@ -257,6 +291,47 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const updateDailyGoals = async (goals: DailyGoals): Promise<boolean> => {
+    if (!currentUser) return false;
+    
+    // Optimistic update
+    const previousGoals = dailyGoals;
+    setDailyGoals(goals);
+    localStorage.setItem('z_sehealth_cached_user_goals', JSON.stringify(goals));
+    
+    try {
+      const token = await currentUser.getIdToken();
+      const response = await fetch(`${API_BASE}/api/user/goals`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(goals)
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.daily_goals) {
+          setDailyGoals(data.daily_goals);
+          localStorage.setItem('z_sehealth_cached_user_goals', JSON.stringify(data.daily_goals));
+        }
+        return true;
+      } else {
+        // Revert on fail
+        setDailyGoals(previousGoals);
+        localStorage.setItem('z_sehealth_cached_user_goals', JSON.stringify(previousGoals));
+        return false;
+      }
+    } catch (error) {
+      console.error("Failed to update daily goals", error);
+      // Revert on fail
+      setDailyGoals(previousGoals);
+      localStorage.setItem('z_sehealth_cached_user_goals', JSON.stringify(previousGoals));
+      return false;
+    }
+  };
+
   const logMultipleMeals = async (items: Array<{ food: any; count: number }>): Promise<boolean> => {
     if (!currentUser) {
       showToast("Please log in to log meals.");
@@ -329,6 +404,8 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
 
   const value = {
     stats,
+    dailyGoals,
+    updateDailyGoals,
     streak,
     tier,
     scansUsed,

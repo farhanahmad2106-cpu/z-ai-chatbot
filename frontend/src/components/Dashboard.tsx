@@ -12,7 +12,7 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ onNavigateToScan, onGoToPricing }: DashboardProps) {
-  const { stats, streak, loadingStats, showUpgradeModal, setShowUpgradeModal } = useUserStats();
+  const { stats, dailyGoals, streak, loadingStats, showUpgradeModal, setShowUpgradeModal } = useUserStats();
   const { preferences } = useUserProfile();
   
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -71,10 +71,10 @@ export default function Dashboard({ onNavigateToScan, onGoToPricing }: Dashboard
   }, []);
   
   // Set goals
-  const caloriesGoal = 2000;
-  const proteinGoal = 140;
-  const carbsGoal = 250;
-  const fatGoal = 70;
+  const caloriesGoal = dailyGoals.calories;
+  const proteinGoal = dailyGoals.protein;
+  const carbsGoal = dailyGoals.carbs;
+  const fatGoal = dailyGoals.fat;
 
   if (loadingStats) {
     return (
