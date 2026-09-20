@@ -28,6 +28,7 @@ from routes.subscriptions import router as subscriptions_router
 from routes.webhooks import router as webhooks_router
 from routes.scan import router as scan_router
 from routes.admin import router as admin_router, log_system_event
+from routes.meals import router as meals_router
 from middleware.quota_check import check_scan_quota, get_user_quota_status
 from services.ai_router import route_scan_by_tier
 from services.ocr_engine import extract_text_from_image
@@ -41,6 +42,7 @@ app.include_router(subscriptions_router)
 app.include_router(webhooks_router)
 app.include_router(scan_router)
 app.include_router(admin_router)
+app.include_router(meals_router)
 
 # --- CORS SETUP ---
 app.add_middleware(

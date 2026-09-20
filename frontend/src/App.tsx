@@ -18,8 +18,9 @@ import { useUserStats } from './context/UserStatsContext';
 import { useUserProfile } from './context/UserProfileContext';
 import Footer from './components/Footer';
 import LegalViewer from './components/legal/LegalViewer';
+import MealPlanner from './components/MealPlanner';
 
-export type AppTab = 'dashboard' | 'search' | 'scan' | 'profile' | 'settings' | 'pricing' | 'admin' | 'privacy' | 'terms' | 'refund' | 'cookies';
+export type AppTab = 'dashboard' | 'search' | 'scan' | 'profile' | 'settings' | 'pricing' | 'admin' | 'privacy' | 'terms' | 'refund' | 'cookies' | 'planner';
 
 function App() {
   // Simple tab-based navigation state with /admin and legal path support
@@ -203,6 +204,12 @@ function App() {
             >
               Scan
             </button>
+            <button 
+              onClick={() => navigateToTab('planner')} 
+              className={`pb-1 transition-all whitespace-nowrap ${activeTab === 'planner' ? 'text-emerald-400 border-b-2 border-emerald-500' : 'text-gray-400 hover:text-white'}`}
+            >
+              Meal Planner
+            </button>
             {isAdmin && (
               <button 
                 onClick={() => navigateToTab('admin')} 
@@ -301,6 +308,7 @@ function App() {
             onClearInitialImage={() => setScanImageData(null)}
           />
         )}
+        {activeTab === 'planner' && <MealPlanner />}
         {activeTab === 'profile' && <Profile onBack={() => navigateToTab('dashboard')} onGoToPricing={() => navigateToTab('pricing')} />}
         {activeTab === 'settings' && <Settings onBack={() => navigateToTab('dashboard')} />}
         {activeTab === 'pricing' && <PricingPage onClose={() => navigateToTab('dashboard')} />}
