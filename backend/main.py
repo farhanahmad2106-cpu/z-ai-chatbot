@@ -292,6 +292,23 @@ async def get_foods(search: str = ""):
     results = []
     db_error = False
     try:
+        if search:
+            search_clean = search.strip()
+            # If search matches a barcode pattern, execute exact indexed lookup first
+            if search_clean.isalnum() and 6 <= len(search_clean) <= 18:
+                exact_barcode_item = await foods_collection.find_one({
+                    "barcode": search_clean,
+                    "$and": [
+                        {"$or": [{"is_verified": True}, {"is_verified": {"$exists": False}}]},
+                        {"status": {"$ne": "rejected"}}
+                    ]
+                })
+                if exact_barcode_item:
+                    exact_barcode_item["_id"] = str(exact_barcode_item["_id"])
+                    if not exact_barcode_item.get("name") and exact_barcode_item.get("product_name"):
+                        exact_barcode_item["name"] = exact_barcode_item["product_name"]
+                    return [exact_barcode_item]
+
         query: dict = {
             "$and": [
                 {"$or": [{"is_verified": True}, {"is_verified": {"$exists": False}}]},
@@ -1229,6 +1246,7 @@ async def log_meal(request: dict, uid: str = Depends(get_current_user_id)):
 @app.post("/api/scan")
 async def scan_ingredients(request: dict, authorization: str = Header(None)):
     image_data = request.get("image")
+    barcode = request.get("barcode")
     if not image_data:
         raise HTTPException(status_code=400, detail="No image data")
 
@@ -1268,6 +1286,8 @@ async def scan_ingredients(request: dict, authorization: str = Header(None)):
         result = await route_scan_by_tier(image_data, prompt, tier)
         if result:
             print(f"[Scan] Successfully processed for tier={tier}")
+            if isinstance(result, dict) and barcode:
+                result["barcode"] = barcode
             return result
     except HTTPException:
         raise
@@ -1279,6 +1299,8 @@ async def scan_ingredients(request: dict, authorization: str = Header(None)):
         result = await try_ollama_scan(image_data, prompt)
         if result:
             print("[Scan] Succeeded via legacy Ollama fallback.")
+            if isinstance(result, dict) and barcode:
+                result["barcode"] = barcode
             return result
     except Exception as e:
         print(f"[Scan] Ollama legacy fallback failed: {e}")

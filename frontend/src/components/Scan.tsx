@@ -61,22 +61,53 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const playSuccessChime = () => {
+    try {
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // A5
+        oscillator.frequency.exponentialRampToValueAtTime(1760, audioCtx.currentTime + 0.1); // A6
+        
+        gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.05);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + 0.3);
+    } catch (e) {
+        console.warn("Audio context failed", e);
+    }
+  };
 
   
   const handleBarcodeDecoded = async (barcode: string) => {
     if (scanCooldownRef.current) return;
     scanCooldownRef.current = true;
     
-    // Vibrate
+    // Vibrate & Chime
     if (navigator.vibrate) navigator.vibrate(50);
+    playSuccessChime();
     
     setBarcodeQuery(barcode);
     setLoading(true);
     setScanError(null);
     setBarcodeNotFound(false);
 
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+
     try {
-      // Cache lookup
+      // 1. Local Cache Lookup
       const cached = localStorage.getItem('z_sehealth_cached_search_foods');
       if (cached) {
         const parsed = JSON.parse(cached);
@@ -89,17 +120,21 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
         }
       }
 
-      // API Cascade
-      const response = await fetch(`${API_BASE}/api/foods/barcode/${barcode}`);
+      // 2 & 3. Backend Catalog -> Open Food Facts cascade
+      const response = await fetch(`${API_BASE}/api/foods/barcode/${barcode}`, {
+        signal: abortControllerRef.current.signal
+      });
       if (response.ok) {
         const data = await response.json();
         setAnalysisResult(data);
         if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
       } else {
+        // 4. OCR Fallback UI trigger
         setBarcodeNotFound(true);
         if (navigator.vibrate) navigator.vibrate([50, 100, 50, 100]);
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
       console.error("Barcode lookup error", err);
       setBarcodeNotFound(true);
     } finally {
@@ -116,7 +151,7 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
          BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A, BarcodeFormat.UPC_E, BarcodeFormat.CODE_128
        ]);
-       zxingRef.current = new BrowserMultiFormatReader(hints, 200); // 200ms delay ~ 5fps
+       zxingRef.current = new BrowserMultiFormatReader(hints, 150); // 150ms delay for faster scanning
     }
     
     zxingRef.current.decodeFromVideoElement(videoEl, (result: any, _err: any) => {
@@ -441,19 +476,13 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
           onClick={() => { setScanMode('barcode'); setAnalysisResult(null); }}
           className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${scanMode === 'barcode' ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-800 text-gray-400 hover:bg-slate-700'}`}
         >
-          🏷️ Barcode
+          🏷️ Barcode Scan
         </button>
         <button
           onClick={() => { setScanMode('food'); setAnalysisResult(null); }}
           className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${scanMode === 'food' ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-800 text-gray-400 hover:bg-slate-700'}`}
         >
-          🍽️ Scan Food
-        </button>
-        <button
-          onClick={() => { setScanMode('ingredients'); setAnalysisResult(null); }}
-          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${scanMode === 'ingredients' ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-800 text-gray-400 hover:bg-slate-700'}`}
-        >
-          📋 Scan Ingredients Label
+          📋 Back-of-Pack OCR
         </button>
       </div>
 
@@ -516,19 +545,19 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
 
               {/* Scan Reticle */}
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none p-4 z-10">
-                <div className={`border-2 border-emerald-500/50 flex items-center justify-center relative ${scanMode === 'barcode' ? 'w-64 h-40 rounded-xl' : 'w-48 h-48 rounded-2xl'}`}>
+                <div className={`border-4 border-emerald-500/80 flex items-center justify-center relative shadow-[0_0_15px_rgba(16,185,129,0.3)] ${scanMode === 'barcode' ? 'w-64 h-40 rounded-sm' : 'w-56 h-64 rounded-sm'}`}>
                   {scanMode === 'barcode' && (
-                     <div className="absolute top-0 left-0 right-0 h-0.5 bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-[scan_2s_ease-in-out_infinite]" />
+                     <div className="absolute top-0 left-0 right-0 h-1 bg-emerald-400 shadow-[0_0_15px_rgba(52,211,153,1)] animate-[scan_2s_ease-in-out_infinite]" />
                   )}
-                  <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-emerald-500 rounded-tl-xl"></div>
-                  <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-emerald-500 rounded-tr-xl"></div>
-                  <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-emerald-500 rounded-bl-xl"></div>
-                  <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-emerald-500 rounded-br-xl"></div>
-                  {scanMode === 'ingredients' && (
-                    <p className="text-emerald-400 font-bold text-xs bg-slate-900/80 px-3 py-1 rounded-full drop-shadow-md absolute">Align text here</p>
+                  <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-emerald-500 rounded-tl-sm"></div>
+                  <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-emerald-500 rounded-tr-sm"></div>
+                  <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-emerald-500 rounded-bl-sm"></div>
+                  <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-emerald-500 rounded-br-sm"></div>
+                  {scanMode === 'food' && (
+                    <p className="text-emerald-400 font-black tracking-widest text-[10px] bg-slate-900/90 px-3 py-1 border border-emerald-500/50 uppercase drop-shadow-md absolute">Align Label Text</p>
                   )}
                   {scanMode === 'barcode' && (
-                    <p className="text-emerald-400 font-bold text-xs bg-slate-900/80 px-3 py-1 rounded-full drop-shadow-md absolute -bottom-8">Align barcode</p>
+                    <p className="text-emerald-400 font-black tracking-widest text-[10px] bg-slate-900/90 px-3 py-1 border border-emerald-500/50 uppercase drop-shadow-md absolute -bottom-8">Scan Barcode</p>
                   )}
                 </div>
                 {barcodeNotFound && scanMode === 'barcode' && (
