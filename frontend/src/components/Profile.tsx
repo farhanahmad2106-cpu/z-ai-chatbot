@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
+import { useAdminAuth } from '../context/AdminAuthContext';
 import { useToast } from '../context/ToastContext';
 import { 
   User, 
@@ -16,7 +17,12 @@ import {
   Utensils,
   Plus,
   Sparkles,
-  Trash2
+  Trash2,
+  ShieldAlert,
+  ServerCrash,
+  Users,
+  Download,
+  Headset
 } from 'lucide-react';
 import SubscriptionBadge from './SubscriptionBadge';
 import HealthConsentModal from './profile/HealthConsentModal';
@@ -62,6 +68,7 @@ const COMMON_ALLERGIES = [
 
 const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
   const { currentUser, updateUserProfile, logout } = useAuth();
+  const { isAdmin } = useAdminAuth();
   const { 
     healthProfile, 
     updateHealthProfile, 
@@ -773,6 +780,90 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
               Configure
             </button>
           </div>
+
+          {/* RBAC Features: Admin vs User */}
+          {isAdmin ? (
+            /* Admin Diagnostics & Quick Actions Card */
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden group">
+              <div className="absolute inset-0 bg-rose-500/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
+              
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                  <ShieldAlert className="w-5 h-5 text-rose-500" />
+                  Admin Diagnostics & Quick Actions
+                </h3>
+                <span className="text-xs font-bold px-3 py-1 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-400 uppercase tracking-wider">
+                  Super Admin
+                </span>
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                <button 
+                  onClick={() => showToast('System logs accessed', 'success')}
+                  className="bg-slate-800/50 hover:bg-slate-700/80 p-4 rounded-2xl border border-slate-700/50 text-left transition-colors cursor-pointer group/btn"
+                >
+                  <ServerCrash className="w-5 h-5 text-gray-400 mb-2 group-hover/btn:text-emerald-400 transition-colors" />
+                  <p className="text-sm font-bold text-white mb-1">View System Logs</p>
+                  <p className="text-[10px] text-gray-400">Access raw application logs</p>
+                </button>
+                <button 
+                  onClick={() => showToast('OTA Hotfix deployed', 'success')}
+                  className="bg-slate-800/50 hover:bg-slate-700/80 p-4 rounded-2xl border border-slate-700/50 text-left transition-colors cursor-pointer group/btn"
+                >
+                  <Activity className="w-5 h-5 text-gray-400 mb-2 group-hover/btn:text-rose-400 transition-colors" />
+                  <p className="text-sm font-bold text-white mb-1">Trigger OTA Hotfix</p>
+                  <p className="text-[10px] text-gray-400">Push emergency updates</p>
+                </button>
+                <button 
+                  onClick={() => showToast('Admin team management opened', 'success')}
+                  className="bg-slate-800/50 hover:bg-slate-700/80 p-4 rounded-2xl border border-slate-700/50 text-left transition-colors cursor-pointer group/btn"
+                >
+                  <Users className="w-5 h-5 text-gray-400 mb-2 group-hover/btn:text-blue-400 transition-colors" />
+                  <p className="text-sm font-bold text-white mb-1">Team Management</p>
+                  <p className="text-[10px] text-gray-400">Manage internal admins</p>
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* User Support & Privacy Card */
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden group">
+              <div className="absolute inset-0 bg-cyan-500/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
+              
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-cyan-400" />
+                  Support & Privacy
+                </h3>
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                <button 
+                  onClick={() => showToast('Data export requested. Check your email.', 'success')}
+                  className="bg-slate-800/50 hover:bg-slate-700/80 p-4 rounded-2xl border border-slate-700/50 text-left transition-colors cursor-pointer flex items-center gap-3 group/btn"
+                >
+                  <div className="w-10 h-10 rounded-full bg-cyan-500/10 flex items-center justify-center group-hover/btn:bg-cyan-500/20 transition-colors">
+                    <Download className="w-5 h-5 text-cyan-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-white mb-0.5">Request Data Export</p>
+                    <p className="text-[10px] text-gray-400">Download all your personal data</p>
+                  </div>
+                </button>
+                <button 
+                  onClick={() => window.location.href = 'mailto:farhanahmad2106@gmail.com?subject=Support%20Request'}
+                  className="bg-slate-800/50 hover:bg-slate-700/80 p-4 rounded-2xl border border-slate-700/50 text-left transition-colors cursor-pointer flex items-center gap-3 group/btn"
+                >
+                  <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center group-hover/btn:bg-blue-500/20 transition-colors">
+                    <Headset className="w-5 h-5 text-blue-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-white mb-0.5">Contact Support</p>
+                    <p className="text-[10px] text-gray-400">Email our Super Admin</p>
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

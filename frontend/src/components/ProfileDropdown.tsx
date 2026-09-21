@@ -69,9 +69,15 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({
           <p className="text-sm font-bold text-white truncate">{currentUser?.displayName || 'Health Enthusiast'}</p>
           <p className="text-xs text-gray-400 truncate">{currentUser?.email}</p>
           <div className="mt-2 flex items-center justify-between">
-            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${getTierBadgeStyle()}`}>
-              {formattedTier} TIER
-            </span>
+            {isAdmin ? (
+              <span className="text-[10px] font-black px-2 py-0.5 rounded-full border bg-rose-500/10 text-rose-400 border-rose-500/30 flex items-center gap-1">
+                <ShieldAlert className="w-3 h-3" /> SUPER ADMIN
+              </span>
+            ) : (
+              <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${getTierBadgeStyle()}`}>
+                {formattedTier} TIER
+              </span>
+            )}
             <span className="text-xs text-amber-400 font-bold flex items-center gap-1">
               <Flame className="w-3.5 h-3.5 fill-amber-400/20" /> {streak}d streak
             </span>
