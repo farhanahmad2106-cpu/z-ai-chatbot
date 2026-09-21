@@ -22,6 +22,7 @@ class MealPlanItem(BaseModel):
     name: str
     meal_type: Literal["breakfast", "lunch", "snack", "dinner"]
     serving_description: str
+    servings: Optional[float] = 1.0
     calories: float
     protein_g: float
     carbs_g: float
@@ -29,6 +30,7 @@ class MealPlanItem(BaseModel):
     fiber_g: Optional[float] = 0.0
     sodium_mg: Optional[float] = 0.0
     sugar_g: Optional[float] = 0.0
+    added_sugar_g: Optional[float] = 0.0
     ingredients: List[str]
     conflict: MealConflict
     safety_score: float
@@ -42,6 +44,7 @@ class DailyTotals(BaseModel):
     fiber_g: float
     sodium_mg: float
     sugar_g: float
+    added_sugar_g: Optional[float] = 0.0
 
 class MealPlanResponse(BaseModel):
     plan_id: str

@@ -1,11 +1,29 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-21 (Session: Sprint 3 - Smart Meal Planner & Dietary Conflict Analyzer)
+> **Last Updated:** 2026-09-21 (Session: Sprint 3 - Clinical Meal Planner Remediation & Dynamic Portion Scaling)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-21
+**Work Done — Clinical Meal Planner Remediation & Dynamic Portion Scaling:**
+- **Schema Updates (`backend/schemas/meal_plan.py`)**: Added backward-compatible optional fields `servings: Optional[float] = 1.0` and `added_sugar_g: Optional[float] = 0.0` to `MealPlanItem` and `DailyTotals` models.
+- **Dataset Expansion (`backend/services/meal_planner/meal_repository.py`)**: Expanded `INDIAN_MEAL_DATASET` from 12 to 25 items, adding authentic, high-protein, allergen-safe, and low-sodium Indian dishes across all slots (e.g., Rajma Masala & Brown Rice, Yellow Moong Dal Tadka & Quinoa, Chana Masala with Jowar Roti, Grilled Chicken Tikka with Quinoa, Lauki Chana Dal, Roasted Makhana, Boiled Egg Whites).
+- **Dynamic Portion Scaling Engine (`backend/services/meal_planner/planner.py`)**:
+  - Implemented proportional meal target calories based on normalized meal type distributions (25% Breakfast, 35% Lunch, 10% Snack, 30% Dinner).
+  - Introduced smart candidate ranking that optimizes for calorie proximity, protein density, and strict post-scaling clinical bounds (enforcing scaled sodium < 500mg under hypertension and scaled added sugar <= 5.0g under diabetes).
+  - Implemented dynamic serving scaling (`scale = round(target_cal_for_meal / base_cal, 2)` bounded [0.5, 2.5]) adjusting calories, macros, and serving descriptions proportionally.
+  - Updated `swap_meal` with identical slot scaling and safety enforcement.
+- **Verification & Testing**:
+  - `python -m pytest tests/test_meal_planner_clinical.py -v`: **12/12 PASSED (100% pass rate in 4.68s)**.
+  - `python -m pytest backend/test_meal_planner.py -o pythonpath=backend -v`: **6/6 PASSED (100% pass rate in 0.05s)**.
+  - `npm --prefix frontend run build`: **PASSED (0 TypeScript errors, 5.57s build)**.
+  - `python -m py_compile backend/main.py`: **PASSED (0 errors)**.
+
+---
+
+## 🗓️ Previous Session Summary
 **Date:** 2026-09-21
 **Work Done — End-to-End Clinical Validation of Smart Meal Planner:**
 - **Circular Import Fix**: Resolved circular dependency in `backend/routes/meals.py` (`from main import get_current_user_id, users_collection`) that was crashing the backend during module imports.
