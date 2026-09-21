@@ -13,3 +13,4 @@ pytesseract
 opencv-python-headless
 Pillow
 razorpay==1.4.1
+setuptools
