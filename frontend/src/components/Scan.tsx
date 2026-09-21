@@ -154,11 +154,23 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
        zxingRef.current = new BrowserMultiFormatReader(hints, 150); // 150ms delay for faster scanning
     }
     
-    zxingRef.current.decodeFromVideoElement(videoEl, (result: any, _err: any) => {
-      if (result) {
-         handleBarcodeDecoded(result.getText());
+    try {
+      const decodePromise = zxingRef.current.decodeFromVideoElement(videoEl, (result: any, _err: any) => {
+        if (result) {
+           handleBarcodeDecoded(result.getText());
+        }
+      });
+      if (decodePromise && typeof decodePromise.catch === 'function') {
+        decodePromise.catch((e: any) => {
+          if (e && e.message && e.message.includes('Video stream has ended')) {
+            return; // Expected when camera stops
+          }
+          console.warn('ZXing error:', e);
+        });
       }
-    });
+    } catch (e) {
+      console.warn('ZXing synchronous error:', e);
+    }
   };
 
   const { currentUser, setShowLoginModal } = useAuth();
