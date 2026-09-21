@@ -130,36 +130,43 @@ export function mapProfileToMetrics(profile: any): PhysicalMetrics | null {
   if (!profile) return null;
 
   const age = Number(profile.age);
-  const heightCm = Number(profile.heightCm);
-  const weightKg = Number(profile.weightKg);
+  const heightCm = Number(profile.height);
+  const weightKg = Number(profile.weight);
 
-  if (!age || !heightCm || !weightKg) return null;
+  if (!age || !heightCm || !weightKg || age <= 0 || heightCm <= 0 || weightKg <= 0) return null;
 
-  let gender: Gender = "female"; // default or map appropriately
-  if (profile.gender === "male" || profile.gender === "female") {
-    gender = profile.gender;
+  let gender: Gender = "female"; // default fallback
+  if (profile.gender) {
+    const g = profile.gender.toString().toLowerCase();
+    if (g === "male" || g === "m") gender = "male";
+    else if (g === "female" || g === "f") gender = "female";
+    else return null;
   } else {
-      return null;
+    return null;
   }
 
   let activityLevel: ActivityLevel = "sedentary";
-  if (
-    ["sedentary", "light", "moderate", "active", "very_active"].includes(
-      profile.activityLevel
-    )
-  ) {
-    activityLevel = profile.activityLevel as ActivityLevel;
+  if (profile.activityLevel) {
+    const act = profile.activityLevel.toString().toLowerCase().trim();
+    if (act.includes("sedentary") || act.includes("not active")) activityLevel = "sedentary";
+    else if (act.includes("light")) activityLevel = "light";
+    else if (act.includes("moderate")) activityLevel = "moderate";
+    else if (act.includes("very")) activityLevel = "very_active";
+    else if (act.includes("active")) activityLevel = "active";
+    else return null;
   } else {
-      return null;
+    return null;
   }
 
   let healthGoal: HealthGoal = "maintenance";
-  if (
-    ["weight_loss", "maintenance", "muscle_gain"].includes(profile.healthGoal)
-  ) {
-    healthGoal = profile.healthGoal as HealthGoal;
+  if (profile.healthGoal) {
+    const goal = profile.healthGoal.toString().toLowerCase().trim();
+    if (goal.includes("loss") || goal.includes("lose")) healthGoal = "weight_loss";
+    else if (goal.includes("gain") || goal.includes("build") || goal.includes("muscle")) healthGoal = "muscle_gain";
+    else if (goal.includes("maintenance") || goal.includes("maintain") || goal.includes("healthy")) healthGoal = "maintenance";
+    else return null;
   } else {
-      return null;
+    return null;
   }
 
   return {

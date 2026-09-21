@@ -7,6 +7,15 @@
 
 ## 🗓️ Last Session Summary
 **Date:** 2026-09-21
+**Work Done — Smart Nutrition Calibrator Integration:**
+- **Calculation Engine (`frontend/src/utils/macroCalculator.ts`)**: Rewrote string-to-enum mapping function `mapProfileToMetrics` to handle the free-form text from `UserProfileContext` safely.
+- **Unit Testing**: Added `vitest` to frontend and wrote 10 tests in `macroCalculator.test.ts` to verify Mifflin-St Jeor, Activity Multipliers, and 1200kcal floor rule. Tests passed in 11ms.
+- **State Synchronization (`frontend/src/components/Profile.tsx`)**: Verified real-time auto-calculation preview and seamless integration of the "Apply" CTA targeting `UserStatsContext.updateDailyGoals()`.
+
+---
+
+## 🗓️ Previous Session Summary
+**Date:** 2026-09-21
 **Work Done — Production Dual-Mode Scanner & OCR UX Enhancement:**
 - **Frontend Scanner UI & ZXing Integration (`frontend/src/components/Scan.tsx`)**:
   - Completed implementation of a 2-mode scanner UI (Barcode Scan and Back-of-Pack OCR) with brutalist UI enhancements and laser animations.
