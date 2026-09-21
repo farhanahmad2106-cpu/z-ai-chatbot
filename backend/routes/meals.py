@@ -5,17 +5,28 @@ import datetime
 
 # Reuse authentication dependency from main app logic 
 # (assuming it's accessible or we redefine/import the same logic)
-# We will import the `users_collection` and `get_current_user_id` from main indirectly or recreate auth here
-# To avoid circular imports, we'll import `get_current_user_id` and `users_collection` from main
-from main import get_current_user_id, users_collection
 from schemas.meal_plan import GeneratePlanRequest, SwapMealRequest, MealPlanResponse, MealPlanItem
 from services.meal_planner.planner import generate_meal_plan, swap_meal
+import sys
+
+def get_users_collection():
+    main_mod = sys.modules.get("main") or sys.modules.get("backend.main")
+    if main_mod and hasattr(main_mod, "users_collection"):
+        return main_mod.users_collection
+    return None
+
+async def get_current_user_id(authorization: Optional[str] = Header(None)) -> str:
+    main_mod = sys.modules.get("main") or sys.modules.get("backend.main")
+    if main_mod and hasattr(main_mod, "get_current_user_id"):
+        return await main_mod.get_current_user_id(authorization)
+    raise HTTPException(status_code=401, detail="Authentication dependency not ready")
 
 router = APIRouter(prefix="/api/meals", tags=["meals"])
 
 @router.post("/generate-plan", response_model=MealPlanResponse)
 async def generate_plan(request: GeneratePlanRequest, uid: str = Depends(get_current_user_id)):
-    user = await users_collection.find_one({"uid": uid})
+    users_col = get_users_collection()
+    user = await users_col.find_one({"uid": uid}) if users_col else None
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
         
@@ -40,7 +51,8 @@ async def generate_plan(request: GeneratePlanRequest, uid: str = Depends(get_cur
 
 @router.post("/swap", response_model=MealPlanItem)
 async def swap(request: SwapMealRequest, uid: str = Depends(get_current_user_id)):
-    user = await users_collection.find_one({"uid": uid})
+    users_col = get_users_collection()
+    user = await users_col.find_one({"uid": uid}) if users_col else None
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
         

@@ -7,6 +7,18 @@
 
 ## 🗓️ Last Session Summary
 **Date:** 2026-09-21
+**Work Done — End-to-End Clinical Validation of Smart Meal Planner:**
+- **Circular Import Fix**: Resolved circular dependency in `backend/routes/meals.py` (`from main import get_current_user_id, users_collection`) that was crashing the backend during module imports.
+- **Clinical Validation Test Suite**: Implemented `tests/test_meal_planner_clinical.py` covering all 4 clinical personas, strict nutrient boundaries, allergen exclusions, swap safety invariants, case normalization, and alias mapping.
+- **Execution & Findings**: Executed `python -m pytest tests/test_meal_planner_clinical.py -v --tb=short`. 8 passed, 4 failed. Caught 3 critical production bugs:
+  1. Missing vegetarian/dairy-free lunch items in `meal_repository.py` causing silent omission of the lunch slot (returning 3 meals instead of 4).
+  2. Lack of portion/serving scaling in `planner.py` leading to a severe calorie budget deficit (-35.5%) for 2200 kcal athletic targets.
+  3. Swap failure (returns `None`) when no alternative exists in the database for constrained profiles.
+
+---
+
+## 🗓️ Previous Session Summary
+**Date:** 2026-09-21
 **Work Done — Smart Nutrition Calibrator Integration:**
 - **Calculation Engine (`frontend/src/utils/macroCalculator.ts`)**: Rewrote string-to-enum mapping function `mapProfileToMetrics` to handle the free-form text from `UserProfileContext` safely.
 - **Unit Testing**: Added `vitest` to frontend and wrote 10 tests in `macroCalculator.test.ts` to verify Mifflin-St Jeor, Activity Multipliers, and 1200kcal floor rule. Tests passed in 11ms.
