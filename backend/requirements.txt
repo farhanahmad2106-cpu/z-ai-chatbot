@@ -12,5 +12,4 @@ firebase-admin
 pytesseract
 opencv-python-headless
 Pillow
-razorpay==1.4.1
-setuptools
+razorpay==2.0.1
