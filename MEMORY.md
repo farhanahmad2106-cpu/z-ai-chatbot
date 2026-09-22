@@ -1,11 +1,47 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-22 (Session: Production UI Compliance, Consent & Disclosure Implementation)
+> **Last Updated:** 2026-09-22 (Session: Razorpay Webhook + Subscription + Super Admin Refund FinTech E2E Smoke Test)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-22
+**Work Done — Razorpay Webhook + Subscription + Super Admin Refund FinTech E2E Smoke Test:**
+- **FinTech Pipeline Backend Hardening (`backend/schemas/subscription.py`, `backend/routes/webhooks.py`, `backend/routes/admin.py`)**:
+  - `backend/schemas/subscription.py`: Updated `RefundRequest.reason` to accept `Union[RefundReasonEnum, str]`, supporting both preset administrative enums and custom test/cancellation audit reasons.
+  - `backend/routes/webhooks.py`:
+    - Added structured `system_logs` persistence helper `_log_webhook_event` recording events into MongoDB Atlas collection `system_logs`.
+    - Added direct event ingestion handler for `event == "payment.captured"` alongside existing subscription lifecycle hooks (`subscription.activated`, `subscription.charged`). Sets `tier="pro"`, resets monthly scan count, and allocates designated scan quota (`usage.scan_limit=500`).
+    - Added idempotent replay protection via MongoDB `DuplicateKeyError` on `event_id` / `events` collection, rejecting duplicate credits while returning HTTP 200 `{"status": "ok", "message": "Duplicate event ignored"}`.
+    - Updated lazy collection getters to resolve `backend.main`, `main`, or `__main__` modules dynamically.
+  - `backend/routes/admin.py`:
+    - Standardized `process_refund` to enforce super admin privilege (`canManageAdmins`), safely handle string/enum reasons, execute mocked/real Razorpay gateway refund, update transaction status to `"refunded"`, append refund history to `tx["refunds"]`, downgrade user tier to `"free"`, and reset quota (`usage.scan_limit=20`).
+    - Enforced over-refund validation: `amount > tx["amount"]` rejected with HTTP 400 (`"Refund amount cannot exceed transaction amount"`).
+    - Enforced zero/negative amount validation via Pydantic (`amount: Optional[int] = Field(None, gt=0)` returning HTTP 422).
+    - Enforced duplicate refund protection: If `tx.status == "refunded"` or already fully refunded, rejects with HTTP 409 (`"Transaction already fully refunded"`).
+    - Enforced refund failure atomicity: If gateway throws an exception, raises HTTP 502, writes error to `system_logs`, and aborts DB mutations without modifying transaction or user state.
+- **Automated FinTech Pytest Suite (`tests/test_fintech_smoke.py`)**:
+  - Implemented synchronous FastAPI `TestClient` suite covering all operational and security smoke test suites:
+    - Suite A & C: Authorized Webhook Ingestion & Idempotent Replay Protection.
+    - Suite B: HMAC-SHA256 Signature Security (Tampered, missing, malformed).
+    - Suite D, E, F, G: Super Admin Authorization, Refund Execution, DB Reconciliation, User Downgrade & Quota Reset.
+    - Suite H: Excess Refund Amount Validation.
+    - Suite I: Zero / Negative Refund Validation.
+    - Suite J: Duplicate Refund Protection.
+    - Suite K: Refund Failure Atomicity & Error Logging.
+  - Test result: **7/7 PASSED (100% pass rate in 4.80s)**.
+- **Admin UI FinTech Regression Suite (`frontend/src/tests/userManagementTab.test.ts`)**:
+  - Tested `UserManagementTab.tsx` refund action visibility:
+    - Renders Banknote refund action for paid pro/premium users when admin has `canManageAdmins` privilege.
+    - Hides Banknote action for free tier users and non-super admins.
+    - Reconciles state upon refund: User badge updates to Free, scan quota resets to 20, and Banknote button disappears.
+  - Vitest test result: **32/32 PASSED across 4 test files (100% pass rate in 735ms)**.
+  - Frontend production build: **PASSED (0 TypeScript errors, 5.23s)**.
+
+---
+
+## 🗓️ Previous Session Summary
 **Date:** 2026-09-22
 **Work Done — Production UI Compliance, Consent & Disclosure Implementation:**
 - **Health Vault Consent Gate (`frontend/src/components/profile/HealthConsentModal.tsx`, `frontend/src/components/Profile.tsx`, `frontend/src/context/UserProfileContext.tsx`)**:

@@ -54,24 +54,47 @@ def _verify_razorpay_signature(body: bytes, signature: str) -> bool:
 def _get_users_collection():
     """Lazy import to avoid circular dependency with main.py."""
     import sys
-    main_module = sys.modules.get("main") or sys.modules.get("__main__")
+    main_module = sys.modules.get("backend.main") or sys.modules.get("main") or sys.modules.get("__main__")
     if main_module and hasattr(main_module, "users_collection"):
         return main_module.users_collection
     raise RuntimeError("users_collection not available")
 
+def _get_logs_collection():
+    """Lazy import to avoid circular dependency with main.py."""
+    import sys
+    main_module = sys.modules.get("backend.main") or sys.modules.get("main") or sys.modules.get("__main__")
+    if main_module and hasattr(main_module, "system_logs_collection"):
+        return main_module.system_logs_collection
+    return None
+
 def _get_transactions_collection():
     """Lazy import to avoid circular dependency with main.py."""
     import sys
-    main_module = sys.modules.get("main") or sys.modules.get("__main__")
+    main_module = sys.modules.get("backend.main") or sys.modules.get("main") or sys.modules.get("__main__")
     if main_module and hasattr(main_module, "transactions_collection"):
         return main_module.transactions_collection
     raise RuntimeError("transactions_collection not available")
+
+async def _log_webhook_event(level: str, service: str, message: str, details: dict = None):
+    try:
+        logs_col = _get_logs_collection()
+        if logs_col is not None:
+            await logs_col.insert_one({
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "level": level.upper(),
+                "service": service,
+                "message": message,
+                "details": details or {},
+            })
+    except Exception as e:
+        print(f"[SystemLog Error] {e}")
 
 
 @router.post("/razorpay")
 async def razorpay_webhook(request: Request):
     """
-    Handles all Razorpay subscription webhook events:
+    Handles all Razorpay subscription & payment webhook events:
+    - payment.captured        → Direct/one-time payment capture & quota grant
     - subscription.activated  → Grant premium tier access
     - subscription.charged    → Confirm renewal, reset usage
     - subscription.charged.failed → Downgrade to free tier
@@ -85,6 +108,7 @@ async def razorpay_webhook(request: Request):
     # ⚠️ CRITICAL: Verify HMAC signature
     if not signature or not _verify_razorpay_signature(body, signature):
         print("Razorpay webhook: invalid or missing signature — rejecting")
+        await _log_webhook_event("WARNING", "Webhook", "Razorpay webhook signature verification failed")
         raise HTTPException(status_code=400, detail="Invalid webhook signature")
 
     try:
@@ -95,20 +119,27 @@ async def razorpay_webhook(request: Request):
     event = payload.get("event", "")
     subscription_entity = payload.get("payload", {}).get("subscription", {}).get("entity", {})
     payment_entity = payload.get("payload", {}).get("payment", {}).get("entity", {})
+    notes = payment_entity.get("notes", {})
     
-    subscription_id = subscription_entity.get("id", "")
+    subscription_id = subscription_entity.get("id", "") or payment_entity.get("subscription_id") or notes.get("subscription_id")
     plan_id = subscription_entity.get("plan_id", "")
     tier_map = get_tier_plan_map()
-    tier = tier_map.get(plan_id, "free")
+    tier = notes.get("tier") or tier_map.get(plan_id, "free")
     
     payment_id = payment_entity.get("id")
     amount = payment_entity.get("amount")
+    user_id = notes.get("user_id")
     
     event_id = request.headers.get("x-razorpay-event-id") or payload.get("id")
+    if not event_id and payment_id:
+        event_id = f"evt_{payment_id}"
+
+    if not subscription_id and payment_id:
+        subscription_id = f"sub_{payment_id}"
 
     print(f"Razorpay Webhook received: event={event}, sub_id={subscription_id}, tier={tier}")
 
-    if not subscription_id or not event_id:
+    if not event_id or (not subscription_id and not payment_id):
         print("Webhook: no subscription_id or event_id in payload — ignoring")
         return {"status": "ok"}
         
@@ -120,18 +151,55 @@ async def razorpay_webhook(request: Request):
             "event": event,
             "subscription_id": subscription_id,
             "payment_id": payment_id,
+            "order_id": payment_entity.get("order_id"),
+            "user_id": user_id,
             "amount": amount,
+            "currency": payment_entity.get("currency", "INR"),
+            "status": "captured",
+            "method": payment_entity.get("method"),
+            "email": payment_entity.get("email"),
+            "notes": notes,
             "refunds": [],
             "timestamp": datetime.now(timezone.utc)
         })
     except pymongo.errors.DuplicateKeyError:
         print(f"Webhook {event_id} already processed. Skipping.")
-        return {"status": "ok"}
+        await _log_webhook_event("INFO", "Webhook", f"Duplicate webhook event ignored: {event_id}")
+        return {"status": "ok", "message": "Duplicate event ignored"}
 
     users_collection = _get_users_collection()
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    if event == "subscription.activated":
+    if event == "payment.captured":
+        tier_to_set = notes.get("tier") or "pro"
+        quota_to_set = int(notes.get("scan_quota")) if notes.get("scan_quota") else TIER_SCAN_LIMITS.get(tier_to_set, 200)
+
+        user_filter = {}
+        if user_id:
+            user_filter = {"uid": user_id}
+        elif subscription_id:
+            user_filter = {"subscription.razorpay_subscription_id": subscription_id}
+        elif payment_entity.get("email"):
+            user_filter = {"email": payment_entity.get("email")}
+
+        if user_filter:
+            await users_collection.update_one(
+                user_filter,
+                {"$set": {
+                    "tier": tier_to_set,
+                    "subscription.status": "active",
+                    "subscription.plan": tier_to_set,
+                    "subscription.start_date": today_str,
+                    "subscription.auto_renew": False,
+                    "subscription.razorpay_subscription_id": subscription_id,
+                    "usage.scan_limit": quota_to_set,
+                    "usage.scans_used_this_month": 0,
+                }}
+            )
+            print(f"[OK] Payment captured: user={user_filter}, tier={tier_to_set}, quota={quota_to_set}")
+            await _log_webhook_event("INFO", "FinTech", f"Payment captured for user: {payment_id} ({amount} INR)")
+
+    elif event == "subscription.activated":
         # [OK] Grant premium access immediately
         scan_limit = TIER_SCAN_LIMITS.get(tier, 20)
         await users_collection.update_one(

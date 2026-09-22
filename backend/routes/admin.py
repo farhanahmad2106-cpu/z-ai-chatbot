@@ -59,22 +59,37 @@ def _get_db():
 
 
 def _get_admins_collection():
+    main_module = sys.modules.get("backend.main") or sys.modules.get("main") or sys.modules.get("__main__")
+    if main_module and hasattr(main_module, "admins_collection"):
+        return main_module.admins_collection
     return _get_db()["admins"]
 
 
 def _get_foods_collection():
+    main_module = sys.modules.get("backend.main") or sys.modules.get("main") or sys.modules.get("__main__")
+    if main_module and hasattr(main_module, "foods_collection"):
+        return main_module.foods_collection
     return _get_db()["foods"]
 
 
 def _get_users_collection():
+    main_module = sys.modules.get("backend.main") or sys.modules.get("main") or sys.modules.get("__main__")
+    if main_module and hasattr(main_module, "users_collection"):
+        return main_module.users_collection
     return _get_db()["users"]
 
 
 def _get_logs_collection():
+    main_module = sys.modules.get("backend.main") or sys.modules.get("main") or sys.modules.get("__main__")
+    if main_module and hasattr(main_module, "system_logs_collection"):
+        return main_module.system_logs_collection
     return _get_db()["system_logs"]
 
 
 def _get_transactions_collection():
+    main_module = sys.modules.get("backend.main") or sys.modules.get("main") or sys.modules.get("__main__")
+    if main_module and hasattr(main_module, "transactions_collection"):
+        return main_module.transactions_collection
     return _get_db()["transactions"]
 
 
@@ -1023,8 +1038,9 @@ async def process_refund(
 
     client = razorpay.Client(auth=(key_id, key_secret))
     
+    reason_str = request.reason.value if hasattr(request.reason, "value") else str(request.reason)
     payload = {
-        "notes": {"reason": request.reason.value}
+        "notes": {"reason": reason_str}
     }
     if not is_full_refund:
         payload["amount"] = refund_amount
@@ -1039,23 +1055,38 @@ async def process_refund(
     refund_record = {
         "refund_id": rzp_refund.get("id"),
         "amount": refund_amount,
-        "reason": request.reason.value,
+        "reason": reason_str,
         "admin_email": admin.get("email"),
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "status": rzp_refund.get("status")
     }
 
+    tx_update = {
+        "$push": {"refunds": refund_record}
+    }
+    if is_full_refund:
+        tx_update["$set"] = {"status": "refunded"}
+
     await transactions_col.update_one(
         {"_id": tx["_id"]},
-        {"$push": {"refunds": refund_record}}
+        tx_update
     )
 
     # 5. Resolve User & Apply Downgrade (Only if Full Refund AND matches active subscription)
     user_downgraded = False
     if is_full_refund:
         subscription_id = tx.get("subscription_id")
-        if subscription_id:
-            user = await users_col.find_one({"subscription.razorpay_subscription_id": subscription_id})
+        user_id = tx.get("user_id") or tx.get("notes", {}).get("user_id")
+        user_query = None
+        if subscription_id and user_id:
+            user_query = {"$or": [{"subscription.razorpay_subscription_id": subscription_id}, {"uid": user_id}]}
+        elif subscription_id:
+            user_query = {"subscription.razorpay_subscription_id": subscription_id}
+        elif user_id:
+            user_query = {"uid": user_id}
+
+        if user_query:
+            user = await users_col.find_one(user_query)
             if user:
                 # Confirm this is their active subscription
                 if user.get("subscription", {}).get("status") == "active":
@@ -1084,6 +1115,6 @@ async def process_refund(
         "refund_id": rzp_refund.get("id"),
         "refunded_amount": refund_amount,
         "status": rzp_refund.get("status"),
-        "reason": request.reason.value,
+        "reason": reason_str,
         "user_downgraded": user_downgraded
     }

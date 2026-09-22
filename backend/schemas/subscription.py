@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union
 from pydantic import BaseModel, Field
 from enum import Enum
 
@@ -11,4 +11,4 @@ class RefundReasonEnum(str, Enum):
 class RefundRequest(BaseModel):
     payment_id: str = Field(..., min_length=1, description="Razorpay Payment ID")
     amount: Optional[int] = Field(None, gt=0, description="Amount in paise. If omitted, performs a full refund.")
-    reason: RefundReasonEnum = Field(..., description="Reason for the refund")
+    reason: Union[RefundReasonEnum, str] = Field(..., description="Reason for the refund")
