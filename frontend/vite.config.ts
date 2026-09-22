@@ -3,6 +3,18 @@ import react, { reactCompilerPreset } from '@vitejs/plugin-react'
 import babel from '@rolldown/plugin-babel'
 import path from 'path'
 
+// @ts-ignore
+import { copyLegalDocs } from './scripts/copy-legal-docs.mjs'
+
+function legalDocsPlugin() {
+  return {
+    name: 'legal-docs-sync',
+    buildStart() {
+      copyLegalDocs()
+    }
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   esbuild: {
@@ -18,6 +30,7 @@ export default defineConfig({
     }
   },
   plugins: [
+    legalDocsPlugin(),
     react(),
     babel({
       include: /\.[tj]sx?$/,

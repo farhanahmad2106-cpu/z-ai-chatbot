@@ -29,29 +29,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [showLoginModal, setShowLoginModal] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user: any | null) => {
-      setCurrentUser(user);
-      setLoading(false);
-      
-      if (user) {
-        setShowLoginModal(false);
-        try {
-          const token = await user.getIdToken();
-          const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-          await fetch(`${API_BASE}/api/auth/sync`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ token })
-          });
-        } catch (error) {
-          console.error("Failed to sync user with backend:", error);
+    try {
+      const unsubscribe = onAuthStateChanged(
+        auth, 
+        async (user: any | null) => {
+          setCurrentUser(user);
+          setLoading(false);
+          
+          if (user) {
+            setShowLoginModal(false);
+            try {
+              const token = await user.getIdToken();
+              const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+              await fetch(`${API_BASE}/api/auth/sync`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ token })
+              });
+            } catch (error) {
+              console.error("Failed to sync user with backend:", error);
+            }
+          }
+        },
+        (error: Error) => {
+          console.warn("[AuthContext] Firebase auth listener warning:", error);
+          setLoading(false);
         }
-      }
-    });
+      );
 
-    return unsubscribe;
+      return unsubscribe;
+    } catch (e) {
+      console.warn("[AuthContext] Unable to initialize auth listener:", e);
+      setLoading(false);
+    }
   }, []);
 
   const signInWithGoogle = async () => {

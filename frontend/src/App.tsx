@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { User, Flame, ShieldAlert } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import Search from './components/Search';
@@ -38,6 +38,7 @@ function App() {
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
   const [scanImageData, setScanImageData] = useState<string | null>(null);
+  const hasInternalNavRef = useRef(false);
 
   // --- Freemium: Payment result state ---
   const [paymentResult, setPaymentResult] = useState<{
@@ -54,6 +55,7 @@ function App() {
   const { settings } = useUserProfile();
 
   const navigateToTab = useCallback((tab: AppTab) => {
+    hasInternalNavRef.current = true;
     setActiveTab(tab);
     if (typeof window !== 'undefined') {
       const paths: Record<string, string> = {
@@ -68,8 +70,19 @@ function App() {
       if (window.location.pathname !== newPath) {
         window.history.pushState(null, '', newPath);
       }
+      if (tab === 'dashboard') {
+        document.title = 'Z-SeHealth';
+      }
     }
   }, []);
+
+  const handleBackToApp = useCallback(() => {
+    if (hasInternalNavRef.current && typeof window !== 'undefined' && window.history.length > 1) {
+      window.history.back();
+    } else {
+      navigateToTab('dashboard');
+    }
+  }, [navigateToTab]);
 
   // --- URL Path Sync: Support direct navigation and browser back/forward ---
   useEffect(() => {
@@ -87,6 +100,7 @@ function App() {
         setActiveTab('cookies');
       } else {
         setActiveTab('dashboard');
+        document.title = 'Z-SeHealth';
       }
     };
     window.addEventListener('popstate', onPopState);
@@ -321,7 +335,7 @@ function App() {
           <LegalViewer 
             activeDoc={activeTab} 
             onNavigate={(doc) => navigateToTab(doc)} 
-            onBackToApp={() => navigateToTab('dashboard')} 
+            onBackToApp={handleBackToApp} 
           />
         )}
       </main>

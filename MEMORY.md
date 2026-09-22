@@ -1,13 +1,43 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-21 (Session: Sprint 3 - Clinical Meal Planner Remediation & Dynamic Portion Scaling)
+> **Last Updated:** 2026-09-22 (Session: Production-Grade Legal Document System & Routing Architecture)
 
 ---
 
 ## 🗓️ Last Session Summary
-**Date:** 2026-09-21
-**Work Done — Clinical Meal Planner Remediation & Dynamic Portion Scaling:**
+**Date:** 2026-09-22
+**Work Done — Production-Grade Legal Document System & Routing Architecture:**
+- **Authoritative Document Static Exposure (`frontend/scripts/copy-legal-docs.mjs`, `frontend/vite.config.ts`, `frontend/package.json`)**:
+  - Implemented automated cross-platform sync script copying `.zayd_docs/` (`PRIVACY_POLICY.md`, `TERMS_OF_SERVICE.md`, `REFUND_POLICY.md`, `COOKIE_POLICY.md`) to `frontend/public/legal/`.
+  - Wired into npm `"prebuild"` and `"predev"` lifecycle hooks, plus a custom Vite plugin in `vite.config.ts` (`legalDocsPlugin()`).
+  - Purged hardcoded markdown raw import bundling, reducing JavaScript bundle size from 1,340 kB to 1,273 kB while serving authoritative documents via static HTTP requests.
+- **Centralized Legal Configuration (`frontend/src/config/legal.ts`, `frontend/src/config/legal.test.ts`)**:
+  - Created centralized route mapping for all 4 legal routes (`/privacy`, `/terms`, `/refund`, `/cookies`) with slugs, document titles, static sources, and SEO page titles.
+  - Added unit test suite in `legal.test.ts` verifying all slug mappings (15/15 frontend tests passing).
+- **Hardened Dynamic Legal Viewer (`frontend/src/components/legal/LegalViewer.tsx`)**:
+  - Implemented responsive brutalist legal reader with dark theme (`bg-slate-950`, `bg-slate-900`, `text-emerald-400`, `border-slate-800`).
+  - Integrated `react-markdown` and `remark-gfm` with complete custom typography: H1-H4 headings with Outfit font, horizontal scroll table wrapper (`overflow-x-auto min-w-[540px]`), monospaced code blocks, custom blockquotes, and secure link interceptors (opening external links with `target="_blank" rel="noopener noreferrer"` and internal legal links via client-side routing).
+  - Added loading indicator and resilient error state with retry and back-to-app CTA.
+  - Accessible sidebar navigation with `aria-current="page"` and visible keyboard focus rings.
+  - Dynamic `document.title` synchronization.
+- **Shared Footer Compliance & Routing Alignment (`frontend/src/components/Footer.tsx`)**:
+  - Replaced unverified merchant claim with technically accurate label: `"DPDP Act (2023) Aligned | Razorpay Integration"`.
+  - Converted buttons to semantic anchor tags (`href="/privacy"`, etc.) with client-side SPA navigation interceptors.
+  - Maintained canonical copyright notice: `© 2026 Z-SeHealth. Academic Innovation under PRAGATI-2026.` and contact `support.zsehealth@gmail.com`.
+- **SPA Routing, Deep Linking & Auth Preservation (`frontend/src/App.tsx`, `frontend/src/firebase.ts`, `frontend/src/context/AuthContext.tsx`)**:
+  - Synchronized browser history and URL routes for `/privacy`, `/terms`, `/refund`, `/cookies` with `popstate` back/forward listener.
+  - Implemented smart "Back to App" behavior that pops browser history if entered internally or defaults to `/` without clearing session state or resetting Firebase authentication.
+  - Hardened `firebase.ts` against duplicate app initialization using `getApps().length === 0 ? initializeApp(...) : getApp()` and provided fallback configuration preventing cold boot exceptions when env vars are unpopulated in test/preview environments.
+- **Verification & Testing**:
+  - `npm --prefix frontend run test`: **15/15 PASSED (100% pass rate in 1.45s)**.
+  - `npm --prefix frontend run build`: **PASSED (0 TypeScript errors, 6.67s)**.
+  - Browser verification with Playwright subagent on production preview server (`http://localhost:4173/`):
+    - Verified all 4 routes (`/privacy`, `/terms`, `/refund`, `/cookies`).
+    - Verified markdown tables, headers, and sidebar active indicators.
+    - Verified "Back to App" navigation to Dashboard.
+    - Verified footer links and compliance label.
+    - Verified direct page refresh at `/privacy` without 404.
 - **Schema Updates (`backend/schemas/meal_plan.py`)**: Added backward-compatible optional fields `servings: Optional[float] = 1.0` and `added_sugar_g: Optional[float] = 0.0` to `MealPlanItem` and `DailyTotals` models.
 - **Dataset Expansion (`backend/services/meal_planner/meal_repository.py`)**: Expanded `INDIAN_MEAL_DATASET` from 12 to 25 items, adding authentic, high-protein, allergen-safe, and low-sodium Indian dishes across all slots (e.g., Rajma Masala & Brown Rice, Yellow Moong Dal Tadka & Quinoa, Chana Masala with Jowar Roti, Grilled Chicken Tikka with Quinoa, Lauki Chana Dal, Roasted Makhana, Boiled Egg Whites).
 - **Dynamic Portion Scaling Engine (`backend/services/meal_planner/planner.py`)**:
