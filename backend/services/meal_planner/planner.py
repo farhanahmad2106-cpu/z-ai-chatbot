@@ -1,6 +1,6 @@
 # backend/services/meal_planner/planner.py
 import uuid
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from .meal_repository import get_all_meals, get_meal_by_id
 from .conflict_analyzer import analyze_meal_conflict
 
@@ -11,8 +11,49 @@ DEFAULT_DISTRIBUTION = {
     "dinner": 0.30
 }
 
-def generate_meal_plan(target_calories: float, meal_types: List[str], health_vault: Dict[str, Any], preferences: Dict[str, Any]) -> Dict[str, Any]:
-    all_meals = get_all_meals()
+def normalize_custom_meal_for_planner(cm: Dict[str, Any]) -> Dict[str, Any]:
+    per_serv = cm.get("per_serving_nutrition", {})
+    mid = str(cm.get("_id") or cm.get("id"))
+    ingredients_list = []
+    for ing in cm.get("ingredients", []):
+        if isinstance(ing, dict):
+            ingredients_list.append(ing.get("name", ""))
+        else:
+            ingredients_list.append(str(ing))
+            
+    return {
+        "id": mid,
+        "meal_id": mid,
+        "name": cm.get("name"),
+        "meal_type": cm.get("meal_type"),
+        "calories": float(per_serv.get("calories", 0.0)),
+        "protein_g": float(per_serv.get("protein_g", 0.0)),
+        "carbs_g": float(per_serv.get("carbs_g", 0.0)),
+        "fat_g": float(per_serv.get("fat_g", 0.0)),
+        "fiber_g": float(per_serv.get("fiber_g", 3.0)),
+        "sodium_mg": float(per_serv.get("sodium_mg", 0.0)),
+        "sugar_g": float(per_serv.get("added_sugar_g", 0.0)),
+        "added_sugar_g": float(per_serv.get("added_sugar_g", 0.0)),
+        "allergen_tags": cm.get("detected_allergens", []),
+        "dietary_tags": ["vegetarian"] if not any(k in cm.get("name", "").lower() for k in ["chicken", "mutton", "fish", "meat", "egg"]) else [],
+        "ingredients": ingredients_list,
+        "is_custom": True,
+        "servings": cm.get("servings", 1)
+    }
+
+def generate_meal_plan(
+    target_calories: float,
+    meal_types: List[str],
+    health_vault: Dict[str, Any],
+    preferences: Dict[str, Any],
+    custom_meals: Optional[List[Dict[str, Any]]] = None
+) -> Dict[str, Any]:
+    all_meals = list(get_all_meals())
+    if custom_meals:
+        for cm in custom_meals:
+            if cm.get("planner_eligible", True) and cm.get("include_in_planner", True) and cm.get("safety_tier") != "CRITICAL":
+                all_meals.append(normalize_custom_meal_for_planner(cm))
+
     user_conditions = (health_vault.get("medicalConditions") or "").lower()
     
     # 1. Filter out critical conflicts and group by meal type
@@ -27,6 +68,7 @@ def generate_meal_plan(target_calories: float, meal_types: List[str], health_vau
                 meal_item["safety_score"] = conflict["safety_score"]
                 meal_item["safety_class"] = conflict["safety_class"]
                 safe_meals_by_type[mt].append(meal_item)
+
                 
     # 2. Normalize calorie distribution over requested meal slots
     total_weight = sum(DEFAULT_DISTRIBUTION.get(mt, 0.25) for mt in meal_types) or 1.0
@@ -150,9 +192,22 @@ def generate_meal_plan(target_calories: float, meal_types: List[str], health_vau
         "calorie_deviation_percent": float(calorie_deviation)
     }
 
-def swap_meal(current_meal_id: str, meal_type: str, target_calories: float, health_vault: Dict[str, Any], preferences: Dict[str, Any]) -> Dict[str, Any]:
-    all_meals = get_all_meals()
+def swap_meal(
+    current_meal_id: str,
+    meal_type: str,
+    target_calories: float,
+    health_vault: Dict[str, Any],
+    preferences: Dict[str, Any],
+    custom_meals: Optional[List[Dict[str, Any]]] = None
+) -> Dict[str, Any]:
+    all_meals = list(get_all_meals())
+    if custom_meals:
+        for cm in custom_meals:
+            if cm.get("planner_eligible", True) and cm.get("include_in_planner", True) and cm.get("safety_tier") != "CRITICAL":
+                all_meals.append(normalize_custom_meal_for_planner(cm))
+
     user_conditions = (health_vault.get("medicalConditions") or "").lower()
+
     
     cal_distribution = {
         "breakfast": 0.25,

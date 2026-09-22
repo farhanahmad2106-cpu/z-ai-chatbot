@@ -5,6 +5,8 @@ import { Camera, Utensils } from 'lucide-react';
 import SubscriptionBadge from './SubscriptionBadge';
 import UpgradeModal from './UpgradeModal';
 import { LandingLoadingOverlay, InteractiveQuoteCard } from './LandingLoadingOverlay';
+import { CustomRecipeModal } from './CustomRecipeModal';
+
 
 interface DashboardProps {
   onNavigateToScan?: (imageData: string) => void;
@@ -15,7 +17,9 @@ export default function Dashboard({ onNavigateToScan, onGoToPricing }: Dashboard
   const { stats, dailyGoals, streak, loadingStats, showUpgradeModal, setShowUpgradeModal } = useUserStats();
   const { preferences } = useUserProfile();
   
+  const [showRecipeModal, setShowRecipeModal] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -97,7 +101,7 @@ export default function Dashboard({ onNavigateToScan, onGoToPricing }: Dashboard
       )}
 
       {/* Welcome Heading */}
-      <div className="mb-6 text-left flex items-start justify-between gap-4">
+      <div className="mb-6 text-left flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-4xl font-extrabold tracking-tight text-white drop-shadow-sm">
             Your day, in nutrients.
@@ -106,8 +110,18 @@ export default function Dashboard({ onNavigateToScan, onGoToPricing }: Dashboard
             Track your nutritional limits and keep your health score optimal.
           </p>
         </div>
-        <SubscriptionBadge variant="full" onUpgradeClick={onGoToPricing} />
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowRecipeModal(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-wider bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300 shadow-sm transition-all"
+          >
+            <span>🍲</span>
+            <span>Add My Recipe</span>
+          </button>
+          <SubscriptionBadge variant="full" onUpgradeClick={onGoToPricing} />
+        </div>
       </div>
+
 
       {/* Top Section: Dietary Profile (Left) and Quote Card (Right) */}
       <div className={`grid grid-cols-1 ${(preferences.diet !== 'None' || (preferences.allergies && preferences.allergies.length > 0)) ? 'lg:grid-cols-2' : ''} gap-6 mb-6`}>
@@ -289,6 +303,13 @@ export default function Dashboard({ onNavigateToScan, onGoToPricing }: Dashboard
         </div>
 
       </div>
+
+      {/* Custom Recipe Ingestion Modal */}
+      <CustomRecipeModal
+        isOpen={showRecipeModal}
+        onClose={() => setShowRecipeModal(false)}
+      />
     </div>
   );
 }
+

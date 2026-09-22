@@ -1,13 +1,52 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-22 (Session: Indic Meal Planner Localization across 6 Languages)
+> **Last Updated:** 2026-09-22 (Session: Community Recipe & Custom Meal Ingestion Pipeline)
 
 ---
 
 ## 🗓️ Last Session Summary
 **Date:** 2026-09-22
+**Work Done — Community Recipe & Custom Meal Ingestion Pipeline:**
+- **Deterministic Nutrition Lookup Engine (`backend/services/nutrition_lookup.py`)**:
+  - Implemented Priority 1 local offline nutrition database for 60+ Indian regional staples (grains, pulses, dairy, vegetables, oils, spices, sweeteners).
+  - Exact deterministic salt-to-sodium conversion: `1g salt ≈ 393mg sodium` (`100g = 39,300mg sodium`).
+  - Canonical key normalization supporting Hinglish and regional names (atta, maida, suji, rava, chana, toor, moong, rajma, paneer, ghee, etc.).
+  - Implemented Priority 2 Gemini 2.5 Flash fallback with strict JSON schema and strict numeric bounds validation (calories <= 1000, macros <= 100g, sodium <= 40,000mg).
+- **Clinical Recipe Analyzer & Safety Scoring (`backend/services/recipe_analyzer.py`)**:
+  - Multi-serving scaling: computes total recipe nutrition and per-serving nutrition (`total / servings`).
+  - Screening against Health Vault clinical rules:
+    - **Hypertension**: per-serving sodium > 500mg triggers moderate warning, > 800mg triggers critical alert and excludes from planner.
+    - **Diabetes**: per-serving added sugar > 5g triggers warning; refined flour (maida) triggers glycemic spike warning.
+  - Allergen screening: checks declared allergies against recipe ingredients and allergen tags; critical conflict forces `safety_tier = "CRITICAL"` and `planner_eligible = False`.
+  - Deterministic safety scoring (0–100) and tier categorization (`SAFE`, `MODERATE`, `CRITICAL`).
+- **Data Contracts & Persistence (`backend/schemas/custom_meal.py`, `backend/routes/custom_meals.py`, `backend/main.py`)**:
+  - Defined Pydantic schemas: `IngredientItemInput`, `CustomMealCreateRequest`, `MacroNutrients`, `AnalyzedIngredientDetail`, `CustomMealResponse`.
+  - Created endpoints under `/api/meals/custom`:
+    - `POST /api/meals/custom`: Authenticated recipe creation, clinical analysis, MongoDB persistence, optional today's meal logging (`log_to_today`).
+    - `GET /api/meals/custom`: Retrieves user's active custom recipes with tenant isolation.
+    - `DELETE /api/meals/custom/{meal_id}`: Strict ownership verification (403 on tenant mismatch) and soft-deletion (`deleted_at`).
+  - Registered `custom_meals` MongoDB collection with background compound indexes `[("user_id", 1), ("created_at", -1)]` and `[("user_id", 1), ("deleted_at", 1)]`.
+- **Smart Meal Planner Integration (`backend/services/meal_planner/planner.py`, `backend/services/meal_planner/weekly_planner.py`, `backend/routes/meals.py`)**:
+  - Custom meals with `planner_eligible == True` and `include_in_planner == True` dynamically enter the candidate pool for single-day and 7-day revolving plans.
+  - Re-runs defensive conflict analyzer before plan slot assignment; critical conflicts are strictly excluded.
+- **Frontend Brutalist UI (`frontend/src/types/customMeal.ts`, `frontend/src/services/customMeals.ts`, `frontend/src/components/CustomRecipeModal.tsx`)**:
+  - Built `CustomRecipeModal` with dark brutalist styling, dynamic ingredient rows, Indian ingredient autocomplete, quick `+10g`/`+50g` chips, and serving stepper (1–20).
+  - Live preview with per-serving vs. total nutrition breakdown, safety score badge, allergen alerts, and ingredient provenance tags (`Local DB` vs `AI Verified`).
+  - Added "My Recipes" management tab to view and delete saved recipes.
+  - Wired `🍲 Add My Recipe` button directly into `MealPlanner.tsx` and `Dashboard.tsx`.
+- **Automated Verification**:
+  - Built 11 automated test cases in `tests/test_custom_recipes.py` (creation, scaling, hypertension, allergens, diabetes, tenant isolation, auth guard, unknown ingredient 422, soft delete, today's logging, planner pool).
+  - 100% test pass rate: **40/40 tests passed across all suites in 8.34s**.
+  - Frontend Vitest: **32/32 tests passed**.
+  - Frontend Production Build: **PASSED (0 errors in 7.42s)**.
+
+---
+
+## 🗓️ Previous Session Summary
+**Date:** 2026-09-22
 **Work Done — Indic Meal Planner Localization (en, hi, mr, ta, bn, te):**
+
 - **Strict Presentation-Truth Separation Architecture (`backend/services/meal_planner/meal_translator.py`, `backend/schemas/meal_plan.py`)**:
   - Engineered presentation-only translation engine preserving canonical clinical & nutrition data (calories, protein, carbs, fat, sodium, sugar, servings, safety classes, INS codes).
   - Defined canonical contract `SUPPORTED_MEAL_LANGUAGES` supporting English (`en`), Hindi (`hi`), Marathi (`mr`), Tamil (`ta`), Bengali (`bn`), and Telugu (`te`).

@@ -16,6 +16,8 @@ import {
   Globe
 } from 'lucide-react';
 import WeeklyMealPlanner, { MealLanguage, TranslatedMealItem, TranslatableMealItem } from './WeeklyMealPlanner';
+import { CustomRecipeModal } from './CustomRecipeModal';
+
 
 
 export const MEAL_LANGUAGES: { code: MealLanguage; label: string; native: string }[] = [
@@ -90,6 +92,8 @@ const MealPlanner: React.FC = () => {
   });
   const [translationCache, setTranslationCache] = useState<Record<string, Record<string, TranslatedMealItem>>>({});
   const [isTranslating, setIsTranslating] = useState(false);
+  const [showRecipeModal, setShowRecipeModal] = useState(false);
+
 
   // Health Profile Reminder
   const [showReminder, setShowReminder] = useState(false);
@@ -344,41 +348,51 @@ const MealPlanner: React.FC = () => {
           <p className="text-sm text-gray-400">Revolving Clinical Schedule & Smart Grocery List</p>
         </div>
 
-        {/* Navigation Tabs: Daily View | 7-Day Revolving Plan | Smart Grocery List */}
-        <div className="flex items-center gap-1.5 bg-slate-900 p-1.5 rounded-2xl border border-slate-800 shadow-inner">
+        <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={() => setPlannerTab('daily')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
-              plannerTab === 'daily'
-                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-                : 'text-gray-400 hover:text-white hover:bg-slate-800/60'
-            }`}
+            onClick={() => setShowRecipeModal(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300 shadow-sm"
           >
-            <Sun className="w-3.5 h-3.5" />
-            Daily View
+            <span>🍲</span>
+            <span>Add My Recipe</span>
           </button>
-          <button
-            onClick={() => setPlannerTab('weekly')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
-              plannerTab === 'weekly'
-                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-                : 'text-gray-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <Calendar className="w-3.5 h-3.5" />
-            7-Day Revolving Plan
-          </button>
-          <button
-            onClick={() => setPlannerTab('grocery')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
-              plannerTab === 'grocery'
-                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-                : 'text-gray-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <ShoppingBag className="w-3.5 h-3.5" />
-            Smart Grocery List
-          </button>
+
+          {/* Navigation Tabs: Daily View | 7-Day Revolving Plan | Smart Grocery List */}
+          <div className="flex items-center gap-1.5 bg-slate-900 p-1.5 rounded-2xl border border-slate-800 shadow-inner">
+            <button
+              onClick={() => setPlannerTab('daily')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                plannerTab === 'daily'
+                  ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
+                  : 'text-gray-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <Sun className="w-3.5 h-3.5" />
+              Daily View
+            </button>
+            <button
+              onClick={() => setPlannerTab('weekly')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                plannerTab === 'weekly'
+                  ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
+                  : 'text-gray-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              7-Day Revolving Plan
+            </button>
+            <button
+              onClick={() => setPlannerTab('grocery')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                plannerTab === 'grocery'
+                  ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
+                  : 'text-gray-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <ShoppingBag className="w-3.5 h-3.5" />
+              Smart Grocery List
+            </button>
+          </div>
         </div>
       </div>
 
@@ -570,8 +584,17 @@ const MealPlanner: React.FC = () => {
           )}
         </div>
       )}
+      {/* Custom Recipe Ingestion Modal */}
+      <CustomRecipeModal
+        isOpen={showRecipeModal}
+        onClose={() => setShowRecipeModal(false)}
+        onRecipeSaved={(savedRecipe) => {
+          showToast(`Recipe "${savedRecipe.name}" saved!`, 'success');
+        }}
+      />
     </div>
   );
 };
 
 export default MealPlanner;
+

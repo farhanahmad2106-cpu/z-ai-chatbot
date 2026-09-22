@@ -6,6 +6,8 @@ from .meal_repository import get_all_meals, get_meal_by_id
 from .conflict_analyzer import analyze_meal_conflict, normalize_ingredients
 from .rules import INGREDIENT_ALIASES
 from .validator import validate_weekly_plan, PlanValidationError, EXPECTED_DAYS, EXPECTED_SLOTS
+from .planner import normalize_custom_meal_for_planner
+
 
 SLOT_PERCENTAGES = {
     "breakfast": 0.25,
@@ -138,7 +140,8 @@ def generate_weekly_plan(
     target_calories: float,
     health_vault: Dict[str, Any],
     preferences: Dict[str, Any],
-    start_date: Optional[datetime.date] = None
+    start_date: Optional[datetime.date] = None,
+    custom_meals: Optional[List[Dict[str, Any]]] = None
 ) -> Dict[str, Any]:
     """
     Generates a deterministic 7-day revolving meal plan with:
@@ -148,7 +151,12 @@ def generate_weekly_plan(
     - Daily calorie target ±5% window.
     - Deterministic fallback when dataset size limits variety.
     """
-    all_meals = get_all_meals()
+    all_meals = list(get_all_meals())
+    if custom_meals:
+        for cm in custom_meals:
+            if cm.get("planner_eligible", True) and cm.get("include_in_planner", True) and cm.get("safety_tier") != "CRITICAL":
+                all_meals.append(normalize_custom_meal_for_planner(cm))
+
     user_conditions = (health_vault.get("medicalConditions") or "").lower()
 
     # 1. Filter candidates for each slot
@@ -159,6 +167,7 @@ def generate_weekly_plan(
             safe, reason = is_meal_safe_for_constraints(meal, health_vault, preferences)
             if safe:
                 candidates_by_slot[m_slot].append(meal)
+
 
     # 2. Check Feasibility: Every slot MUST have at least 1 valid candidate
     for slot in EXPECTED_SLOTS:
@@ -350,7 +359,8 @@ def swap_day_slot_in_plan(
     slot: str,
     replacement_meal_id: Optional[str],
     health_vault: Dict[str, Any],
-    preferences: Dict[str, Any]
+    preferences: Dict[str, Any],
+    custom_meals: Optional[List[Dict[str, Any]]] = None
 ) -> Tuple[bool, Dict[str, Any], Optional[str]]:
     """
     Executes a validated, constrained mutation of a single slot in an existing 7-day plan.
@@ -384,13 +394,19 @@ def swap_day_slot_in_plan(
     if current_meal_idx == -1:
         return False, plan, f"Slot '{slot}' not found on {day}."
 
-    all_meals = get_all_meals()
+    all_meals = list(get_all_meals())
+    if custom_meals:
+        for cm in custom_meals:
+            if cm.get("planner_eligible", True) and cm.get("include_in_planner", True) and cm.get("safety_tier") != "CRITICAL":
+                all_meals.append(normalize_custom_meal_for_planner(cm))
+
     candidate_meals = []
     for m in all_meals:
         if m.get("meal_type", "").lower() == slot.lower():
             safe, _ = is_meal_safe_for_constraints(m, health_vault, preferences)
             if safe:
                 candidate_meals.append(m)
+
 
     if not candidate_meals:
         return False, plan, f"No safe alternatives available for slot '{slot}'."
