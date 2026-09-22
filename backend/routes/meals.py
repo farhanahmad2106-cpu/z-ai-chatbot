@@ -13,7 +13,10 @@ from schemas.meal_plan import (
     WeeklyPlanRequest,
     SwapDaySlotRequest,
     GroceryListResponse,
-    InfeasiblePlanError
+    InfeasiblePlanError,
+    MealTranslationRequest,
+    MealTranslationResponse,
+    SUPPORTED_MEAL_LANGUAGES
 )
 from services.meal_planner.planner import generate_meal_plan, swap_meal
 from services.meal_planner.weekly_planner import (
@@ -22,6 +25,7 @@ from services.meal_planner.weekly_planner import (
     InfeasiblePlanException
 )
 from services.meal_planner.grocery_generator import generate_grocery_list_from_plan
+from services.meal_planner.meal_translator import translate_meals
 
 def get_users_collection():
     main_mod = sys.modules.get("main") or sys.modules.get("backend.main")
@@ -34,6 +38,13 @@ def get_weekly_plans_collection():
     if main_mod and hasattr(main_mod, "weekly_plans_collection"):
         return main_mod.weekly_plans_collection
     return None
+
+def get_meal_translations_collection():
+    main_mod = sys.modules.get("main") or sys.modules.get("backend.main")
+    if main_mod and hasattr(main_mod, "meal_translations_collection"):
+        return main_mod.meal_translations_collection
+    return None
+
 
 async def get_current_user_id(authorization: Optional[str] = Header(None)) -> str:
     main_mod = sys.modules.get("main") or sys.modules.get("backend.main")
@@ -242,3 +253,37 @@ async def get_grocery_list(uid: str = Depends(get_current_user_id)):
     active_plan.pop("_id", None)
     grocery_list = generate_grocery_list_from_plan(active_plan)
     return grocery_list
+
+# --- INDIC MEAL PLAN LOCALIZATION ENDPOINT ---
+
+@router.post("/translate-plan", response_model=MealTranslationResponse)
+async def translate_meal_plan(
+    request: MealTranslationRequest,
+    uid: str = Depends(get_current_user_id)
+):
+    if request.language not in SUPPORTED_MEAL_LANGUAGES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unsupported language code '{request.language}'. Supported languages: {list(SUPPORTED_MEAL_LANGUAGES.keys())}"
+        )
+
+    users_col = get_users_collection()
+    user = await users_col.find_one({"uid": uid}) if users_col else None
+    user_tier = user.get("tier", "free") if user else "free"
+
+    translations_col = get_meal_translations_collection()
+
+    try:
+        response = await translate_meals(
+            meals=request.meals,
+            language=request.language,
+            translations_col=translations_col,
+            user_tier=user_tier
+        )
+        return response
+    except ValueError as ve:
+        raise HTTPException(status_code=422, detail=str(ve))
+    except Exception as e:
+        print(f"[MealsRoute] Translation error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to process meal translations")
+

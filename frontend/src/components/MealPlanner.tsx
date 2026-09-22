@@ -12,9 +12,20 @@ import {
   Plus,
   Calendar,
   ShoppingBag,
-  Sun
+  Sun,
+  Globe
 } from 'lucide-react';
-import WeeklyMealPlanner from './WeeklyMealPlanner';
+import WeeklyMealPlanner, { MealLanguage, TranslatedMealItem, TranslatableMealItem } from './WeeklyMealPlanner';
+
+
+export const MEAL_LANGUAGES: { code: MealLanguage; label: string; native: string }[] = [
+  { code: 'en', label: 'English', native: 'English' },
+  { code: 'hi', label: 'Hindi', native: 'हिन्दी' },
+  { code: 'mr', label: 'Marathi', native: 'मराठी' },
+  { code: 'ta', label: 'Tamil', native: 'தமிழ்' },
+  { code: 'bn', label: 'Bengali', native: 'বাংলা' },
+  { code: 'te', label: 'Telugu', native: 'తెలుగు' },
+];
 
 interface MealConflict {
   is_safe: boolean;
@@ -67,6 +78,19 @@ const MealPlanner: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [logging, setLogging] = useState(false);
   
+  // Indic Localization State
+  const [selectedLang, setSelectedLang] = useState<MealLanguage>(() => {
+    try {
+      const saved = localStorage.getItem('z_sehealth_preferred_meal_lang');
+      if (saved && ['en', 'hi', 'mr', 'ta', 'bn', 'te'].includes(saved)) {
+        return saved as MealLanguage;
+      }
+    } catch (e) {}
+    return 'en';
+  });
+  const [translationCache, setTranslationCache] = useState<Record<string, Record<string, TranslatedMealItem>>>({});
+  const [isTranslating, setIsTranslating] = useState(false);
+
   // Health Profile Reminder
   const [showReminder, setShowReminder] = useState(false);
 
@@ -91,6 +115,85 @@ const MealPlanner: React.FC = () => {
   const handleReminderLater = () => {
     localStorage.setItem('z_health_vault_prompt_date', new Date().toISOString());
     setShowReminder(false);
+  };
+
+  // Translation fetcher with in-memory caching and deduplication
+  const ensureTranslations = async (mealsToTranslate: TranslatableMealItem[], targetLang?: MealLanguage) => {
+    const lang = targetLang || selectedLang;
+    if (!currentUser || lang === 'en' || mealsToTranslate.length === 0) return;
+
+    // Filter uncached meals
+    const existingMap = translationCache[lang] || {};
+    const uncached = mealsToTranslate.filter(m => !existingMap[m.meal_id]);
+    if (uncached.length === 0) return;
+
+    const payloadMeals = uncached.map(m => ({
+      ...m,
+      calories: (m as any).calories || 250,
+      protein_g: (m as any).protein_g || 10,
+      carbs_g: (m as any).carbs_g || 30,
+      fat_g: (m as any).fat_g || 5,
+      sodium_mg: (m as any).sodium_mg || 100,
+      sugar_g: (m as any).sugar_g || 0,
+      safety_score: (m as any).safety_score || 90,
+      safety_class: (m as any).safety_class || 'safe',
+      conflict: m.conflict || { is_safe: true, conflict_severity: 'none', warning_reasons: [] }
+    }));
+
+    setIsTranslating(true);
+    try {
+      const token = await currentUser.getIdToken();
+      const res = await fetch(`${API_BASE}/api/meals/translate-plan`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          language: lang,
+          meals: payloadMeals,
+        }),
+      });
+
+
+      if (res.ok) {
+        const data = await res.json();
+        const newTranslations: TranslatedMealItem[] = data.translations;
+        setTranslationCache(prev => {
+          const currentLangMap = { ...(prev[lang] || {}) };
+          for (const item of newTranslations) {
+            currentLangMap[item.original_id] = item;
+          }
+          return {
+            ...prev,
+            [lang]: currentLangMap,
+          };
+        });
+      } else {
+        console.error('Translation request returned status', res.status);
+      }
+    } catch (err) {
+      console.error('Failed to translate meals:', err);
+    } finally {
+      setIsTranslating(false);
+    }
+  };
+
+  // Trigger translation when single-day plan is loaded
+  useEffect(() => {
+    if (plan && plan.meals.length > 0 && selectedLang !== 'en') {
+      ensureTranslations(plan.meals, selectedLang);
+    }
+  }, [plan, selectedLang]);
+
+  const handleLanguageSelect = (lang: MealLanguage) => {
+    setSelectedLang(lang);
+    try {
+      localStorage.setItem('z_sehealth_preferred_meal_lang', lang);
+    } catch (e) {}
+    if (lang !== 'en' && plan && plan.meals.length > 0) {
+      ensureTranslations(plan.meals, lang);
+    }
   };
 
   const generatePlan = async () => {
@@ -279,9 +382,62 @@ const MealPlanner: React.FC = () => {
         </div>
       </div>
 
+      {/* Indic Language Selector Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/90 p-2.5 rounded-2xl border border-slate-800">
+        <div className="flex items-center gap-2 text-xs font-semibold text-gray-300 px-1">
+          <Globe className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span className="hidden sm:inline">Presentation Language:</span>
+        </div>
+        <div
+          role="radiogroup"
+          aria-label="Select meal planner display language"
+          className="flex flex-wrap items-center gap-1.5"
+        >
+          {MEAL_LANGUAGES.map((lang) => {
+            const isSelected = selectedLang === lang.code;
+            return (
+              <button
+                key={lang.code}
+                type="button"
+                role="radio"
+                aria-checked={isSelected}
+                onClick={() => handleLanguageSelect(lang.code)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all focus-visible:outline-2 focus-visible:outline-emerald-400 ${
+                  isSelected
+                    ? 'bg-emerald-500 text-slate-950 font-bold shadow-md shadow-emerald-500/20'
+                    : 'text-gray-400 hover:text-white hover:bg-slate-800'
+                }`}
+              >
+                {lang.native}
+              </button>
+            );
+          })}
+        </div>
+        {isTranslating && (
+          <div className="flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-950/40 border border-emerald-800/50 px-2.5 py-1 rounded-full animate-pulse ml-auto sm:ml-0">
+            <RefreshCw className="w-3 h-3 animate-spin" />
+            <span>Translating...</span>
+          </div>
+        )}
+      </div>
+
       {/* TAB 1 & 2: WEEKLY PLANNER & GROCERY VIEWS */}
-      {plannerTab === 'weekly' && <WeeklyMealPlanner initialSubView="plan" />}
-      {plannerTab === 'grocery' && <WeeklyMealPlanner initialSubView="grocery" />}
+      {plannerTab === 'weekly' && (
+        <WeeklyMealPlanner
+          initialSubView="plan"
+          selectedLang={selectedLang}
+          translationCache={translationCache}
+          onEnsureTranslations={ensureTranslations}
+        />
+      )}
+      {plannerTab === 'grocery' && (
+        <WeeklyMealPlanner
+          initialSubView="grocery"
+          selectedLang={selectedLang}
+          translationCache={translationCache}
+          onEnsureTranslations={ensureTranslations}
+        />
+      )}
 
       {/* TAB 3: EXISTING DAILY VIEW (100% BACKWARD COMPATIBLE) */}
       {plannerTab === 'daily' && (
@@ -349,53 +505,61 @@ const MealPlanner: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {plan.meals.map(meal => (
-                  <div key={meal.meal_id} className={`p-5 rounded-2xl border ${meal.safety_class === 'critical' ? 'bg-red-950/20 border-red-900/50' : meal.safety_class === 'moderate' ? 'bg-amber-950/20 border-amber-900/50' : 'bg-slate-900 border-slate-800'} shadow-lg relative overflow-hidden group`}>
-                    <div className="flex justify-between items-start mb-3">
-                      <div>
-                        <h3 className="font-outfit font-bold text-lg capitalize">{meal.meal_type}: {meal.name}</h3>
-                        <p className="text-xs text-gray-400">{meal.serving_description}</p>
+                {plan.meals.map(meal => {
+                  const trans = selectedLang !== 'en' ? translationCache[selectedLang]?.[meal.meal_id] : null;
+                  const displayName = trans?.translated_name || meal.name;
+                  const displayDesc = trans?.translated_serving_description || meal.serving_description;
+                  const displayIngredients = trans?.translated_ingredients || meal.ingredients;
+                  const displayWarnings = trans?.translated_warning_reasons || meal.conflict.warning_reasons;
+
+                  return (
+                    <div key={meal.meal_id} className={`p-5 rounded-2xl border ${meal.safety_class === 'critical' ? 'bg-red-950/20 border-red-900/50' : meal.safety_class === 'moderate' ? 'bg-amber-950/20 border-amber-900/50' : 'bg-slate-900 border-slate-800'} shadow-lg relative overflow-hidden group`}>
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <h3 className="font-outfit font-bold text-lg capitalize">{meal.meal_type}: {displayName}</h3>
+                          <p className="text-xs text-gray-400">{displayDesc}</p>
+                        </div>
+                        {getSafetyBadge(meal.safety_class)}
                       </div>
-                      {getSafetyBadge(meal.safety_class)}
-                    </div>
 
-                    <div className="flex gap-3 text-xs mb-3 text-gray-300 bg-slate-950/50 p-2 rounded-lg">
-                      <span><strong className="text-emerald-400">{Math.round(meal.calories)}</strong> kcal</span>
-                      <span><strong className="text-blue-400">{meal.protein_g}g</strong> p</span>
-                      <span><strong className="text-amber-400">{meal.carbs_g}g</strong> c</span>
-                      <span><strong className="text-red-400">{meal.fat_g}g</strong> f</span>
-                      <span><strong className="text-gray-400">{meal.sodium_mg}mg</strong> sod</span>
-                    </div>
-
-                    <div className="mb-4">
-                      <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Key Ingredients</p>
-                      <div className="flex flex-wrap gap-1">
-                        {meal.ingredients.map((ing, i) => (
-                          <span key={i} className="text-[10px] bg-slate-800 px-2 py-0.5 rounded-full text-gray-300">{ing}</span>
-                        ))}
+                      <div className="flex gap-3 text-xs mb-3 text-gray-300 bg-slate-950/50 p-2 rounded-lg">
+                        <span><strong className="text-emerald-400">{Math.round(meal.calories)}</strong> kcal</span>
+                        <span><strong className="text-blue-400">{meal.protein_g}g</strong> p</span>
+                        <span><strong className="text-amber-400">{meal.carbs_g}g</strong> c</span>
+                        <span><strong className="text-red-400">{meal.fat_g}g</strong> f</span>
+                        <span><strong className="text-gray-400">{meal.sodium_mg}mg</strong> sod</span>
                       </div>
-                    </div>
 
-                    {meal.conflict.warning_reasons.length > 0 && (
-                      <div className={`mt-2 mb-4 p-2 rounded-lg text-xs ${meal.safety_class === 'critical' ? 'bg-red-900/20 text-red-300' : 'bg-amber-900/20 text-amber-300'}`}>
-                        <ul className="list-disc pl-4 space-y-1">
-                          {meal.conflict.warning_reasons.map((warn, i) => (
-                            <li key={i}>{warn}</li>
+                      <div className="mb-4">
+                        <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Key Ingredients</p>
+                        <div className="flex flex-wrap gap-1">
+                          {displayIngredients.map((ing, i) => (
+                            <span key={i} className="text-[10px] bg-slate-800 px-2 py-0.5 rounded-full text-gray-300">{ing}</span>
                           ))}
-                        </ul>
+                        </div>
                       </div>
-                    )}
 
-                    <button
-                      onClick={() => swapMeal(meal)}
-                      disabled={swapping === meal.meal_id}
-                      className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-sm font-medium rounded-xl transition-colors disabled:opacity-50 flex justify-center items-center gap-2 text-white"
-                    >
-                      {swapping === meal.meal_id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                      Swap Meal
-                    </button>
-                  </div>
-                ))}
+                      {displayWarnings.length > 0 && (
+                        <div className={`mt-2 mb-4 p-2 rounded-lg text-xs ${meal.safety_class === 'critical' ? 'bg-red-900/20 text-red-300' : 'bg-amber-900/20 text-amber-300'}`}>
+                          <ul className="list-disc pl-4 space-y-1">
+                            {displayWarnings.map((warn, i) => (
+                              <li key={i}>{warn}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      <button
+                        onClick={() => swapMeal(meal)}
+                        disabled={swapping === meal.meal_id}
+                        className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-sm font-medium rounded-xl transition-colors disabled:opacity-50 flex justify-center items-center gap-2 text-white"
+                      >
+                        {swapping === meal.meal_id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                        Swap Meal
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
 
               <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl text-xs text-gray-400 flex items-start gap-2">

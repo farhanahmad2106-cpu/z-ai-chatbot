@@ -84,11 +84,40 @@ interface GroceryListResponse {
   total_items: number;
 }
 
-interface WeeklyMealPlannerProps {
-  initialSubView?: 'plan' | 'grocery';
+export type MealLanguage = 'en' | 'hi' | 'mr' | 'ta' | 'bn' | 'te';
+
+export interface TranslatedMealItem {
+  original_id: string;
+  translated_name: string;
+  translated_serving_description: string;
+  translated_ingredients: string[];
+  translated_warning_reasons: string[];
 }
 
-const WeeklyMealPlanner: React.FC<WeeklyMealPlannerProps> = ({ initialSubView = 'plan' }) => {
+export interface TranslatableMealItem {
+  meal_id: string;
+  name: string;
+  serving_description: string;
+  ingredients: string[];
+  conflict?: {
+    warning_reasons?: string[];
+  };
+}
+
+interface WeeklyMealPlannerProps {
+  initialSubView?: 'plan' | 'grocery';
+  selectedLang?: MealLanguage;
+  translationCache?: Record<string, Record<string, TranslatedMealItem>>;
+  onEnsureTranslations?: (meals: TranslatableMealItem[]) => Promise<void>;
+}
+
+
+const WeeklyMealPlanner: React.FC<WeeklyMealPlannerProps> = ({
+  initialSubView = 'plan',
+  selectedLang = 'en',
+  translationCache = {},
+  onEnsureTranslations,
+}) => {
   const { currentUser } = useAuth();
   const { dailyGoals } = useUserStats();
   const { showToast } = useToast();
@@ -99,6 +128,7 @@ const WeeklyMealPlanner: React.FC<WeeklyMealPlannerProps> = ({ initialSubView = 
   const [loading, setLoading] = useState<boolean>(false);
   const [swappingSlot, setSwappingSlot] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
 
   // Grocery state
   const [groceryList, setGroceryList] = useState<GroceryListResponse | null>(null);
@@ -123,6 +153,18 @@ const WeeklyMealPlanner: React.FC<WeeklyMealPlannerProps> = ({ initialSubView = 
     const mappedIndex = jsDay === 0 ? 6 : jsDay - 1;
     setSelectedDayIndex(mappedIndex);
   }, []);
+
+  // Ensure translations when weekly plan is loaded in an Indic language
+  useEffect(() => {
+    if (weeklyPlan && selectedLang !== 'en' && onEnsureTranslations) {
+      const allMeals: MealPlanItem[] = [];
+      weeklyPlan.days.forEach(d => allMeals.push(...d.meals));
+      if (allMeals.length > 0) {
+        onEnsureTranslations(allMeals);
+      }
+    }
+  }, [weeklyPlan, selectedLang, onEnsureTranslations]);
+
 
   // Fetch or load active weekly plan
   const fetchWeeklyPlan = async (forceRegenerate: boolean = false) => {
@@ -461,6 +503,11 @@ const WeeklyMealPlanner: React.FC<WeeklyMealPlannerProps> = ({ initialSubView = 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {selectedDay.meals.map((meal) => {
                   const isSwapping = swappingSlot === `${selectedDay.day}-${meal.meal_type}`;
+                  const trans = selectedLang !== 'en' ? translationCache[selectedLang]?.[meal.meal_id] : null;
+                  const displayName = trans?.translated_name || meal.name;
+                  const displayDesc = trans?.translated_serving_description || meal.serving_description;
+                  const displayIngredients = trans?.translated_ingredients || meal.ingredients;
+
                   return (
                     <div
                       key={meal.meal_id}
@@ -478,9 +525,9 @@ const WeeklyMealPlanner: React.FC<WeeklyMealPlannerProps> = ({ initialSubView = 
                         </div>
 
                         <h4 className="text-lg font-bold font-outfit text-white leading-snug">
-                          {meal.name}
+                          {displayName}
                         </h4>
-                        <p className="text-xs text-gray-500 mt-0.5">{meal.serving_description}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{displayDesc}</p>
 
                         {/* Macro pills */}
                         <div className="flex flex-wrap gap-2 my-3 text-xs bg-slate-950 p-2 rounded-xl border border-slate-800/60">
@@ -497,7 +544,7 @@ const WeeklyMealPlanner: React.FC<WeeklyMealPlannerProps> = ({ initialSubView = 
 
                         {/* Ingredients */}
                         <div className="flex flex-wrap gap-1 mb-4">
-                          {meal.ingredients.slice(0, 5).map((ing, i) => (
+                          {displayIngredients.slice(0, 5).map((ing, i) => (
                             <span
                               key={i}
                               className="text-[10px] bg-slate-950 text-gray-400 px-2 py-0.5 rounded-md border border-slate-800"
@@ -505,13 +552,14 @@ const WeeklyMealPlanner: React.FC<WeeklyMealPlannerProps> = ({ initialSubView = 
                               {ing}
                             </span>
                           ))}
-                          {meal.ingredients.length > 5 && (
+                          {displayIngredients.length > 5 && (
                             <span className="text-[10px] text-gray-500 px-1 py-0.5">
-                              +{meal.ingredients.length - 5} more
+                              +{displayIngredients.length - 5} more
                             </span>
                           )}
                         </div>
                       </div>
+
 
                       {/* Swap Action */}
                       <button

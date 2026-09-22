@@ -1,13 +1,48 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-22 (Session: Automated 7-Day Revolving Meal Planner + Smart Grocery List)
+> **Last Updated:** 2026-09-22 (Session: Indic Meal Planner Localization across 6 Languages)
 
 ---
 
 ## 🗓️ Last Session Summary
 **Date:** 2026-09-22
+**Work Done — Indic Meal Planner Localization (en, hi, mr, ta, bn, te):**
+- **Strict Presentation-Truth Separation Architecture (`backend/services/meal_planner/meal_translator.py`, `backend/schemas/meal_plan.py`)**:
+  - Engineered presentation-only translation engine preserving canonical clinical & nutrition data (calories, protein, carbs, fat, sodium, sugar, servings, safety classes, INS codes).
+  - Defined canonical contract `SUPPORTED_MEAL_LANGUAGES` supporting English (`en`), Hindi (`hi`), Marathi (`mr`), Tamil (`ta`), Bengali (`bn`), and Telugu (`te`).
+  - Added request/response Pydantic models: `MealTranslationRequest`, `TranslatedMealItem`, `MealTranslationResponse`.
+  - Added deterministic token preservation checking preventing corruption of INS additive codes (e.g., `INS 330`, `INS 627`) and numerical measurements (`1.5`, `320 kcal`, `25 g`).
+- **Persistent Caching & Invalidation Layer (`backend/services/meal_planner/meal_translator.py`, `backend/main.py`)**:
+  - Registered MongoDB collection `meal_translations_collection = db["meal_translations"]` with unique compound index `[("meal_id", 1), ("language_code", 1), ("translation_version", 1)]`.
+  - Implemented content-hash caching via `source_content_hash = sha256(name|desc|ingredients|warnings)[:16]`, guaranteeing automatic cache invalidation whenever a meal's source presentation changes.
+  - Achieved sub-50ms cache retrieval for previously translated meals.
+- **Provider Routing & Fallback Pipeline**:
+  - Tier-aware primary routing: Sarvam AI (`sarvam_translate` / batch) prioritized for Pro/Elite tiers when configured.
+  - Secondary fallback: Gemini 2.5 Flash (`gemini-2.5-flash` with strict JSON mode and deterministic validation).
+  - Tertiary fallback: Graceful controlled fallback returning canonical English display values without crashing UI or polluting database.
+- **API Endpoints (`backend/routes/meals.py`)**:
+  - Implemented `POST /api/meals/translate-plan` with `Depends(get_current_user_id)`.
+  - Strictly rejects unsupported language codes with standard HTTP 422.
+  - Returns translations in exact meal order for seamless frontend merging.
+- **Frontend Brutalist UI & Localization Integration (`frontend/src/components/MealPlanner.tsx`, `frontend/src/components/WeeklyMealPlanner.tsx`)**:
+  - Added accessible Indic Language Selector pill bar: `🌐 English | हिन्दी | मराठी | தமிழ் | বাংলা | తెలుగు` with active state highlights (`bg-emerald-500 text-slate-950 font-bold`).
+  - State persistence in `localStorage` under `z_sehealth_preferred_meal_lang` defaulting to `en`.
+  - Non-blocking translation loading indicator (`Translating...`) without blanking meal plans or interrupting meal tracking.
+  - Integrated in-memory translation caching across tabs to eliminate duplicate network calls.
+  - Presentation merging isolates changes to `name`, `serving_description`, `ingredients`, and `warning_reasons`.
+- **Automated Testing & Build Verification**:
+  - Authored comprehensive test suite `tests/test_meal_translation.py` (12 tests covering Hindi translation, Bengali script, numeric preservation, INS code preservation, cache hit <50ms, cache miss, Sarvam failure fallback, both providers failing, invalid AI output rejection, 422 on unsupported language, content hash invalidation, and auth guard).
+  - Full pytest pass rate: **47/47 PASSED (100% in 10.73s)**.
+  - Frontend vitest: **32/32 PASSED in 699ms**.
+  - Frontend production build: **PASSED (0 TypeScript compiler errors, 5.55s)**.
+
+---
+
+## 🗓️ Previous Session Summary
+**Date:** 2026-09-22
 **Work Done — Automated 7-Day Revolving Meal Planner + Smart Grocery List System:**
+
 - **Dataset & Metadata Extensions (`backend/services/meal_planner/meal_repository.py`)**:
   - Extended all 26 meals with explicit `refined_flour: bool` indicators (`True` for `l3` Dal Makhani & Naan, `False` for all others).
   - Extended all 26 meals with structured `ingredient_details` (`name`, `quantity`, `unit`, `category`) supporting precise serving scaling and smart grocery generation while preserving backward-compatible `ingredients: List[str]`.

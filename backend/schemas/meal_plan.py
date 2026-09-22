@@ -124,3 +124,32 @@ class InfeasiblePlanError(BaseModel):
     constraint: Optional[str] = None
     day: Optional[str] = None
     slot: Optional[str] = None
+
+# --- INDIC LOCALIZATION SCHEMAS ---
+
+SUPPORTED_MEAL_LANGUAGES: Dict[str, str] = {
+    "en": "English",
+    "hi": "Hindi",
+    "mr": "Marathi",
+    "ta": "Tamil",
+    "bn": "Bengali",
+    "te": "Telugu",
+}
+
+MealLanguage = Literal["en", "hi", "mr", "ta", "bn", "te"]
+
+class MealTranslationRequest(BaseModel):
+    language: MealLanguage
+    meals: List[MealPlanItem]
+
+class TranslatedMealItem(BaseModel):
+    original_id: str
+    translated_name: str
+    translated_serving_description: str
+    translated_ingredients: List[str]
+    translated_warning_reasons: List[str]
+
+class MealTranslationResponse(BaseModel):
+    language: MealLanguage
+    translations: List[TranslatedMealItem]
+
