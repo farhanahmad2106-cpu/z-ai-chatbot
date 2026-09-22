@@ -87,6 +87,7 @@ admins_collection = db["admins"]
 system_logs_collection = db["system_logs"]
 transactions_collection = db["transactions"]
 consents_collection = db["consents"]
+weekly_plans_collection = db["weekly_plans"]
 
 # --- FIREBASE SETUP ---
 try:
@@ -112,6 +113,7 @@ async def background_db_init():
         await admins_collection.create_index([("email", 1)], unique=True, background=True)
         await system_logs_collection.create_index([("timestamp", -1)], background=True)
         await system_logs_collection.create_index([("level", 1)], background=True)
+        await weekly_plans_collection.create_index([("user_id", 1), ("week_id", 1)], background=True)
         count = await foods_collection.count_documents({})
         if count == 0:
             print("Database is empty. Automatically seeding items in background...")

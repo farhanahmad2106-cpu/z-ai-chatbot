@@ -1,11 +1,47 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-22 (Session: Razorpay Webhook + Subscription + Super Admin Refund FinTech E2E Smoke Test)
+> **Last Updated:** 2026-09-22 (Session: Automated 7-Day Revolving Meal Planner + Smart Grocery List)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-22
+**Work Done — Automated 7-Day Revolving Meal Planner + Smart Grocery List System:**
+- **Dataset & Metadata Extensions (`backend/services/meal_planner/meal_repository.py`)**:
+  - Extended all 26 meals with explicit `refined_flour: bool` indicators (`True` for `l3` Dal Makhani & Naan, `False` for all others).
+  - Extended all 26 meals with structured `ingredient_details` (`name`, `quantity`, `unit`, `category`) supporting precise serving scaling and smart grocery generation while preserving backward-compatible `ingredients: List[str]`.
+- **Backend Data Contracts (`backend/schemas/meal_plan.py`)**:
+  - Added Pydantic v2 schemas: `DayPlan`, `WeeklyPlanResponse`, `WeeklyPlanRequest`, `SwapDaySlotRequest`, `GroceryItem`, `GroceryCategory`, `GroceryListResponse`, and structured `InfeasiblePlanError`.
+- **Validation Layer (`backend/services/meal_planner/validator.py`)**:
+  - Engineered standalone, reusable `validate_weekly_plan(plan, constraints)` independently verifying 7 days, 28 slots, daily calories within target ±5%, hypertension sodium (< 500mg/meal, < 1500mg/day), diabetes rules (<= 5g sugar/meal, <= 20g sugar/day, 0 maida), allergen hard exclusions, serving ranges [0.5, 2.5], and variety cooldowns.
+- **Weekly Revolving Optimization Engine (`backend/services/meal_planner/weekly_planner.py`)**:
+  - Implemented deterministic 7-day schedule generator with 2-day cooldown tracking per slot (Monday -> Thursday for same meal).
+  - Added day-level combination optimization prioritizing hard clinical boundaries (hypertension daily sodium < 1500mg) with graceful cooldown relaxation to 1 day if dataset constraints require it, raising structured `InfeasiblePlanException` (HTTP 422) if mathematically unfulfillable.
+  - Implemented `swap_day_slot_in_plan` for atomic, validated slot replacements.
+- **Smart Grocery Compiler (`backend/services/meal_planner/grocery_generator.py`)**:
+  - Engineered `generate_grocery_list_from_plan` compiling scaled quantities (`base_qty * serving_multiplier`) across all 28 planned meals.
+  - Normalizes ingredient aliases, enforces unit safety (incompatible units kept separate), and groups items into 6 standard categories: Produce, Grains & Flours, Pulses & Legumes, Dairy & Plant Alternatives, Spices & Pantry, and Other.
+- **API Endpoints & Database Persistence (`backend/routes/meals.py`, `backend/main.py`)**:
+  - Added `weekly_plans_collection = db["weekly_plans"]` with compound index `[("user_id", 1), ("week_id", 1)]`.
+  - Implemented `POST /api/meals/weekly-plan`: Resolves authoritative server-side medical profile from `users_collection`, retrieves active weekly plan or generates & persists new plan with full validation.
+  - Implemented `POST /api/meals/grocery-list`: Retrieves active weekly plan with user ownership isolation, compiling real-time groceries.
+  - Implemented `POST /api/meals/weekly-plan/swap-day-slot`: Authenticated slot mutation with clinical validation, atomically updating MongoDB.
+- **Frontend Brutalist UI Integration (`frontend/src/components/WeeklyMealPlanner.tsx`, `frontend/src/components/MealPlanner.tsx`)**:
+  - Built `WeeklyMealPlanner.tsx` with horizontal day selector pills (Mon–Sun), selected day macro summaries, serving multiplier tags (`1.2x`), factual `Compliant` badges, in-place meal swapping, and category accordion grocery checklist.
+  - Added `[ 📋 Copy Grocery List ]` exporting clean Markdown checklist to clipboard with toast confirmation.
+  - Integrated navigation tabs in `MealPlanner.tsx`: `[ Daily View ]`, `[ 7-Day Revolving Plan ]`, `[ 🛒 Smart Grocery List ]`, keeping the existing single-day planner 100% backward compatible.
+- **Testing & Verification**:
+  - Authored comprehensive test suite `tests/test_weekly_meal_planner.py` covering all 15 scenarios from Section 35: **17/17 PASSED**.
+  - Verified clinical regression `tests/test_meal_planner_clinical.py`: **12/12 PASSED**.
+  - Verified repository unit tests `backend/test_meal_planner.py`: **6/6 PASSED**.
+  - Consolidated pytest pass rate: **35/35 PASSED (100% in 6.43s)**.
+  - Frontend unit tests `npm --prefix frontend run test`: **32/32 PASSED in 791ms**.
+  - Frontend production build `npm --prefix frontend run build`: **PASSED (0 TypeScript errors, 6.63s)**.
+
+---
+
+## 🗓️ Previous Session Summary
 **Date:** 2026-09-22
 **Work Done — Razorpay Webhook + Subscription + Super Admin Refund FinTech E2E Smoke Test:**
 - **FinTech Pipeline Backend Hardening (`backend/schemas/subscription.py`, `backend/routes/webhooks.py`, `backend/routes/admin.py`)**:

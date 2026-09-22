@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Literal, Dict
+from typing import List, Optional, Literal, Dict, Any
 
 class RuleResult(BaseModel):
     rule_id: str
@@ -14,8 +14,8 @@ class MealConflict(BaseModel):
     is_safe: bool
     conflict_severity: Literal["none", "moderate", "critical"]
     warning_reasons: List[str]
-    suggested_alternatives: List[str]
-    rule_results: List[RuleResult]
+    suggested_alternatives: List[str] = []
+    rule_results: List[RuleResult] = []
 
 class MealPlanItem(BaseModel):
     meal_id: str
@@ -31,7 +31,9 @@ class MealPlanItem(BaseModel):
     sodium_mg: Optional[float] = 0.0
     sugar_g: Optional[float] = 0.0
     added_sugar_g: Optional[float] = 0.0
+    refined_flour: Optional[bool] = False
     ingredients: List[str]
+    ingredient_details: Optional[List[Dict[str, Any]]] = None
     conflict: MealConflict
     safety_score: float
     safety_class: Literal["safe", "moderate", "critical"]
@@ -63,3 +65,62 @@ class SwapMealRequest(BaseModel):
     current_meal_id: str
     meal_type: Literal["breakfast", "lunch", "snack", "dinner"]
     target_calories: float
+
+# --- WEEKLY PLANNER & GROCERY SCHEMAS ---
+
+class DayPlan(BaseModel):
+    day: str
+    date: str
+    meals: List[MealPlanItem]
+    daily_totals: DailyTotals
+    calorie_deviation_percent: float
+    is_compliant: bool = True
+
+class WeeklyPlanResponse(BaseModel):
+    plan_id: str
+    user_id: str
+    week_id: str
+    week_start: str
+    week_end: str
+    target_calories: float
+    days: List[DayPlan]
+    weekly_totals: Dict[str, float]
+    variety_warnings: List[str] = []
+    status: str = "active"
+    generated_at: str
+    data_disclaimer: str
+
+class WeeklyPlanRequest(BaseModel):
+    target_calories: Optional[float] = Field(None, ge=500, le=10000)
+    force_regenerate: bool = False
+
+class SwapDaySlotRequest(BaseModel):
+    plan_id: str
+    day: str
+    slot: Literal["breakfast", "lunch", "snack", "dinner"]
+    replacement_meal_id: Optional[str] = None
+
+class GroceryItem(BaseModel):
+    name: str
+    quantity: float
+    unit: str
+
+class GroceryCategory(BaseModel):
+    name: str
+    items: List[GroceryItem]
+
+class GroceryListResponse(BaseModel):
+    plan_id: str
+    week_id: str
+    week_start: str
+    week_end: str
+    categories: List[GroceryCategory]
+    total_items: int
+
+class InfeasiblePlanError(BaseModel):
+    success: bool = False
+    error_code: str = "WEEKLY_PLAN_INFEASIBLE"
+    message: str
+    constraint: Optional[str] = None
+    day: Optional[str] = None
+    slot: Optional[str] = None
