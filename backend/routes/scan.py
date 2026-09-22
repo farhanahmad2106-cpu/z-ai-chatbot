@@ -48,15 +48,17 @@ async def analyze_back_of_pack(
             detail="Image size exceeds the 5MB limit."
         )
 
-    # Resolve user identifier from Authorization header
-    submitted_by = "crowdsourced_user"
+    # Resolve anonymized pseudonymous contributor token without leaking user email or raw UID
+    submitted_by = "anon_contributor"
     if authorization and authorization.startswith("Bearer "):
         token = authorization.split(" ")[1].strip()
         try:
             decoded = fb_auth.verify_id_token(token)
-            submitted_by = decoded.get("email") or decoded.get("uid") or "authenticated_user"
+            raw_uid = str(decoded.get("uid") or decoded.get("sub") or "anon")
+            import hashlib
+            submitted_by = f"anon_{hashlib.sha256(raw_uid.encode('utf-8')).hexdigest()[:12]}"
         except Exception:
-            submitted_by = "test_user"
+            submitted_by = "anon_test_user"
 
     # Process via the multi-tier OCR service
     analysis_result = await extract_and_analyze(image_bytes, image.content_type)

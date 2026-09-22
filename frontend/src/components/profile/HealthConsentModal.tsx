@@ -96,7 +96,7 @@ export default function HealthConsentModal({
                 id="health-vault-consent-title"
                 className="text-xl font-bold font-outfit text-white tracking-tight"
               >
-                Health Profile Data Consent
+                Health Vault & Sensitive Data Processing Consent
               </h2>
               <p className="text-xs text-emerald-400/90 font-mono mt-0.5">
                 DPDP Act (2023) Aligned Consent Gate
@@ -179,7 +179,7 @@ export default function HealthConsentModal({
               aria-label="Consent to health data processing pursuant to DPDP Act 2023"
             />
             <span className="text-xs text-gray-300 group-hover:text-white leading-relaxed transition-colors">
-              I consent to the storage and processing of my medical conditions and allergy data for personalized food safety scoring pursuant to the DPDP Act 2023. I understand this does not replace medical advice.
+              I consent to the processing of my medical conditions for personalized food safety scoring pursuant to the DPDP Act 2023. I understand this does not replace medical advice.
             </span>
           </label>
         </div>

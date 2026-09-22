@@ -261,7 +261,7 @@ export default function PricingPage({ onClose }: PricingPageProps) {
                     href="/terms" 
                     target="_blank" 
                     rel="noopener noreferrer" 
-                    className="text-emerald-400 underline hover:text-emerald-300 transition-colors"
+                    className="text-emerald-400 underline hover:text-emerald-300 transition-colors focus-visible:outline-2 focus-visible:outline-emerald-400"
                   >
                     Terms of Service
                   </a>
@@ -270,11 +270,11 @@ export default function PricingPage({ onClose }: PricingPageProps) {
                     href="/refund" 
                     target="_blank" 
                     rel="noopener noreferrer" 
-                    className="text-emerald-400 underline hover:text-emerald-300 transition-colors"
+                    className="text-emerald-400 underline hover:text-emerald-300 transition-colors focus-visible:outline-2 focus-visible:outline-emerald-400"
                   >
                     Refund Policy
                   </a>
-                  {' '}(digital scan quotas are non-refundable once utilized). Payment is processed securely by Razorpay. Food safety score is an informational indicator and not medical advice.
+                  {' '}(digital scan quotas are non-refundable once utilized).
                 </p>
               )}
 

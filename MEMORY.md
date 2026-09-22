@@ -1,11 +1,41 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-22 (Session: Production-Grade Legal Document System & Routing Architecture)
+> **Last Updated:** 2026-09-22 (Session: Production UI Compliance, Consent & Disclosure Implementation)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-22
+**Work Done — Production UI Compliance, Consent & Disclosure Implementation:**
+- **Health Vault Consent Gate (`frontend/src/components/profile/HealthConsentModal.tsx`, `frontend/src/components/Profile.tsx`, `frontend/src/context/UserProfileContext.tsx`)**:
+  - Gated all medical condition & severe allergy storage behind mandatory DPDP Act (2023) aligned consent gate (`z_sehealth_vault_consent_v1`, version `1.0`).
+  - Modal title updated to exact specification: `"Health Vault & Sensitive Data Processing Consent"`.
+  - Checkbox copy aligned to exact statutory specification: `"I consent to the processing of my medical conditions for personalized food safety scoring pursuant to the DPDP Act 2023. I understand this does not replace medical advice."`
+  - Explicit opt-in enforced: Checkbox defaults to unchecked, CTA button `"Consent & Save Health Vault"` is disabled until checked.
+  - Decline/cancel path cleanly reverts pending inputs to pre-edit persisted state without saving to server.
+  - Server MongoDB persistence is sole authority via `POST /api/user/consent` with audit logging in `consents_collection`; `localStorage` is purely a transient cache synchronization optimization.
+- **Razorpay Pre-Payment Legal Disclosure (`frontend/src/components/PricingPage.tsx`)**:
+  - Aligned pre-payment disclosure microcopy immediately above the checkout action to exact copy: `"By proceeding, you agree to the Terms of Service and acknowledge our Refund Policy (digital scan quotas are non-refundable once utilized)."`.
+  - Embedded functional, accessible links to `/terms` and `/refund` opening in external tabs with `rel="noopener noreferrer"` and visible focus rings (`focus-visible:outline-emerald-400`).
+- **Crowdsourced Ingestion Privacy Boundary & Disclosure (`frontend/src/components/IngredientReviewModal.tsx`, `backend/routes/scan.py`)**:
+  - Implemented conditional `isUncataloged` prop gating the crowdsourced banner so it only displays for uncataloged items.
+  - Aligned notice copy: `"This product is not yet in our global database. Submitting will save it privately to your vault while anonymized ingredient details are queued for admin safety review."`.
+  - Action button updated to `"Confirm & Score"` with 44px min touch target and focus rings.
+  - Extended ingestion pipeline in `backend/routes/scan.py` to cryptographically anonymize contributor identity (`submitted_by = f"anon_{hashlib.sha256(raw_uid.encode()).hexdigest()[:12]}"`), ensuring user emails and personal credentials are never stored on crowdsourced food items.
+- **Camera Viewfinder & Scanner Disclaimers (`frontend/src/components/Scan.tsx`)**:
+  - Verified persistent viewfinder micro-disclaimer directly below scanning brackets: `"AI analysis is indicative and aligns with FSSAI standards. For severe or anaphylactic allergies, inspect physical packaging before consumption."`.
+  - Verified scanner analysis result warning container with `AlertTriangle` icon and FSSAI/allergen advisory.
+- **Automated Verification & Tests (`frontend/src/tests/complianceConsent.test.ts`, `tests/test_compliance_consent.py`)**:
+  - Added unit test suite in `frontend/src/tests/complianceConsent.test.ts` verifying consent versioning, health gate triggering, copy integrity, and withdrawal.
+  - `npm --prefix frontend run test`: **25/25 PASSED (100% pass rate in 3.17s)**.
+  - `npm --prefix frontend run build`: **PASSED (0 TypeScript errors, 7.29s)**.
+  - `python -m pytest tests/test_compliance_consent.py -o pythonpath=backend -v`: **5/5 PASSED (100% pass rate in 6.28s)**.
+  - `python -m py_compile backend/routes/scan.py`: **PASSED (0 errors)**.
+
+---
+
+## 🗓️ Previous Session Summary
 **Date:** 2026-09-22
 **Work Done — Production-Grade Legal Document System & Routing Architecture:**
 - **Authoritative Document Static Exposure (`frontend/scripts/copy-legal-docs.mjs`, `frontend/vite.config.ts`, `frontend/package.json`)**:

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Check, Edit2, AlertTriangle, Info } from 'lucide-react';
 
 export interface INSAdditive {
@@ -22,6 +22,7 @@ interface IngredientReviewModalProps {
   onClose: () => void;
   onConfirm: (data: OCRAnalysisResponse) => void;
   initialData: OCRAnalysisResponse;
+  isUncataloged?: boolean;
 }
 
 export default function IngredientReviewModal({
@@ -29,8 +30,25 @@ export default function IngredientReviewModal({
   onClose,
   onConfirm,
   initialData,
+  isUncataloged = true,
 }: IngredientReviewModalProps) {
   const [data, setData] = useState<OCRAnalysisResponse>(initialData);
+
+  useEffect(() => {
+    setData(initialData);
+  }, [initialData]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -51,12 +69,17 @@ export default function IngredientReviewModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center p-4">
+    <div 
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="review-modal-title"
+    >
       <div className="w-full max-w-2xl bg-zinc-900 border-2 border-zinc-700 rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4">
         {/* Header */}
         <div className="flex justify-between items-center p-6 border-b border-zinc-800 bg-zinc-950">
           <div>
-            <h2 className="text-xl font-bold text-zinc-100 flex items-center gap-2">
+            <h2 id="review-modal-title" className="text-xl font-bold text-zinc-100 flex items-center gap-2">
               <Edit2 className="w-5 h-5 text-emerald-400" />
               Review Scan Results
             </h2>
@@ -64,7 +87,8 @@ export default function IngredientReviewModal({
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full transition-colors"
+            className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center focus-visible:outline-2 focus-visible:outline-emerald-400"
+            aria-label="Close review dialog"
           >
             <X className="w-6 h-6" />
           </button>
@@ -141,30 +165,34 @@ export default function IngredientReviewModal({
         </div>
 
         {/* Crowdsourced Food Ingestion Disclosure */}
-        <div className="mx-6 mb-2 p-4 bg-slate-800/60 border border-slate-700 rounded-2xl text-xs text-gray-300 leading-relaxed flex items-start gap-3">
-          <Info className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <p className="font-bold text-white text-xs">Crowdsourced Database Ingestion Disclosure</p>
-            <p className="text-gray-400">
-              This product is not yet in our verified global database. Submitting will save it to your records while ingredient details are queued for administrator moderation review. Submissions are associated with your account for moderation purposes until approved (<code className="text-emerald-400 font-mono">is_verified: false</code>) and are not visible to other users until verified.
-            </p>
+        {isUncataloged && (
+          <div className="mx-6 mb-2 p-4 bg-slate-800/60 border border-slate-700 rounded-2xl text-xs text-gray-300 leading-relaxed flex items-start gap-3">
+            <Info className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-bold text-white text-xs">Crowdsourced Database Ingestion Disclosure</p>
+              <p className="text-gray-400">
+                This product is not yet in our global database. Submitting will save it privately to your vault while anonymized ingredient details are queued for admin safety review.
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Footer Actions */}
         <div className="p-4 border-t border-zinc-800 bg-zinc-950 flex justify-end gap-3">
           <button
+            type="button"
             onClick={onClose}
-            className="px-5 py-2.5 rounded-xl text-sm font-medium text-zinc-300 hover:bg-zinc-800 transition-colors"
+            className="min-h-[44px] px-5 py-2.5 rounded-xl text-sm font-medium text-zinc-300 hover:bg-zinc-800 transition-colors focus-visible:outline-2 focus-visible:outline-emerald-400"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleConfirm}
-            className="px-5 py-2.5 rounded-xl text-sm font-bold bg-emerald-500 text-zinc-950 hover:bg-emerald-400 flex items-center gap-2 transition-colors"
+            className="min-h-[44px] px-5 py-2.5 rounded-xl text-sm font-bold bg-emerald-500 text-zinc-950 hover:bg-emerald-400 flex items-center gap-2 transition-colors shadow-md focus-visible:outline-2 focus-visible:outline-emerald-400 cursor-pointer"
           >
             <Check className="w-4 h-4" />
-            Confirm & Save
+            Confirm & Score
           </button>
         </div>
       </div>
