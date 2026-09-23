@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback } from 'rea
 import { useAuth } from './AuthContext';
 import { useToast } from './ToastContext';
 import { API_BASE } from '../config';
+import { queueOfflineMeal, syncQueuedMealsToServer, type SyncResult } from '../utils/offlineSync';
 
 interface UserStats {
   calories: number;
@@ -35,6 +36,7 @@ interface UserStatsContextType {
   refreshSubscription: () => Promise<void>;
   logMeal: (foodItem: any, options?: { silent?: boolean }) => Promise<boolean>;
   logMultipleMeals: (items: Array<{ food: any; count: number }>) => Promise<boolean>;
+  syncQueuedMeals: () => Promise<SyncResult>;
   loadingStats: boolean;
   requestNotificationPermission: () => void;
 }
@@ -127,7 +129,7 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
     }
   }, [currentUser]);
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     if (!currentUser) return;
     try {
       const token = await currentUser.getIdToken();
@@ -156,7 +158,7 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoadingStats(false);
     }
-  };
+  }, [currentUser]);
 
   useEffect(() => {
     if (currentUser) {
@@ -170,7 +172,7 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
       setScansUsed(0);
       setScanLimit(20);
     }
-  }, [currentUser]);
+  }, [currentUser, fetchStats, fetchSubscriptionStatus]);
 
   // --- FREEMIUM: Upgrade plan (create Razorpay subscription) ---
   const upgradePlan = useCallback(async (planId: string): Promise<void> => {
@@ -257,6 +259,46 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
       setShowLoginModal(true);
       return false;
     }
+
+    const estimatedMacros = {
+      calories: Number(foodItem?.calories) || 250,
+      protein: Number(foodItem?.protein) || 10,
+      carbs: Number(foodItem?.carbs) || 30,
+      fat: Number(foodItem?.fat) || 10,
+    };
+
+    // If offline, queue directly into IndexedDB without attempting fetch
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      try {
+        await queueOfflineMeal({
+          name: foodItem?.name || 'Meal',
+          ingredients: Array.isArray(foodItem?.ingredients) ? foodItem.ingredients : [],
+          ...estimatedMacros,
+        });
+
+        // Optimistically update stats
+        const newStats: UserStats = {
+          calories: (stats.calories || 0) + estimatedMacros.calories,
+          protein: (stats.protein || 0) + estimatedMacros.protein,
+          carbs: (stats.carbs || 0) + estimatedMacros.carbs,
+          fat: (stats.fat || 0) + estimatedMacros.fat,
+          last_updated: new Date().toISOString(),
+        };
+        setStats(newStats);
+        localStorage.setItem('z_sehealth_cached_user_stats', JSON.stringify(newStats));
+
+        if (!options?.silent) {
+          showToast("Meal saved offline. Will sync when connection is restored.", "success");
+        }
+        return true;
+      } catch (err) {
+        console.error("Failed to queue offline meal:", err);
+        if (!options?.silent) {
+          showToast("Failed to save meal offline.");
+        }
+        return false;
+      }
+    }
     
     try {
       const token = await currentUser.getIdToken();
@@ -283,11 +325,35 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
     } catch (error) {
-      console.error("Failed to log meal", error);
-      if (!options?.silent) {
-        showToast("Failed to log meal due to a network error.");
+      console.warn("Failed to log meal online, falling back to offline queue:", error);
+      try {
+        await queueOfflineMeal({
+          name: foodItem?.name || 'Meal',
+          ingredients: Array.isArray(foodItem?.ingredients) ? foodItem.ingredients : [],
+          ...estimatedMacros,
+        });
+
+        const newStats: UserStats = {
+          calories: (stats.calories || 0) + estimatedMacros.calories,
+          protein: (stats.protein || 0) + estimatedMacros.protein,
+          carbs: (stats.carbs || 0) + estimatedMacros.carbs,
+          fat: (stats.fat || 0) + estimatedMacros.fat,
+          last_updated: new Date().toISOString(),
+        };
+        setStats(newStats);
+        localStorage.setItem('z_sehealth_cached_user_stats', JSON.stringify(newStats));
+
+        if (!options?.silent) {
+          showToast("Meal saved offline. Will sync when connection is restored.", "success");
+        }
+        return true;
+      } catch (queueErr) {
+        console.error("Failed to queue offline meal during network failure:", queueErr);
+        if (!options?.silent) {
+          showToast("Failed to log meal due to a network error.");
+        }
+        return false;
       }
-      return false;
     }
   };
 
@@ -402,6 +468,14 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
     }
   }, [currentUser]);
 
+  const syncQueuedMeals = useCallback(async (): Promise<SyncResult> => {
+    const result = await syncQueuedMealsToServer();
+    if (result.synced > 0) {
+      await fetchStats();
+    }
+    return result;
+  }, [fetchStats]);
+
   const value = {
     stats,
     dailyGoals,
@@ -417,6 +491,7 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
     refreshSubscription: fetchSubscriptionStatus,
     logMeal,
     logMultipleMeals,
+    syncQueuedMeals,
     loadingStats,
     requestNotificationPermission
   };

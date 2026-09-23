@@ -19,6 +19,7 @@ import { useUserProfile } from './context/UserProfileContext';
 import Footer from './components/Footer';
 import LegalViewer from './components/legal/LegalViewer';
 import MealPlanner from './components/MealPlanner';
+import { syncQueuedMealsToServer } from './utils/offlineSync';
 
 export type AppTab = 'dashboard' | 'search' | 'scan' | 'profile' | 'settings' | 'pricing' | 'admin' | 'privacy' | 'terms' | 'refund' | 'cookies' | 'planner';
 
@@ -48,6 +49,11 @@ function App() {
     subscriptionId?: string;
     errorMessage?: string;
   } | null>(null);
+
+  // --- Offline & Sync States ---
+  const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
+  const [syncStatusMessage, setSyncStatusMessage] = useState<string | null>(null);
+  const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { currentUser, setShowLoginModal, logout } = useAuth();
   const { isAdmin } = useAdminAuth();
@@ -132,6 +138,38 @@ function App() {
     return () => {
       window.removeEventListener('z-payment-success', onSuccess);
       window.removeEventListener('z-payment-failure', onFailure);
+    };
+  }, []);
+
+  // --- Network status & Background Sync on reconnection ---
+  useEffect(() => {
+    const handleOnline = async () => {
+      setIsOffline(false);
+      try {
+        const result = await syncQueuedMealsToServer();
+        if (result.synced > 0) {
+          setSyncStatusMessage(`✓ Synced ${result.synced} queued meal${result.synced > 1 ? 's' : ''}`);
+          if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+          syncTimeoutRef.current = setTimeout(() => {
+            setSyncStatusMessage(null);
+          }, 3000);
+        }
+      } catch (err) {
+        console.error("Background sync error on online event:", err);
+      }
+    };
+
+    const handleOffline = () => {
+      setIsOffline(true);
+      setSyncStatusMessage(null);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     };
   }, []);
 
@@ -236,6 +274,18 @@ function App() {
           </nav>
 
           <div className="hidden md:flex items-center gap-3">
+            {isOffline && (
+              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-300 border border-amber-500/30 flex items-center gap-1.5 shadow-sm">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                ⚡ Offline Mode — Local data active
+              </span>
+            )}
+            {syncStatusMessage && (
+              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5 shadow-sm animate-in fade-in duration-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                {syncStatusMessage}
+              </span>
+            )}
             {currentUser ? (
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2 bg-amber-500/10 px-3 py-1.5 rounded-xl border border-amber-500/20 shadow-sm">
@@ -287,6 +337,23 @@ function App() {
             )}
           </div>
         </div>
+
+        {/* Mobile Offline / Sync Status Banner */}
+        {(isOffline || syncStatusMessage) && (
+          <div className="md:hidden w-full pb-2.5 flex justify-center px-4">
+            {isOffline ? (
+              <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/30 flex items-center gap-1.5 shadow-sm">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                ⚡ Offline Mode — Local data active
+              </span>
+            ) : (
+              <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5 shadow-sm animate-in fade-in duration-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                {syncStatusMessage}
+              </span>
+            )}
+          </div>
+        )}
       </header>
 
       {/* ---- Freemium: PaymentStatus Overlay ---- */}

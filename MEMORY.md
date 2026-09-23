@@ -1,11 +1,55 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-23 (Session: Quick-Commerce Grocery Search & Export Engine)
+> **Last Updated:** 2026-09-23 (Session: Offline-First PWA Sync, Service Workers, Workbox & IndexedDB)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-23
+**Work Done — Offline-First PWA Architecture & Background Sync Engine:**
+- **Progressive Web App Manifest & Service Worker (`frontend/vite.config.ts`, `frontend/public/`)**:
+  - Integrated `vite-plugin-pwa` with `generateSW` strategy, `autoUpdate` register mode, and Workbox runtime caching.
+  - Configured high-resolution PWA icons: generated `pwa-192x192.png` and `pwa-512x512.png` with maskable padding and dark slate `#020617` background.
+  - Implemented safe runtime caching policies:
+    - `StaleWhileRevalidate` for Food Catalog APIs (`/api/foods`) with 24-hour cache expiration (`z-sehealth-food-api-v1`).
+    - `StaleWhileRevalidate` for Google Fonts stylesheets and `CacheFirst` for static font binaries (`z-sehealth-fonts`).
+    - `NetworkOnly` zero-caching security boundary for sensitive routes: `/api/admin/*`, `/api/subscription/*`, `/api/webhooks/*`, and `/api/scan/*`.
+  - PWA manifest configured with `theme_color: "#020617"`, `background_color: "#020617"`, and `display: "standalone"`.
+- **Native IndexedDB Offline Logging Queue (`frontend/src/utils/offlineSync.ts`)**:
+  - Engineered standalone, typed IndexedDB storage under `z_sehealth_offline_db` (`pending_meal_logs` store).
+  - Storage security: Bearer tokens, passwords, and sensitive credentials are never written to IndexedDB.
+  - Cross-tab concurrency lock using Web Locks API (`navigator.locks.request('z_sehealth_sync_lock')`) with in-memory mutex fallback.
+  - Sync mechanics:
+    - Fresh token resolution via `auth.currentUser.getIdToken()`.
+    - HTTP 2xx: Removes record from IndexedDB and increments synced counter.
+    - HTTP 401/403: Pauses sync cycle without discarding user logs; retains queue for re-authentication.
+    - HTTP 400/422: Quarantines invalid items to prevent endless retry loops.
+    - HTTP 5xx / Network Error: Retains records in queue with incremented retry count.
+- **Context & Optimistic Logging Integration (`frontend/src/context/UserStatsContext.tsx`)**:
+  - Updated `logMeal` to detect offline connectivity (`!navigator.onLine` or fetch failure).
+  - Automatically enqueues meals in IndexedDB with optimistic calorie and macro calculation (fallback 250 cal, 10p, 30c, 10f).
+  - Optimistically updates `stats` in memory and local storage (`z_sehealth_cached_user_stats`) for immediate UI responsiveness.
+  - Displays user-friendly notification: `"Meal saved offline. Will sync when connection is restored."`.
+  - Exposes `syncQueuedMeals` callback on context to allow manual and automatic synchronization.
+- **Four-Tier Search Catalog Fallback (`frontend/src/components/Search.tsx`)**:
+  - Implemented resilient offline fallback cascade: Priority 1 (Fresh network) → Priority 2 (Local cached foods `z_sehealth_cached_search_foods`) → Priority 3 (`DEFAULT_FALLBACK_FOODS`) → Priority 4 (Empty state).
+  - Added real-time window `online`/`offline` event listeners.
+  - Displays dark brutalist status badge: `⚡ Offline Mode — Showing local food catalog`.
+  - Revalidates food catalog silently in the background when connectivity returns.
+- **Universal Status Indicator & Auto-Sync (`frontend/src/App.tsx`)**:
+  - Real-time online/offline listener triggering automatic queued meal sync upon network recovery.
+  - Renders top navigation status pill: `⚡ Offline Mode — Local data active` (amber pulse) when offline.
+  - Renders dynamic auto-dismissing success banner: `✓ Synced {N} queued meal(s)` for 3 seconds after successful recovery sync.
+  - Fully responsive on both desktop and mobile headers.
+- **Verification & Automated Testing**:
+  - Authored unit test suite in `frontend/src/utils/offlineSync.test.ts` (5 tests covering IDB queueing, clearing, auth sync, network failure retries, and quarantine handling).
+  - All test suites passing: **54/54 PASSED (100% across 6 test files)**.
+  - Full production build: `tsc -b && vite build` succeeded with **0 errors (exit code 0)**, generating `dist/sw.js`, `dist/manifest.webmanifest`, `dist/registerSW.js`, and precaching 18 static assets.
+
+---
+
+## 🗓️ Previous Session Summary
 **Date:** 2026-09-23
 **Work Done — Quick-Commerce Grocery Search & Export Engine:**
 - **Centralized Provider Utility & Sanitization Engine (`frontend/src/utils/groceryDeepLinks.ts`)**:

@@ -273,6 +273,9 @@ export default function Search({ onNavigateToDashboard }: { onNavigateToDashboar
     return DEFAULT_FALLBACK_FOODS;
   });
   const [isRevalidating, setIsRevalidating] = useState(false);           // Data from Backend
+  const [isOfflineCatalog, setIsOfflineCatalog] = useState<boolean>(() => 
+    typeof navigator !== 'undefined' && !navigator.onLine
+  );
   const [loading, setLoading] = useState(false);                 // Loading spinner toggle
   const [searchError, setSearchError] = useState<string | null>(null); // Error for non-food search
   const [visibleCount, setVisibleCount] = useState(18);          // Pagination: items to show
@@ -415,6 +418,63 @@ export default function Search({ onNavigateToDashboard }: { onNavigateToDashboar
     }
   }, []);
 
+  const getOfflineCatalog = (): FoodItem[] => {
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem('z_sehealth_cached_search_foods');
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        } catch (e) {
+          console.error("Failed to parse cached search foods", e);
+        }
+      }
+    }
+    return DEFAULT_FALLBACK_FOODS;
+  };
+
+  const performLocalSearch = (query: string) => {
+    const catalog = getOfflineCatalog();
+    const cleanQuery = query.toLowerCase().trim();
+    if (!cleanQuery) {
+      setFoods(catalog);
+      setSearchError(null);
+      return;
+    }
+
+    const matches = catalog.filter(f =>
+      f.name.toLowerCase().includes(cleanQuery) ||
+      f.brand.toLowerCase().includes(cleanQuery) ||
+      (f.ingredients && f.ingredients.some(i => i.name.toLowerCase().includes(cleanQuery)))
+    );
+
+    if (matches.length > 0) {
+      setFoods(matches);
+      setSearchError(null);
+    } else {
+      setFoods([]);
+      setSearchError(`No foods found matching "${query}" in local offline catalog.`);
+    }
+  };
+
+  // Listen to network transitions to automatically switch catalog modes
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOfflineCatalog(false);
+      fetchInitialFoods();
+    };
+    const handleOffline = () => {
+      setIsOfflineCatalog(true);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   const addToRecent = (food: FoodItem) => {
     setRecentItems(prev => {
       const filtered = prev.filter(item => item._id !== food._id);
@@ -425,6 +485,10 @@ export default function Search({ onNavigateToDashboard }: { onNavigateToDashboar
   };
 
   const fetchInitialFoods = async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setIsOfflineCatalog(true);
+      return;
+    }
     setIsRevalidating(true);
     try {
       const response = await fetch(`${API_BASE}/api/foods?search=`);
@@ -432,11 +496,13 @@ export default function Search({ onNavigateToDashboard }: { onNavigateToDashboar
         const data = await response.json();
         if (Array.isArray(data) && data.length > 0) {
           setFoods(data);
+          setIsOfflineCatalog(false);
           localStorage.setItem('z_sehealth_cached_search_foods', JSON.stringify(data));
         }
       }
     } catch (err) {
-      console.error("Background search fetch failed:", err);
+      console.warn("Background search fetch failed, keeping local catalog:", err);
+      setIsOfflineCatalog(true);
     } finally {
       setIsRevalidating(false);
       setLoading(false);
@@ -445,15 +511,24 @@ export default function Search({ onNavigateToDashboard }: { onNavigateToDashboar
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
+    setVisibleCount(18);
+
+    // If browser is offline, instantly filter locally without network stall
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setIsOfflineCatalog(true);
+      performLocalSearch(searchQuery);
+      return;
+    }
+
     setIsRevalidating(true);
     setSearchError(null);
-    setVisibleCount(18);
     try {
       const response = await fetch(`${API_BASE}/api/foods?search=${encodeURIComponent(searchQuery)}`);
       if (!response.ok) {
         throw new Error(`Server returned status ${response.status}`);
       }
       const data = await response.json();
+      setIsOfflineCatalog(false);
       if (data.error) {
         setSearchError(data.error);
       } else if (Array.isArray(data) && data.length === 0) {
@@ -463,8 +538,9 @@ export default function Search({ onNavigateToDashboard }: { onNavigateToDashboar
         localStorage.setItem('z_sehealth_cached_search_foods', JSON.stringify(data));
       }
     } catch (err) { 
-      console.error(err); 
-      setSearchError("Failed to connect to the server or search timed out. Please try again.");
+      console.warn("Search network request failed, falling back to local catalog:", err);
+      setIsOfflineCatalog(true);
+      performLocalSearch(searchQuery);
     } finally { 
       setIsRevalidating(false);
       setLoading(false); 
@@ -624,6 +700,14 @@ export default function Search({ onNavigateToDashboard }: { onNavigateToDashboar
           />
           <SearchIcon className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-500 w-6 h-6" />
         </form>
+
+        {/* Offline Catalog Badge */}
+        {isOfflineCatalog && (
+          <div className="flex items-center justify-center gap-2 mb-6 text-xs font-bold text-amber-300 bg-amber-500/10 py-2 px-4 rounded-full border border-amber-500/30 w-fit mx-auto animate-in fade-in duration-200 shadow-sm">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <span>⚡ Offline Mode — Showing local food catalog</span>
+          </div>
+        )}
 
         {searchError && (
           <div className="mb-8 p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl text-rose-400 font-bold text-center">
