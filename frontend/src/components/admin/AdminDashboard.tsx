@@ -10,6 +10,7 @@ import {
   ArrowLeft,
   LogOut,
   Database,
+  History,
 } from 'lucide-react';
 import { useAdminAuth } from '../../context/AdminAuthContext';
 import { useAuth } from '../../context/AuthContext';
@@ -19,12 +20,13 @@ import UserManagementTab from './tabs/UserManagementTab';
 import AdminTeamTab from './tabs/AdminTeamTab';
 import SystemLogsTab from './tabs/SystemLogsTab';
 import AdminOtaManager from './tabs/AdminOtaManager';
+import AuditLogsTab from './tabs/AuditLogsTab';
 
 interface AdminDashboardProps {
   onExit: () => void;
 }
 
-type TabKey = 'overview' | 'moderation' | 'users' | 'team' | 'logs' | 'ota';
+type TabKey = 'overview' | 'moderation' | 'users' | 'team' | 'logs' | 'ota' | 'audit';
 
 export default function AdminDashboard({ onExit }: AdminDashboardProps) {
   const { adminUser, isSuperAdmin, permissions } = useAdminAuth();
@@ -54,6 +56,13 @@ export default function AdminDashboard({ onExit }: AdminDashboardProps) {
       id: 'team',
       label: 'Admin Team',
       icon: Crown,
+      visible: isSuperAdmin || permissions.canManageAdmins,
+      highlight: true,
+    },
+    {
+      id: 'audit',
+      label: 'Audit Trail',
+      icon: History,
       visible: isSuperAdmin || permissions.canManageAdmins,
       highlight: true,
     },
@@ -168,6 +177,7 @@ export default function AdminDashboard({ onExit }: AdminDashboardProps) {
         {activeTab === 'moderation' && <FoodModerationTab />}
         {activeTab === 'users' && <UserManagementTab />}
         {activeTab === 'team' && <AdminTeamTab />}
+        {activeTab === 'audit' && <AuditLogsTab />}
         {activeTab === 'logs' && <SystemLogsTab />}
         {activeTab === 'ota' && <AdminOtaManager />}
       </div>

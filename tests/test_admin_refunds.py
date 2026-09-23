@@ -18,10 +18,12 @@ def mock_collections():
     with patch("routes.admin._get_transactions_collection", return_value=mock_transactions), \
          patch("routes.admin._get_users_collection", return_value=mock_users), \
          patch("routes.admin._get_admins_collection", return_value=mock_admins), \
+         patch("routes.admin._get_audit_logs_collection", return_value=AsyncMock()), \
          patch("routes.admin.log_system_event", new=AsyncMock()), \
          patch("backend.routes.admin._get_transactions_collection", return_value=mock_transactions), \
          patch("backend.routes.admin._get_users_collection", return_value=mock_users), \
          patch("backend.routes.admin._get_admins_collection", return_value=mock_admins), \
+         patch("backend.routes.admin._get_audit_logs_collection", return_value=AsyncMock()), \
          patch("backend.routes.admin.log_system_event", new=AsyncMock()):
         yield mock_transactions, mock_users, mock_admins
 

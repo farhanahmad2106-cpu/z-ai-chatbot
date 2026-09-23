@@ -1,11 +1,50 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-23 (Session: Offline-First PWA Sync, Service Workers, Workbox & IndexedDB)
+> **Last Updated:** 2026-09-23 (Session: Multi-Admin Activity Audit Dashboard, Immutable Trails, Super Admin Clearances)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-23
+**Work Done — Multi-Admin Activity Audit Dashboard (Immutable Trails & Governance):**
+- **Immutable Audit Event Schema (`backend/schemas/admin_audit.py`)**:
+  - Implemented typed Pydantic models: `AdminAuditEvent`, `AdminAuditListResponse`.
+  - Type-enforced literal action types: `FOOD_APPROVED`, `FOOD_REJECTED`, `USER_QUOTA_RESET`, `USER_BANNED`, `USER_UNBANNED`, `ADMIN_INVITED`, `ADMIN_PERMISSIONS_UPDATED`, `ADMIN_REVOKED`, `SUBSCRIPTION_REFUNDED`.
+  - Type-enforced resource types: `food`, `user`, `admin`, `subscription`.
+- **MongoDB Persistence & High-Speed Indexes (`backend/main.py`)**:
+  - Registered `admin_audit_logs_collection = db["admin_audit_logs"]`.
+  - Created background indexes: `timestamp` DESC, `action` ASC, `admin_email` ASC, and compound index `[("action", 1), ("admin_email", 1), ("timestamp", -1)]`.
+- **Privileged Mutation Instrumentation & Data Sanitization (`backend/routes/admin.py`)**:
+  - Engineered centralized `log_admin_audit_event(...)` with request IP address extraction (`x-forwarded-for` or client host), verified token identity derivation, and fail-safe handling (`raise_on_failure` option for financial compliance).
+  - Built `_sanitize_audit_details(...)` redacting all sensitive credential keys (`password`, `token`, `jwt`, `api_key`, `secret`, `razorpay_secret`, `cvv`, etc.).
+  - Instrumented all privileged mutation endpoints:
+    - Food Moderation: `approve_food_item` (`FOOD_APPROVED`), `reject_food_item` (`FOOD_REJECTED`).
+    - User Governance: `reset_user_quota` (`USER_QUOTA_RESET`), `toggle_user_ban` (`USER_BANNED` / `USER_UNBANNED`).
+    - Admin Team: `invite_admin_member` (`ADMIN_INVITED`), `update_admin_permissions` (`ADMIN_PERMISSIONS_UPDATED`), `delete_admin_member` (`ADMIN_REVOKED`).
+    - Subscriptions & Payments: `process_refund` (`SUBSCRIPTION_REFUNDED` with exact integer paise preservation and non-repudiation guarantee).
+- **Secure Paginated Retrieval & Streaming CSV Export Endpoints (`backend/routes/admin.py`)**:
+  - `GET /api/admin/audit-logs`: Authenticated, paginated (skip/limit), multi-field filtered (`action`, `admin_email`, `search` regex over target ID, admin email, action), strictly enforced Super Admin clearance (`is_super_admin == True` or `canManageAdmins == True`).
+  - `GET /api/admin/audit-logs/export`: Streamed CSV export with active filters, custom content-disposition header (`z_sehealth_audit_trail_YYYY-MM-DD.csv`), capped at 1,000 records for memory safety.
+- **Brutalist Frontend Audit Log Dashboard (`frontend/src/components/admin/tabs/AuditLogsTab.tsx`)**:
+  - Built dark brutalist interface (`#020617` / `#0f172a` / `#10b981`) matching Z-SeHealth admin design language.
+  - Action-specific color coding and iconography (emerald approvals, rose rejections/bans, amber refunds, purple invitations, indigo permissions).
+  - Relative timestamp computation with exact ISO tooltip.
+  - Search, filter, and pagination bar with clear/reset controls.
+  - Full-detail event inspector modal with formatted JSON payload display and one-click "Copy JSON" functionality.
+  - One-click CSV export invoking the streaming backend endpoint with browser blob download.
+  - Access control guard displaying brutalist clearance restriction banner if non-super admin attempts access.
+- **Admin Dashboard Integration (`frontend/src/components/admin/AdminDashboard.tsx`)**:
+  - Added `'audit'` tab with `History` icon in navigation bar, visible exclusively to Super Admins (`isSuperAdmin || permissions.canManageAdmins`).
+- **Comprehensive Verification & Zero Regressions**:
+  - Authored dedicated pytest suite in `tests/test_admin_audit.py` (10 tests covering unauthorized access 401, non-super admin forbidden 403, export forbidden 403, list retrieval, CSV export, food approvals, quota resets, user bans, admin invites, and secret sanitization).
+  - All admin pytest suites passing: **18/18 tests passed (100%)**.
+  - Frontend Vitest: **54/54 tests passed (100%)**.
+  - Production build: `tsc -b && vite build` completed with **0 errors (exit code 0)**.
+
+---
+
+## 🗓️ Previous Session Summary
 **Date:** 2026-09-23
 **Work Done — Offline-First PWA Architecture & Background Sync Engine:**
 - **Progressive Web App Manifest & Service Worker (`frontend/vite.config.ts`, `frontend/public/`)**:

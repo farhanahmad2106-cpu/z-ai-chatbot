@@ -12,10 +12,14 @@ Provides protected administrative endpoints for Super Admin and Granular Team Me
 
 import os
 import sys
+import csv
+import io
+import json
+from uuid import uuid4
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from bson import ObjectId
-from fastapi import APIRouter, Header, HTTPException, Depends, Query, status
+from fastapi import APIRouter, Header, HTTPException, Depends, Query, status, Request, Response
 import httpx
 import firebase_admin
 from firebase_admin import auth as firebase_auth
@@ -35,6 +39,12 @@ from schemas.admin import (
     OtaDispatchRequest,
     UserResetQuotaResponse,
     UserToggleBanResponse,
+)
+from schemas.admin_audit import (
+    AdminAuditEvent,
+    AdminAuditListResponse,
+    AuditActionType,
+    AuditResourceType,
 )
 
 router = APIRouter(prefix="/api/admin", tags=["Admin Hub"])
@@ -91,6 +101,87 @@ def _get_transactions_collection():
     if main_module and hasattr(main_module, "transactions_collection"):
         return main_module.transactions_collection
     return _get_db()["transactions"]
+
+
+def _get_audit_logs_collection():
+    main_module = sys.modules.get("backend.main") or sys.modules.get("main") or sys.modules.get("__main__")
+    if main_module and hasattr(main_module, "admin_audit_logs_collection"):
+        return main_module.admin_audit_logs_collection
+    return _get_db()["admin_audit_logs"]
+
+
+# --- AUDIT SANITIZATION & LOGGING HELPER ---
+SENSITIVE_AUDIT_KEYS = {
+    "password", "password_hash", "token", "jwt", "access_token", "refresh_token",
+    "api_key", "secret", "razorpay_secret", "key_secret", "webhook_secret",
+    "cvv", "card_number", "credentials"
+}
+
+def _sanitize_audit_details(data: Any) -> Any:
+    if isinstance(data, dict):
+        cleaned = {}
+        for k, v in data.items():
+            if any(sens in k.lower() for sens in SENSITIVE_AUDIT_KEYS):
+                continue
+            cleaned[k] = _sanitize_audit_details(v)
+        return cleaned
+    elif isinstance(data, list):
+        return [_sanitize_audit_details(item) for item in data]
+    return data
+
+async def log_admin_audit_event(
+    action: AuditActionType,
+    target_resource_type: AuditResourceType,
+    target_resource_id: str,
+    admin: Dict[str, Any],
+    details: Dict[str, Any],
+    request: Optional[Request] = None,
+    raise_on_failure: bool = False,
+) -> AdminAuditEvent:
+    """
+    Constructs and persists an immutable audit event in admin_audit_logs.
+    Derives admin identity and IP address strictly from authenticated backend context.
+    """
+    admin_email = (admin.get("email") or "").strip().lower()
+    ip_address = None
+    if request:
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            ip_address = forwarded.split(",")[0].strip()
+        elif request.client and request.client.host:
+            ip_address = request.client.host
+
+    event = AdminAuditEvent(
+        event_id=f"audit_{uuid4().hex}",
+        schema_version=1,
+        action=action,
+        admin_email=admin_email,
+        target_resource_id=str(target_resource_id),
+        target_resource_type=target_resource_type,
+        details=_sanitize_audit_details(details),
+        ip_address=ip_address,
+        timestamp=datetime.now(timezone.utc),
+    )
+
+    try:
+        col = _get_audit_logs_collection()
+        doc = event.model_dump()
+        await col.insert_one(doc)
+    except Exception as e:
+        print(f"[AuditLogError] Failed to write admin audit event: {e}")
+        await log_system_event(
+            "ERROR",
+            "AuditLog",
+            f"Failed to record audit event {action} for {target_resource_id}",
+            {"error": str(e), "action": action, "admin_email": admin_email},
+        )
+        if raise_on_failure:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Durable audit persistence failed: {str(e)}",
+            )
+
+    return event
 
 
 # --- SYSTEM LOGGING HELPER ---
@@ -294,6 +385,7 @@ async def list_admin_team(admin: Dict[str, Any] = Depends(require_permission("ca
 @router.post("/team/invite", response_model=AdminUserResponse)
 async def invite_admin_member(
     invite: AdminInviteRequest,
+    request: Request,
     admin: Dict[str, Any] = Depends(require_permission("canManageAdmins")),
 ):
     """Invites a new restricted moderator or administrator (Super Admin only)."""
@@ -331,6 +423,19 @@ async def invite_admin_member(
         f"Admin {admin.get('email')} invited new moderator {clean_email} ({invite.name})",
     )
 
+    await log_admin_audit_event(
+        action="ADMIN_INVITED",
+        target_resource_type="admin",
+        target_resource_id=clean_email,
+        admin=admin,
+        details={
+            "invited_email": clean_email,
+            "name": invite.name.strip(),
+            "permissions": new_admin_doc["permissions"],
+        },
+        request=request,
+    )
+
     return AdminUserResponse(
         id=str(new_admin_doc["_id"]),
         uid=None,
@@ -348,6 +453,7 @@ async def invite_admin_member(
 async def update_admin_permissions(
     admin_id: str,
     update_req: AdminPermissionUpdateRequest,
+    request: Request,
     admin: Dict[str, Any] = Depends(require_permission("canManageAdmins")),
 ):
     """Updates permissions or active status of an admin (Super Admin only)."""
@@ -389,6 +495,23 @@ async def update_admin_permissions(
         f"Admin {admin.get('email')} updated permissions for {target_admin.get('email')}",
     )
 
+    action_type = "ADMIN_REVOKED" if update_req.is_active is False else "ADMIN_PERMISSIONS_UPDATED"
+    await log_admin_audit_event(
+        action=action_type,
+        target_resource_type="admin",
+        target_resource_id=target_admin.get("email") or admin_id,
+        admin=admin,
+        details={
+            "admin_id": admin_id,
+            "email": target_admin.get("email"),
+            "previous_permissions": target_admin.get("permissions"),
+            "updated_permissions": update_fields.get("permissions"),
+            "previous_active": target_admin.get("is_active", True),
+            "updated_active": update_req.is_active,
+        },
+        request=request,
+    )
+
     return AdminUserResponse(
         id=str(updated_doc["_id"]),
         uid=updated_doc.get("uid"),
@@ -405,6 +528,7 @@ async def update_admin_permissions(
 @router.delete("/team/{admin_id}")
 async def delete_admin_member(
     admin_id: str,
+    request: Request,
     admin: Dict[str, Any] = Depends(require_permission("canManageAdmins")),
 ):
     """Permanently revokes and removes an administrator (Super Admin only)."""
@@ -429,6 +553,19 @@ async def delete_admin_member(
         "WARNING",
         "TeamManagement",
         f"Admin {admin.get('email')} permanently deleted admin account {target_admin.get('email')}",
+    )
+
+    await log_admin_audit_event(
+        action="ADMIN_REVOKED",
+        target_resource_type="admin",
+        target_resource_id=target_admin.get("email") or admin_id,
+        admin=admin,
+        details={
+            "admin_id": admin_id,
+            "deleted_email": target_admin.get("email"),
+            "permanent_deletion": True,
+        },
+        request=request,
     )
 
     return {"success": True, "message": f"Administrator {target_admin.get('email')} deleted successfully."}
@@ -482,6 +619,7 @@ async def get_pending_foods(
 async def approve_food_item(
     food_id: str,
     review: Optional[CrowdsourcedFoodReview] = None,
+    request: Request = None,
     admin: Dict[str, Any] = Depends(require_permission("canApproveFoods")),
 ):
     """
@@ -531,6 +669,19 @@ async def approve_food_item(
         f"Admin {admin_identifier} approved food item '{food_name}' ({food_id}) into global database",
     )
 
+    await log_admin_audit_event(
+        action="FOOD_APPROVED",
+        target_resource_type="food",
+        target_resource_id=food_id,
+        admin=admin,
+        details={
+            "food_id": food_id,
+            "product_name": food_name,
+            "status": "Safe",
+        },
+        request=request,
+    )
+
     return {"success": True, "message": f"Food item '{food_name}' approved globally.", "id": food_id}
 
 
@@ -539,6 +690,7 @@ async def approve_food_item(
 async def reject_food_item(
     food_id: str,
     review: Optional[CrowdsourcedFoodReview] = None,
+    request: Request = None,
     admin: Dict[str, Any] = Depends(require_permission("canApproveFoods")),
 ):
     """
@@ -569,6 +721,19 @@ async def reject_food_item(
         "WARNING",
         "FoodModeration",
         f"Admin {admin.get('email')} rejected food '{food.get('name')}' ({food_id}). Reason: {reason}",
+    )
+
+    await log_admin_audit_event(
+        action="FOOD_REJECTED",
+        target_resource_type="food",
+        target_resource_id=food_id,
+        admin=admin,
+        details={
+            "food_id": food_id,
+            "product_name": food.get("name") or food.get("product_name"),
+            "reason": reason,
+        },
+        request=request,
     )
 
     return {"success": True, "message": f"Food item '{food.get('name')}' rejected.", "id": food_id}
@@ -642,6 +807,8 @@ async def list_users(
 @router.post("/users/{user_id}/reset-quota", response_model=UserResetQuotaResponse)
 async def reset_user_quota(
     user_id: str,
+    reason: Optional[str] = Query(None),
+    request: Request = None,
     admin: Dict[str, Any] = Depends(require_permission("canManageUsers")),
 ):
     """Resets the monthly scan usage counter for a user back to 0."""
@@ -668,6 +835,22 @@ async def reset_user_quota(
         f"Admin {admin.get('email')} reset scan quota for user {user.get('email')} (was {prev_scans})",
     )
 
+    target_uid = str(user.get("uid") or user["_id"])
+    await log_admin_audit_event(
+        action="USER_QUOTA_RESET",
+        target_resource_type="user",
+        target_resource_id=target_uid,
+        admin=admin,
+        details={
+            "target_user_uid": target_uid,
+            "target_user_email": user.get("email"),
+            "previous_limit": prev_scans,
+            "new_limit": 0,
+            "reason": reason or "Admin manual quota reset",
+        },
+        request=request,
+    )
+
     return UserResetQuotaResponse(
         success=True,
         user_id=str(user["_id"]),
@@ -681,6 +864,7 @@ async def reset_user_quota(
 async def toggle_user_ban(
     user_id: str,
     reason: Optional[str] = Query(None),
+    request: Request = None,
     admin: Dict[str, Any] = Depends(require_permission("canManageUsers")),
 ):
     """Toggles account suspension / ban for a user."""
@@ -715,6 +899,23 @@ async def toggle_user_ban(
         "WARNING" if new_banned_state else "INFO",
         "UserManagement",
         f"Admin {admin.get('email')} {action_text} user {user.get('email')}",
+    )
+
+    target_uid = str(user.get("uid") or user["_id"])
+    ban_action = "USER_BANNED" if new_banned_state else "USER_UNBANNED"
+    await log_admin_audit_event(
+        action=ban_action,
+        target_resource_type="user",
+        target_resource_id=target_uid,
+        admin=admin,
+        details={
+            "target_user_uid": target_uid,
+            "target_user_email": user.get("email"),
+            "previous_banned": current_banned,
+            "new_banned": new_banned_state,
+            "reason": reason.strip() if (new_banned_state and reason) else None,
+        },
+        request=request,
     )
 
     return UserToggleBanResponse(
@@ -986,6 +1187,7 @@ async def dispatch_ota_update(
 @router.post("/subscriptions/refund")
 async def process_refund(
     request: RefundRequest,
+    req: Request = None,
     admin: Dict[str, Any] = Depends(require_permission("canManageAdmins")),
 ):
     """
@@ -1108,6 +1310,24 @@ async def process_refund(
         f"Admin {admin.get('email')} refunded {refund_amount} for payment {request.payment_id}"
     )
 
+    # 6. Immutable Financial Audit Logging
+    await log_admin_audit_event(
+        action="SUBSCRIPTION_REFUNDED",
+        target_resource_type="subscription",
+        target_resource_id=request.payment_id,
+        admin=admin,
+        details={
+            "payment_id": request.payment_id,
+            "amount_paise": int(refund_amount),  # Integer paise preserved!
+            "reason": reason_str,
+            "auto_downgrade": user_downgraded,
+            "refund_id": rzp_refund.get("id"),
+            "currency": "INR",
+        },
+        request=req,
+        raise_on_failure=True,  # Mandatory durable audit persistence for financial operation
+    )
+
     return {
         "success": True,
         "message": "Refund successful",
@@ -1118,3 +1338,132 @@ async def process_refund(
         "reason": reason_str,
         "user_downgraded": user_downgraded
     }
+
+
+# --- 10. MULTI-ADMIN ACTIVITY AUDIT TRAIL ---
+@router.get("/audit-logs", response_model=AdminAuditListResponse)
+async def list_admin_audit_logs(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    action: Optional[str] = Query(None),
+    admin_email: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    admin: Dict[str, Any] = Depends(require_permission("canManageAdmins")),
+):
+    """
+    Retrieves chronological, filterable administrative audit records.
+    Restricted strictly to Super Admin clearance (is_super_admin == True or canManageAdmins == True).
+    """
+    col = _get_audit_logs_collection()
+    query: Dict[str, Any] = {}
+
+    if action and action.upper() != "ALL":
+        query["action"] = action.upper()
+
+    if admin_email and admin_email.strip():
+        query["admin_email"] = admin_email.strip().lower()
+
+    if search and search.strip():
+        clean_search = search.strip()
+        query["$or"] = [
+            {"target_resource_id": {"$regex": clean_search, "$options": "i"}},
+            {"admin_email": {"$regex": clean_search, "$options": "i"}},
+            {"action": {"$regex": clean_search, "$options": "i"}},
+        ]
+
+    total = await col.count_documents(query)
+    cursor = col.find(query).sort([("timestamp", -1), ("event_id", -1)]).skip(skip).limit(limit)
+
+    items: List[AdminAuditEvent] = []
+    async for doc in cursor:
+        items.append(
+            AdminAuditEvent(
+                event_id=doc["event_id"],
+                schema_version=doc.get("schema_version", 1),
+                action=doc["action"],
+                admin_email=doc["admin_email"],
+                target_resource_id=doc["target_resource_id"],
+                target_resource_type=doc["target_resource_type"],
+                details=doc.get("details", {}),
+                ip_address=doc.get("ip_address"),
+                timestamp=doc["timestamp"] if isinstance(doc["timestamp"], datetime) else datetime.fromisoformat(str(doc["timestamp"])),
+            )
+        )
+
+    return AdminAuditListResponse(
+        items=items,
+        total=total,
+        skip=skip,
+        limit=limit,
+    )
+
+
+@router.get("/audit-logs/export")
+async def export_admin_audit_logs_csv(
+    action: Optional[str] = Query(None),
+    admin_email: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    admin: Dict[str, Any] = Depends(require_permission("canManageAdmins")),
+):
+    """
+    Streams or returns CSV formatted administrative audit records matching active filters.
+    Restricted strictly to Super Admin clearance. Hard-capped at 1,000 records for safety.
+    """
+    col = _get_audit_logs_collection()
+    query: Dict[str, Any] = {}
+
+    if action and action.upper() != "ALL":
+        query["action"] = action.upper()
+
+    if admin_email and admin_email.strip():
+        query["admin_email"] = admin_email.strip().lower()
+
+    if search and search.strip():
+        clean_search = search.strip()
+        query["$or"] = [
+            {"target_resource_id": {"$regex": clean_search, "$options": "i"}},
+            {"admin_email": {"$regex": clean_search, "$options": "i"}},
+            {"action": {"$regex": clean_search, "$options": "i"}},
+        ]
+
+    # Bound export to safe max of 1000 records
+    cursor = col.find(query).sort("timestamp", -1).limit(1000)
+
+    output = io.StringIO()
+    writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
+    writer.writerow([
+        "event_id",
+        "timestamp",
+        "action",
+        "admin_email",
+        "target_resource_type",
+        "target_resource_id",
+        "ip_address",
+        "details",
+    ])
+
+    async for doc in cursor:
+        ts = doc.get("timestamp")
+        ts_str = ts.isoformat() if isinstance(ts, datetime) else str(ts)
+        writer.writerow([
+            doc.get("event_id", ""),
+            ts_str,
+            doc.get("action", ""),
+            doc.get("admin_email", ""),
+            doc.get("target_resource_type", ""),
+            doc.get("target_resource_id", ""),
+            doc.get("ip_address", "") or "null",
+            json.dumps(doc.get("details", {})),
+        ])
+
+    csv_content = output.getvalue()
+    filename = f"z_sehealth_audit_trail_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
+
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+    )

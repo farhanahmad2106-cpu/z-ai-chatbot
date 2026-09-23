@@ -93,6 +93,7 @@ consents_collection = db["consents"]
 weekly_plans_collection = db["weekly_plans"]
 meal_translations_collection = db["meal_translations"]
 custom_meals_collection = db["custom_meals"]
+admin_audit_logs_collection = db["admin_audit_logs"]
 
 # --- FIREBASE SETUP ---
 try:
@@ -130,6 +131,13 @@ async def background_db_init():
         )
         await custom_meals_collection.create_index(
             [("user_id", 1), ("deleted_at", 1)],
+            background=True
+        )
+        await admin_audit_logs_collection.create_index([("timestamp", -1)], background=True)
+        await admin_audit_logs_collection.create_index([("action", 1)], background=True)
+        await admin_audit_logs_collection.create_index([("admin_email", 1)], background=True)
+        await admin_audit_logs_collection.create_index(
+            [("action", 1), ("admin_email", 1), ("timestamp", -1)],
             background=True
         )
 
