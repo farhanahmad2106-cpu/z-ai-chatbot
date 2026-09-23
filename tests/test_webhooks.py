@@ -39,7 +39,8 @@ def mock_transactions_collection():
     return mock_col
 
 @pytest.fixture
-def override_collections(mock_users_collection, mock_transactions_collection):
+def override_collections(mock_users_collection, mock_transactions_collection, monkeypatch):
+    monkeypatch.setenv("RAZORPAY_WEBHOOK_SECRET", "test_secret_123")
     with patch("backend.routes.webhooks._get_users_collection", return_value=mock_users_collection), \
          patch("backend.routes.webhooks._get_transactions_collection", return_value=mock_transactions_collection):
         yield mock_users_collection, mock_transactions_collection

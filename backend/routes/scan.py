@@ -16,9 +16,13 @@ MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 MB
 
 
 def _get_foods_collection():
-    main_module = sys.modules.get("main") or sys.modules.get("__main__")
-    if main_module and hasattr(main_module, "db"):
-        return main_module.db["foods"]
+    for mod_name in ("backend.main", "main", "__main__"):
+        main_module = sys.modules.get(mod_name)
+        if main_module:
+            if hasattr(main_module, "foods_collection") and main_module.foods_collection is not None:
+                return main_module.foods_collection
+            if hasattr(main_module, "db") and main_module.db is not None:
+                return main_module.db["foods"]
     return None
 
 
@@ -50,7 +54,7 @@ async def analyze_back_of_pack(
 
     # Resolve anonymized pseudonymous contributor token without leaking user email or raw UID
     submitted_by = "anon_contributor"
-    if authorization and authorization.startswith("Bearer "):
+    if authorization and isinstance(authorization, str) and authorization.startswith("Bearer "):
         token = authorization.split(" ")[1].strip()
         try:
             decoded = fb_auth.verify_id_token(token)
@@ -77,39 +81,51 @@ async def analyze_back_of_pack(
 
     # Store uncataloged food submission into MongoDB Atlas with is_verified: False
     foods_col = _get_foods_collection()
-    if foods_col is not None:
-        now_ts = datetime.now(timezone.utc).isoformat()
-        food_doc = {
-            "name": full_product_name,
-            "product_name": full_product_name,
-            "brand": brand_title,
-            "barcode": barcode,
-            "is_verified": False,
-            "requires_moderation": True,
+    if foods_col is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database service unavailable for food persistence."
+        )
 
-            "status": "pending_review",
-            "submitted_by": submitted_by,
-            "raw_ocr_text": analysis_result.raw_ocr_text,
-            "detected_ins_additives": analysis_result.detected_ins_additives,
-            "additives": [
-                f"{a.get('code', '')}: {a.get('name', '')}" if isinstance(a, dict) else str(a)
-                for a in analysis_result.detected_ins_additives
-            ],
-            "flagged_allergens": analysis_result.flagged_allergens,
-            "allergens": analysis_result.flagged_allergens,
-            "parsed_ingredients": analysis_result.parsed_ingredients,
-            "ingredients": [
-                {"name": ing, "safety": "Safe", "description": f"Extracted ingredient: {ing}"}
-                for ing in analysis_result.parsed_ingredients
-            ],
-            "nutrition_per_100g": analysis_result.nutrition_per_100g,
-            "estimated_macros": analysis_result.estimated_macros,
-            "safety_score": 75,
-            "source": "crowdsourced_ocr",
-            "created_at": now_ts,
-        }
+    now_ts = datetime.now(timezone.utc).isoformat()
+    food_doc = {
+        "name": full_product_name,
+        "product_name": full_product_name,
+        "brand": brand_title,
+        "barcode": barcode,
+        "is_verified": False,
+        "requires_moderation": True,
+
+        "status": "pending_review",
+        "submitted_by": submitted_by,
+        "raw_ocr_text": analysis_result.raw_ocr_text,
+        "detected_ins_additives": analysis_result.detected_ins_additives,
+        "additives": [
+            f"{a.get('code', '')}: {a.get('name', '')}" if isinstance(a, dict) else str(a)
+            for a in analysis_result.detected_ins_additives
+        ],
+        "flagged_allergens": analysis_result.flagged_allergens,
+        "allergens": analysis_result.flagged_allergens,
+        "parsed_ingredients": analysis_result.parsed_ingredients,
+        "ingredients": [
+            {"name": ing, "safety": "Safe", "description": f"Extracted ingredient: {ing}"}
+            for ing in analysis_result.parsed_ingredients
+        ],
+        "nutrition_per_100g": analysis_result.nutrition_per_100g,
+        "estimated_macros": analysis_result.estimated_macros,
+        "safety_score": 75,
+        "source": "crowdsourced_ocr",
+        "created_at": now_ts,
+    }
+
+    try:
         res = await foods_col.insert_one(food_doc)
         analysis_result.food_id = str(res.inserted_id)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to persist food document: {str(exc)}"
+        )
 
     analysis_result.is_verified = False
 

@@ -1,11 +1,43 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-23 (Session: Multi-Admin Activity Audit Dashboard, Immutable Trails, Super Admin Clearances)
+> **Last Updated:** 2026-09-23 (Session: Priority-0 Backend Reliability Defect Remediation — Food Persistence, Atomic Macros, Offline Sync Idempotency, Razorpay Webhook Recovery)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-23
+**Work Done — Priority-0 Backend Reliability Defect Remediation:**
+- **Defect A: Food Persistence Failure Remediation (`backend/routes/scan.py`)**:
+  - Expanded `_get_foods_collection()` to search `("backend.main", "main", "__main__")` defensively, resolving collection acquisition failures under `uvicorn backend.main:app`.
+  - Replaced silent skipping with explicit `HTTPException(503)` if database is unavailable and `HTTPException(500)` if document insertion fails.
+  - Guaranteed unverified crowdsourced scans produce persisted food documents with `is_verified: False` and valid `food_id`.
+- **Defect B: Atomic Daily Macro Updates (`backend/routes/custom_meals.py`, `backend/main.py`)**:
+  - Eradicated vulnerable read-modify-write pattern and `$set: {"stats": stats}` in `custom_meals.py` and `main.py`.
+  - Implemented atomic MongoDB `$inc` operations for `stats.calories`, `stats.protein`, `stats.carbs`, and `stats.fat`.
+  - Implemented race-free day boundary transition with compare-and-swap update filter (`stats.last_updated != today_str`).
+- **Defect C: Offline Client Macro Ingestion & Idempotency Engine (`backend/main.py`)**:
+  - Engineered client macro bypass in `POST /api/user/log_meal`: strictly validates all 4 macros (`calories`, `protein`, `carbs`, `fat`) are finite, non-negative numbers within bounds, directly applying them to stats and bypassing AI estimation.
+  - Enforced deterministic partial macro rejection: 1-3 macro payloads rejected with HTTP 422.
+  - Built atomic `client_sync_id` idempotency claim via `$push` with `$slice: -500` (capped array preventing unbounded document growth) coupled to macro `$inc` updates.
+  - Duplicate sync submissions safely return HTTP 200 `{"status": "ok", "message": "Already synced"}` with zero duplicate macro mutations.
+  - Created MongoDB multikey background index on `users.processed_sync_ids`.
+- **Defect D: Razorpay Webhook 3-State Machine & Recovery (`backend/routes/webhooks.py`)**:
+  - Engineered robust 3-state webhook lifecycle: `processing`, `completed`, `failed`.
+  - Eliminated idempotency lock trap: retried webhooks on failed operations are atomically reclaimed for user upgrades rather than swallowed by `DuplicateKeyError`.
+  - Added stale lease recovery (>60s) for interrupted/crashed webhook workers.
+  - Hardened security: purged insecure `payment_entity.email` fallback; requires verified `notes.user_id` / `notes.uid` or `subscription.razorpay_subscription_id`.
+  - Added background indexes on `transactions.status`, `payment_id`, and `subscription_id`.
+- **Comprehensive Verification & Zero Regressions**:
+  - Authored dedicated 14-test verification suite `tests/test_p0_reliability.py` (100% passing).
+  - All 12 test files across repository passing: **114/114 tests passed (100%)**.
+  - Frontend Vitest suite: **54/54 tests passed (100%)**.
+  - Static compilation: `python -m py_compile` passed (0 errors).
+  - Production build: `npm --prefix frontend run build` completed with **0 errors**.
+
+---
+
+## 🗓️ Previous Session Summary
 **Date:** 2026-09-23
 **Work Done — Multi-Admin Activity Audit Dashboard (Immutable Trails & Governance):**
 - **Immutable Audit Event Schema (`backend/schemas/admin_audit.py`)**:

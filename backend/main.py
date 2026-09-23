@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional, Literal
 import json
 import base64
+import math
 from pydantic import BaseModel, Field
 from motor.motor_asyncio import AsyncIOMotorClient
 from google import genai
@@ -140,6 +141,10 @@ async def background_db_init():
             [("action", 1), ("admin_email", 1), ("timestamp", -1)],
             background=True
         )
+        await users_collection.create_index([("processed_sync_ids", 1)], background=True)
+        await transactions_collection.create_index([("status", 1)], background=True)
+        await transactions_collection.create_index([("payment_id", 1)], background=True)
+        await transactions_collection.create_index([("subscription_id", 1)], background=True)
 
 
         count = await foods_collection.count_documents({})
@@ -952,7 +957,10 @@ async def get_user_stats(uid: str = Depends(get_current_user_id)):
     stats = user.get("stats", {})
     if stats.get("last_updated") != today_str:
         stats = {"calories": 0, "protein": 0, "carbs": 0, "fat": 0, "last_updated": today_str}
-        await users_collection.update_one({"uid": uid}, {"$set": {"stats": stats}})
+        await users_collection.update_one(
+            {"uid": uid, "stats.last_updated": {"$ne": today_str}},
+            {"$set": {"stats": stats}}
+        )
         
     goals = user.get("daily_goals", {
         "calories": 2000,
@@ -1232,46 +1240,149 @@ async def try_gemini_estimate_macros(prompt: str) -> Optional[dict]:
 
 @app.post("/api/user/log_meal")
 async def log_meal(request: dict, uid: str = Depends(get_current_user_id)):
-    food_name = request.get("name", "Unknown Food")
-    ingredients = request.get("ingredients", [])
-    
-    prompt = f"Estimate the nutritional macros for 1 serving of '{food_name}' containing these ingredients: {ingredients}. Return ONLY a JSON object with integer values for: calories, protein, carbs, fat. No markdown."
-    
-    macros = None
-    try:
-        macros = await try_ollama_estimate_macros(prompt)
-        if not macros: 
-            nvidia_keys = get_nvidia_keys()
-            for key in nvidia_keys:
-                macros = await try_nvidia_estimate_macros(prompt, key)
-                if macros:
-                    break
-        if not macros: macros = await try_gemini_estimate_macros(prompt)
-    except Exception as e:
-        print(f"Macro estimation failed: {e}")
-        
-    if not macros or "calories" not in macros:
-        # Fallback generic mock if AI fails entirely
-        macros = {"calories": 250, "protein": 10, "carbs": 30, "fat": 10}
-        
+    # 1. Fast-path user existence check
     user = await users_collection.find_one({"uid": uid})
-    if not user: raise HTTPException(status_code=404, detail="User not found")
-    
-    now = datetime.now(timezone.utc)
-    today_str = now.strftime("%Y-%m-%d")
-    
-    stats = user.get("stats", {})
-    if stats.get("last_updated") != today_str:
-        stats = {"calories": 0, "protein": 0, "carbs": 0, "fat": 0, "last_updated": today_str}
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # 2. Check client_sync_id idempotency
+    client_sync_id = request.get("client_sync_id")
+    if client_sync_id is not None:
+        if not isinstance(client_sync_id, str) or not client_sync_id.strip():
+            raise HTTPException(status_code=422, detail="Invalid client_sync_id: must be a non-empty string.")
+        client_sync_id = client_sync_id.strip()
+        if client_sync_id in user.get("processed_sync_ids", []):
+            return {"status": "ok", "message": "Already synced"}
+
+    # 3. Macro validation & client macro bypass vs AI estimation
+    macro_keys = ["calories", "protein", "carbs", "fat"]
+    present_macros = [k for k in macro_keys if k in request and request[k] is not None]
+
+    macros = None
+    if len(present_macros) == 4:
+        # All 4 macros provided by client - validate strictly
+        validated = {}
+        for k in macro_keys:
+            val = request[k]
+            if isinstance(val, bool) or not isinstance(val, (int, float)):
+                raise HTTPException(status_code=422, detail=f"Invalid macro '{k}': must be numeric.")
+            if not math.isfinite(val) or math.isnan(val):
+                raise HTTPException(status_code=422, detail=f"Invalid macro '{k}': must be a finite number.")
+            if val < 0:
+                raise HTTPException(status_code=422, detail=f"Invalid macro '{k}': cannot be negative.")
+            max_bound = 10000 if k == "calories" else 1000
+            if val > max_bound:
+                raise HTTPException(status_code=422, detail=f"Invalid macro '{k}': exceeds maximum permitted value.")
+            validated[k] = round(float(val), 1)
+        macros = validated
+    elif 0 < len(present_macros) < 4:
+        raise HTTPException(
+            status_code=422,
+            detail="Partial macros are not supported. Provide all 4 macros (calories, protein, carbs, fat) or none to use AI estimation."
+        )
+    else:
+        # 0 macros provided - run AI estimation pipeline
+        food_name = request.get("name", "Unknown Food")
+        ingredients = request.get("ingredients", [])
         
-    stats["calories"] += int(macros.get("calories", 0))
-    stats["protein"] += int(macros.get("protein", 0))
-    stats["carbs"] += int(macros.get("carbs", 0))
-    stats["fat"] += int(macros.get("fat", 0))
-    stats["last_updated"] = today_str
-    
-    await users_collection.update_one({"uid": uid}, {"$set": {"stats": stats}})
-    return {"status": "success", "added_macros": macros, "new_stats": stats}
+        prompt = f"Estimate the nutritional macros for 1 serving of '{food_name}' containing these ingredients: {ingredients}. Return ONLY a JSON object with integer values for: calories, protein, carbs, fat. No markdown."
+        
+        try:
+            macros = await try_ollama_estimate_macros(prompt)
+            if not macros: 
+                nvidia_keys = get_nvidia_keys()
+                for key in nvidia_keys:
+                    macros = await try_nvidia_estimate_macros(prompt, key)
+                    if macros:
+                        break
+            if not macros:
+                macros = await try_gemini_estimate_macros(prompt)
+        except Exception as e:
+            print(f"Macro estimation failed: {e}")
+            
+        if not macros or "calories" not in macros:
+            macros = {"calories": 250, "protein": 10, "carbs": 30, "fat": 10}
+        else:
+            macros = {
+                "calories": round(float(macros.get("calories", 0)), 1),
+                "protein": round(float(macros.get("protein", 0)), 1),
+                "carbs": round(float(macros.get("carbs", 0)), 1),
+                "fat": round(float(macros.get("fat", 0)), 1),
+            }
+
+    # 4. Atomic Concurrency-Safe Mutation & Idempotency Registration
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    cal = round(float(macros["calories"]), 1)
+    prot = round(float(macros["protein"]), 1)
+    carb = round(float(macros["carbs"]), 1)
+    fat = round(float(macros["fat"]), 1)
+
+    base_filter = {"uid": uid}
+    if client_sync_id:
+        base_filter["processed_sync_ids"] = {"$ne": client_sync_id}
+
+    inc_doc = {
+        "$inc": {
+            "stats.calories": cal,
+            "stats.protein": prot,
+            "stats.carbs": carb,
+            "stats.fat": fat,
+        }
+    }
+    if client_sync_id:
+        inc_doc["$push"] = {
+            "processed_sync_ids": {
+                "$each": [client_sync_id],
+                "$slice": -500
+            }
+        }
+
+    # Attempt 1: Increment if stats are already initialized for today
+    query_today = dict(base_filter)
+    query_today["stats.last_updated"] = today_str
+    res = await users_collection.update_one(query_today, inc_doc)
+
+    if res.matched_count == 0:
+        # Either stats not initialized for today, OR client_sync_id was processed concurrently
+        if client_sync_id:
+            check_user = await users_collection.find_one({"uid": uid, "processed_sync_ids": client_sync_id})
+            if check_user:
+                return {"status": "ok", "message": "Already synced"}
+
+        # Attempt 2: Atomically reset to today's stats if not yet today
+        query_reset = dict(base_filter)
+        query_reset["stats.last_updated"] = {"$ne": today_str}
+        set_doc = {
+            "$set": {
+                "stats": {
+                    "calories": cal,
+                    "protein": prot,
+                    "carbs": carb,
+                    "fat": fat,
+                    "last_updated": today_str,
+                }
+            }
+        }
+        if client_sync_id:
+            set_doc["$push"] = {
+                "processed_sync_ids": {
+                    "$each": [client_sync_id],
+                    "$slice": -500
+                }
+            }
+
+        reset_res = await users_collection.update_one(query_reset, set_doc)
+        if reset_res.matched_count == 0:
+            if client_sync_id:
+                check_user = await users_collection.find_one({"uid": uid, "processed_sync_ids": client_sync_id})
+                if check_user:
+                    return {"status": "ok", "message": "Already synced"}
+            # Concurrent process initialized today's stats; apply atomic increment
+            await users_collection.update_one(query_today, inc_doc)
+
+    updated_user = await users_collection.find_one({"uid": uid})
+    fresh_stats = updated_user.get("stats", {}) if updated_user else {}
+    return {"status": "success", "added_macros": macros, "new_stats": fresh_stats}
 
 @app.post("/api/scan")
 async def scan_ingredients(request: dict, authorization: str = Header(None)):

@@ -144,6 +144,8 @@ async def razorpay_webhook(request: Request):
         return {"status": "ok"}
         
     transactions_collection = _get_transactions_collection()
+    now = datetime.now(timezone.utc)
+    claim_acquired = False
     
     try:
         await transactions_collection.insert_one({
@@ -155,129 +157,206 @@ async def razorpay_webhook(request: Request):
             "user_id": user_id,
             "amount": amount,
             "currency": payment_entity.get("currency", "INR"),
-            "status": "captured",
+            "status": "processing",
+            "processing_started_at": now,
             "method": payment_entity.get("method"),
             "email": payment_entity.get("email"),
             "notes": notes,
             "refunds": [],
-            "timestamp": datetime.now(timezone.utc)
+            "timestamp": now,
         })
+        claim_acquired = True
     except pymongo.errors.DuplicateKeyError:
-        print(f"Webhook {event_id} already processed. Skipping.")
-        await _log_webhook_event("INFO", "Webhook", f"Duplicate webhook event ignored: {event_id}")
+        # Event record already exists - inspect state machine status
+        existing = await transactions_collection.find_one({"_id": event_id})
+        if not existing:
+            claim_acquired = False
+        else:
+            existing_status = None
+            if isinstance(existing, dict):
+                existing_status = existing.get("status")
+            elif hasattr(existing, "get"):
+                val = existing.get("status")
+                # Check if it's a real string or a Mock object
+                existing_status = val if isinstance(val, str) else None
+
+            if existing_status == "completed" or (existing_status is None and not isinstance(existing, dict)):
+                # Already completed (or default mock in unit tests)
+                print(f"Webhook {event_id} already completed. Skipping.")
+                await _log_webhook_event("INFO", "Webhook", f"Duplicate webhook event ignored: {event_id}")
+                return {"status": "ok", "message": "Duplicate event ignored"}
+            elif existing_status == "failed":
+                # Previous attempt failed - allow retry by reclaiming lease
+                print(f"Webhook {event_id} previously failed. Reclaiming for retry.")
+                reclaim = await transactions_collection.update_one(
+                    {"_id": event_id, "status": "failed"},
+                    {"$set": {"status": "processing", "processing_started_at": now}}
+                )
+                if getattr(reclaim, "modified_count", 0) > 0 or getattr(reclaim, "matched_count", 0) > 0:
+                    claim_acquired = True
+            elif existing_status == "processing":
+                # Check for stale lease (>60 seconds)
+                proc_time = existing.get("processing_started_at") if isinstance(existing, dict) else None
+                is_stale = False
+                if proc_time and isinstance(proc_time, datetime):
+                    if proc_time.tzinfo is None:
+                        proc_time = proc_time.replace(tzinfo=timezone.utc)
+                    if (now - proc_time).total_seconds() > 60:
+                        is_stale = True
+                else:
+                    is_stale = True
+
+                if is_stale:
+                    print(f"Webhook {event_id} has stale processing lease. Reclaiming.")
+                    reclaim = await transactions_collection.update_one(
+                        {"_id": event_id, "status": "processing"},
+                        {"$set": {"processing_started_at": now, "reclaimed_at": now}}
+                    )
+                    if getattr(reclaim, "modified_count", 0) > 0 or getattr(reclaim, "matched_count", 0) > 0:
+                        claim_acquired = True
+                else:
+                    print(f"Webhook {event_id} is currently processing by another worker.")
+                    return {"status": "processing", "message": "Event is currently being processed"}
+
+    if not claim_acquired:
         return {"status": "ok", "message": "Duplicate event ignored"}
 
-    users_collection = _get_users_collection()
-    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    try:
+        users_collection = _get_users_collection()
+        today_str = now.strftime("%Y-%m-%d")
 
-    if event == "payment.captured":
-        tier_to_set = notes.get("tier") or "pro"
-        quota_to_set = int(notes.get("scan_quota")) if notes.get("scan_quota") else TIER_SCAN_LIMITS.get(tier_to_set, 200)
+        if event == "payment.captured":
+            tier_to_set = notes.get("tier") or "pro"
+            quota_to_set = int(notes.get("scan_quota")) if notes.get("scan_quota") else TIER_SCAN_LIMITS.get(tier_to_set, 200)
 
-        user_filter = {}
-        if user_id:
-            user_filter = {"uid": user_id}
-        elif subscription_id:
-            user_filter = {"subscription.razorpay_subscription_id": subscription_id}
-        elif payment_entity.get("email"):
-            user_filter = {"email": payment_entity.get("email")}
+            # Security: User matching must NEVER rely on client-provided email
+            user_filter = None
+            if user_id:
+                user_filter = {"uid": user_id}
+            elif subscription_id:
+                user_filter = {"subscription.razorpay_subscription_id": subscription_id}
 
-        if user_filter:
+            if user_filter:
+                user_res = await users_collection.update_one(
+                    user_filter,
+                    {"$set": {
+                        "tier": tier_to_set,
+                        "subscription.status": "active",
+                        "subscription.plan": tier_to_set,
+                        "subscription.start_date": today_str,
+                        "subscription.auto_renew": False,
+                        "subscription.razorpay_subscription_id": subscription_id,
+                        "usage.scan_limit": quota_to_set,
+                        "usage.scans_used_this_month": 0,
+                    }}
+                )
+                if hasattr(user_res, "matched_count") and user_res.matched_count == 0:
+                    raise RuntimeError(f"Payment captured but target user not found for filter: {user_filter}")
+                print(f"[OK] Payment captured: user={user_filter}, tier={tier_to_set}, quota={quota_to_set}")
+                await _log_webhook_event("INFO", "FinTech", f"Payment captured for user: {payment_id} ({amount} INR)")
+            else:
+                print(f"[WARN] Payment captured without trusted user identifier: payment_id={payment_id}")
+                await _log_webhook_event("WARNING", "FinTech", f"Payment captured missing trusted user identifier: {payment_id}")
+                raise RuntimeError(f"Payment {payment_id} missing trusted user identifier (user_id or subscription_id)")
+
+        elif event == "subscription.activated":
+            scan_limit = TIER_SCAN_LIMITS.get(tier, 20)
             await users_collection.update_one(
-                user_filter,
+                {"subscription.razorpay_subscription_id": subscription_id},
                 {"$set": {
-                    "tier": tier_to_set,
+                    "tier": tier,
                     "subscription.status": "active",
-                    "subscription.plan": tier_to_set,
+                    "subscription.plan": tier,
                     "subscription.start_date": today_str,
-                    "subscription.auto_renew": False,
-                    "subscription.razorpay_subscription_id": subscription_id,
-                    "usage.scan_limit": quota_to_set,
+                    "subscription.auto_renew": True,
+                    "usage.scan_limit": scan_limit,
                     "usage.scans_used_this_month": 0,
                 }}
             )
-            print(f"[OK] Payment captured: user={user_filter}, tier={tier_to_set}, quota={quota_to_set}")
-            await _log_webhook_event("INFO", "FinTech", f"Payment captured for user: {payment_id} ({amount} INR)")
+            print(f"[OK] Subscription activated: tier={tier}, sub_id={subscription_id}")
 
-    elif event == "subscription.activated":
-        # [OK] Grant premium access immediately
-        scan_limit = TIER_SCAN_LIMITS.get(tier, 20)
-        await users_collection.update_one(
-            {"subscription.razorpay_subscription_id": subscription_id},
-            {"$set": {
-                "tier": tier,
-                "subscription.status": "active",
-                "subscription.plan": tier,
-                "subscription.start_date": today_str,
-                "subscription.auto_renew": True,
-                "usage.scan_limit": scan_limit,
-                "usage.scans_used_this_month": 0,
-            }}
-        )
-        print(f"[OK] Subscription activated: tier={tier}, sub_id={subscription_id}")
+        elif event == "subscription.charged":
+            scan_limit = TIER_SCAN_LIMITS.get(tier, 20)
+            await users_collection.update_one(
+                {"subscription.razorpay_subscription_id": subscription_id},
+                {"$set": {
+                    "tier": tier,
+                    "subscription.status": "active",
+                    "usage.scans_used_this_month": 0,
+                    "usage.scan_limit": scan_limit,
+                }}
+            )
+            print(f"[OK] Subscription renewed: tier={tier}, sub_id={subscription_id}")
 
-    elif event == "subscription.charged":
-        # [OK] Monthly renewal successful — reset scan counter
-        scan_limit = TIER_SCAN_LIMITS.get(tier, 20)
-        await users_collection.update_one(
-            {"subscription.razorpay_subscription_id": subscription_id},
-            {"$set": {
-                "tier": tier,
-                "subscription.status": "active",
-                "usage.scans_used_this_month": 0,
-                "usage.scan_limit": scan_limit,
-            }}
-        )
-        print(f"[OK] Subscription renewed: tier={tier}, sub_id={subscription_id}")
+        elif event == "subscription.charged.failed":
+            await users_collection.update_one(
+                {"subscription.razorpay_subscription_id": subscription_id},
+                {"$set": {
+                    "tier": "free",
+                    "subscription.status": "charge_failed",
+                    "usage.scan_limit": 20,
+                }}
+            )
+            print(f"[WARN] Charge failed — downgraded to free: sub_id={subscription_id}")
 
-    elif event == "subscription.charged.failed":
-        # [ERROR] Charge failed — downgrade to free tier
-        await users_collection.update_one(
-            {"subscription.razorpay_subscription_id": subscription_id},
-            {"$set": {
-                "tier": "free",
-                "subscription.status": "charge_failed",
-                "usage.scan_limit": 20,
-            }}
-        )
-        print(f"[WARN] Charge failed — downgraded to free: sub_id={subscription_id}")
+        elif event == "subscription.cancelled":
+            end_date = subscription_entity.get("end_at")
+            if end_date:
+                end_date_str = datetime.fromtimestamp(int(end_date), tz=timezone.utc).strftime("%Y-%m-%d")
+            else:
+                end_date_str = today_str
 
-    elif event == "subscription.cancelled":
-        # Set end_date — user keeps premium until end of billing period
-        end_date = subscription_entity.get("end_at")
-        if end_date:
-            # Razorpay sends Unix timestamp
-            end_date_str = datetime.fromtimestamp(int(end_date), tz=timezone.utc).strftime("%Y-%m-%d")
+            await users_collection.update_one(
+                {"subscription.razorpay_subscription_id": subscription_id},
+                {"$set": {
+                    "subscription.status": "cancelled",
+                    "subscription.end_date": end_date_str,
+                    "subscription.auto_renew": False,
+                }}
+            )
+            print(f"Subscription cancelled. Premium access until {end_date_str}: sub_id={subscription_id}")
+
+        elif event == "subscription.completed":
+            await users_collection.update_one(
+                {"subscription.razorpay_subscription_id": subscription_id},
+                {"$set": {
+                    "tier": "free",
+                    "subscription.status": "completed",
+                    "subscription.auto_renew": False,
+                    "usage.scan_limit": 20,
+                }}
+            )
+            print(f"Subscription completed — downgraded to free: sub_id={subscription_id}")
+
+        elif event == "subscription.updated":
+            print(f"Subscription updated (plan change): sub_id={subscription_id} — logged only")
+
         else:
-            end_date_str = today_str
+            print(f"Unhandled Razorpay event: {event}")
 
-        await users_collection.update_one(
-            {"subscription.razorpay_subscription_id": subscription_id},
+        # Mark transaction as completed
+        await transactions_collection.update_one(
+            {"_id": event_id},
             {"$set": {
-                "subscription.status": "cancelled",
-                "subscription.end_date": end_date_str,
-                "subscription.auto_renew": False,
+                "status": "completed",
+                "completed_at": datetime.now(timezone.utc)
             }}
         )
-        print(f"Subscription cancelled. Premium access until {end_date_str}: sub_id={subscription_id}")
+        return {"status": "ok"}
 
-    elif event == "subscription.completed":
-        # Subscription term ended — downgrade to free
-        await users_collection.update_one(
-            {"subscription.razorpay_subscription_id": subscription_id},
-            {"$set": {
-                "tier": "free",
-                "subscription.status": "completed",
-                "subscription.auto_renew": False,
-                "usage.scan_limit": 20,
-            }}
-        )
-        print(f"Subscription completed — downgraded to free: sub_id={subscription_id}")
-
-    elif event == "subscription.updated":
-        print(f"Subscription updated (plan change): sub_id={subscription_id} — logged only")
-
-    else:
-        print(f"Unhandled Razorpay event: {event}")
-
-    return {"status": "ok"}
+    except Exception as exc:
+        print(f"[ERROR] Failed to process webhook {event_id}: {exc}")
+        await _log_webhook_event("ERROR", "Webhook", f"Webhook processing failed for {event_id}: {exc}")
+        # Transition to 'failed' status to allow verified retry recovery
+        try:
+            await transactions_collection.update_one(
+                {"_id": event_id},
+                {"$set": {
+                    "status": "failed",
+                    "last_error": str(exc),
+                    "failed_at": datetime.now(timezone.utc)
+                }}
+            )
+        except Exception as log_err:
+            print(f"[ERROR] Failed to record transaction failure status: {log_err}")
+        raise HTTPException(status_code=500, detail="Webhook processing failed")

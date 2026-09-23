@@ -18,6 +18,7 @@ import sys
 import os
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
+from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 
 backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "backend"))
@@ -116,11 +117,41 @@ class MockCollection:
         return res
 
     async def update_one(self, query, update):
-        target_id = query.get("_id")
+        target_id = query.get("_id") or query.get("uid")
+        matched = False
         if target_id and target_id in self.docs:
+            doc = self.docs[target_id]
+            if "stats.last_updated" in query:
+                req_val = query["stats.last_updated"]
+                curr_val = doc.get("stats", {}).get("last_updated")
+                if isinstance(req_val, dict) and "$ne" in req_val:
+                    if curr_val == req_val["$ne"]:
+                        return MagicMock(matched_count=0, modified_count=0)
+                elif curr_val != req_val:
+                    return MagicMock(matched_count=0, modified_count=0)
+
+            matched = True
             if "$set" in update:
-                self.docs[target_id].update(update["$set"])
-        return MagicMock(modified_count=1)
+                for k, v in update["$set"].items():
+                    if "." in k:
+                        parts = k.split(".")
+                        d = doc
+                        for p in parts[:-1]:
+                            d = d.setdefault(p, {})
+                        d[parts[-1]] = v
+                    else:
+                        doc[k] = v
+            if "$inc" in update:
+                for k, v in update["$inc"].items():
+                    if "." in k:
+                        parts = k.split(".")
+                        d = doc
+                        for p in parts[:-1]:
+                            d = d.setdefault(p, {})
+                        d[parts[-1]] = round(d.get(parts[-1], 0) + v, 1)
+                    else:
+                        doc[k] = doc.get(k, 0) + v
+        return MagicMock(matched_count=1 if matched else 0, modified_count=1 if matched else 0)
 
     async def count_documents(self, query=None):
         return len(self.docs)
@@ -130,20 +161,22 @@ class MockCollection:
 mock_custom_meals_col = MockCollection()
 mock_users_col = MockCollection()
 
+today_iso_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
 # Pre-populate test users
 mock_users_col.docs["user_a"] = {
     "_id": "user_a",
     "uid": "user_a",
     "healthProfile": {"medicalConditions": ""},
     "preferences": {"diet": "None", "allergies": []},
-    "stats": {"calories": 500, "protein": 20, "carbs": 60, "fat": 15, "last_updated": "2026-09-22"}
+    "stats": {"calories": 500, "protein": 20, "carbs": 60, "fat": 15, "last_updated": today_iso_date}
 }
 mock_users_col.docs["user_b"] = {
     "_id": "user_b",
     "uid": "user_b",
     "healthProfile": {"medicalConditions": ""},
     "preferences": {"diet": "None", "allergies": []},
-    "stats": {"calories": 0, "protein": 0, "carbs": 0, "fat": 0, "last_updated": "2026-09-22"}
+    "stats": {"calories": 0, "protein": 0, "carbs": 0, "fat": 0, "last_updated": today_iso_date}
 }
 mock_users_col.docs["user_hyp"] = {
     "_id": "user_hyp",

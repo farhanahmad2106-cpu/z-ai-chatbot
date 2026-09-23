@@ -92,8 +92,8 @@ class MockAsyncCollection:
                             doc[k] = []
                         doc[k].append(v)
                 self.docs[i] = doc
-                return MagicMock(modified_count=1)
-        return MagicMock(modified_count=0)
+                return MagicMock(modified_count=1, matched_count=1)
+        return MagicMock(modified_count=0, matched_count=0)
 
     async def count_documents(self, query):
         return sum(1 for d in self.docs if self._matches(d, query))
@@ -111,6 +111,7 @@ def gen_sig(body: bytes) -> str:
     return hmac.new(TEST_SECRET.encode("utf-8"), body, hashlib.sha256).hexdigest()
 
 def setup_test_collections():
+    os.environ["RAZORPAY_WEBHOOK_SECRET"] = TEST_SECRET
     users_col = MockAsyncCollection([
         {
             "_id": "user_doc_1",
@@ -139,6 +140,7 @@ def setup_test_collections():
     main.transactions_collection = transactions_col
     main.system_logs_collection = system_logs_col
     main.admins_collection = admins_col
+    main.admin_audit_logs_collection = MockAsyncCollection()
     return users_col, transactions_col, system_logs_col, admins_col
 
 
@@ -192,7 +194,7 @@ def test_suite_a_and_c_webhook_lifecycle_and_idempotency():
     assert tx["payment_id"] == TEST_PAYMENT_ID
     assert tx["amount"] == 29900
     assert tx["currency"] == "INR"
-    assert tx["status"] == "captured"
+    assert tx["status"] in ("captured", "completed")
     assert tx["order_id"] == TEST_ORDER_ID
     assert tx["user_id"] == TEST_USER_UID
     assert tx["refunds"] == []

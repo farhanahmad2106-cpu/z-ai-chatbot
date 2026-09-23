@@ -97,24 +97,57 @@ async def create_custom_meal(
 
     await custom_meals_col.insert_one(doc)
 
-    # Optional today's meal logging
+    # Optional today's meal logging - Atomic $inc concurrency safe
     if request.log_to_today and users_col is not None and user_doc:
         today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        stats = user_doc.get("stats", {})
-        if stats.get("last_updated") != today_str:
-            stats = {"calories": 0, "protein": 0, "carbs": 0, "fat": 0, "last_updated": today_str}
-        
         per_serv = analysis["per_serving_nutrition"]
-        stats["calories"] = round(stats.get("calories", 0) + per_serv.calories, 1)
-        stats["protein"] = round(stats.get("protein", 0) + per_serv.protein_g, 1)
-        stats["carbs"] = round(stats.get("carbs", 0) + per_serv.carbs_g, 1)
-        stats["fat"] = round(stats.get("fat", 0) + per_serv.fat_g, 1)
-        stats["last_updated"] = today_str
+        cal_inc = round(float(per_serv.calories), 1)
+        prot_inc = round(float(per_serv.protein_g), 1)
+        carbs_inc = round(float(per_serv.carbs_g), 1)
+        fat_inc = round(float(per_serv.fat_g), 1)
 
-        await users_col.update_one(
-            {"_id": user_doc["_id"]},
-            {"$set": {"stats": stats}}
+        # 1. Try atomic increment if stats already initialized for today
+        res = await users_col.update_one(
+            {"_id": user_doc["_id"], "stats.last_updated": today_str},
+            {
+                "$inc": {
+                    "stats.calories": cal_inc,
+                    "stats.protein": prot_inc,
+                    "stats.carbs": carbs_inc,
+                    "stats.fat": fat_inc,
+                }
+            }
         )
+
+        # 2. If stats were not initialized for today, atomically initialize
+        if res.matched_count == 0:
+            reset_res = await users_col.update_one(
+                {"_id": user_doc["_id"], "stats.last_updated": {"$ne": today_str}},
+                {
+                    "$set": {
+                        "stats": {
+                            "calories": cal_inc,
+                            "protein": prot_inc,
+                            "carbs": carbs_inc,
+                            "fat": fat_inc,
+                            "last_updated": today_str,
+                        }
+                    }
+                }
+            )
+            # If another concurrent request initialized today in the interim, increment
+            if reset_res.matched_count == 0:
+                await users_col.update_one(
+                    {"_id": user_doc["_id"], "stats.last_updated": today_str},
+                    {
+                        "$inc": {
+                            "stats.calories": cal_inc,
+                            "stats.protein": prot_inc,
+                            "stats.carbs": carbs_inc,
+                            "stats.fat": fat_inc,
+                        }
+                    }
+                )
 
     return CustomMealResponse(**doc)
 
