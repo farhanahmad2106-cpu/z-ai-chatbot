@@ -1,11 +1,36 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-22 (Session: Community Recipe & Custom Meal Ingestion Pipeline)
+> **Last Updated:** 2026-09-23 (Session: Quick-Commerce Grocery Search & Export Engine)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-23
+**Work Done — Quick-Commerce Grocery Search & Export Engine:**
+- **Centralized Provider Utility & Sanitization Engine (`frontend/src/utils/groceryDeepLinks.ts`)**:
+  - Implemented pure, deterministic, typed search link generation for Indian quick-commerce platforms: **Blinkit**, **Zepto**, and **Swiggy Instamart**.
+  - Engineered Indian grocery alias normalization: `Besan (Gram Flour) → Besan`, `Broken Wheat (Dalia) → Dalia`, `Kidney Beans (Rajma) → Rajma`, `Black Chickpeas (Kala Chana) → Kala Chana`, `Cold-pressed mustard oil → Mustard Oil`.
+  - Built meal-planner metadata sanitizer: removes serving counts `(1.4x serving)`, `(2x serving)`, approximate weights `(approx 150g)`, and `(optional)` tags without destroying product identity.
+  - Strips culinary preparation descriptors: `steamed`, `roasted`, `boiled`, `fried`, `fresh`, `finely chopped`, `diced`, `sliced`, `minced`, `grated`, `puree`, `purée`, `chutney powder`.
+  - Protects legitimate spice powders from deletion: `chilli powder`, `turmeric powder`, `coriander powder`, `garam masala powder`, `amchur powder`, `baking powder`, etc.
+  - Built conservative deduplication: aggregates item quantities while preserving unpurchased status across duplicated ingredients.
+  - Implemented `formatSearchListForClipboard` generating clean newline-delimited queries for third-party pasting.
+  - Added `safeOpenProviderSearch` with window reference validation to detect popup-blockers.
+- **Weekly Meal Planner UI Integration (`frontend/src/components/WeeklyMealPlanner.tsx`)**:
+  - **Individual Item Action**: Added compact `ShoppingBag` button on every grocery ingredient row with floating popover for direct Blinkit/Zepto/Instamart search. Uses `e.stopPropagation()` ensuring row click / item checkbox is never accidentally toggled. Accessible with visible focus rings and Escape key listener.
+  - **Header CTA**: Added `⚡ Order Ingredients on Quick-Commerce` button beside `Copy Checklist (Markdown)`.
+  - **Batch Export Modal**: Dark brutalist modal with provider selector tabs (`Blinkit`, `Zepto`, `Instamart`), item statistics (Total, Unpurchased, Checked), optional "Include checked items" toggle, and direct single-item search links.
+  - **Sequential Search Runner & Blocker Resilience**: Interactive runner stepping through ingredients with rate-limit protection (`DEFAULT_OPEN_DELAY_MS = 800`). Detects browser popup blocking, shifts to `blocked` state, displays warning banner (`Your browser blocked a new tab. Use "Open Next" to continue manually.`), and provides `[ Open Next ]` manual progression button without losing state. Controls include `Pause`, `Resume`, `Stop`, and `Reset`.
+  - **Truthful Compliance Microcopy**: Explicitly states search-only deep link behavior; never makes claims that items were added to carts or purchased.
+- **Verification & Automated Testing**:
+  - Authored comprehensive test suite in `frontend/src/utils/groceryDeepLinks.test.ts` (17 tests covering aliases, metadata stripping, descriptor removal, spice powder retention, special character URL encoding, empty input safety, deduplication, and clipboard formatting).
+  - All unit tests passing: **49/49 PASSED (100% across 5 test suites in 1.06s)**.
+  - Production build: `npm --prefix frontend run build` completed with **0 TypeScript compiler errors (exit code 0)**.
+
+---
+
+## 🗓️ Previous Session Summary
 **Date:** 2026-09-22
 **Work Done — Community Recipe & Custom Meal Ingestion Pipeline:**
 - **Deterministic Nutrition Lookup Engine (`backend/services/nutrition_lookup.py`)**:
