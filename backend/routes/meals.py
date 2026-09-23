@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import datetime
+import asyncio
 import sys
 
 from schemas.meal_plan import (
@@ -174,7 +175,8 @@ async def get_or_create_weekly_plan(
     # Generate new weekly plan
     try:
         custom_meals = await fetch_user_eligible_custom_meals(uid)
-        new_plan = generate_weekly_plan(
+        new_plan = await asyncio.to_thread(
+            generate_weekly_plan,
             user_id=uid,
             target_calories=target_calories,
             health_vault=health_profile,

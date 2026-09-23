@@ -1,6 +1,7 @@
 # backend/services/meal_planner/weekly_planner.py
 import uuid
 import datetime
+import asyncio
 from typing import Dict, Any, List, Optional, Tuple
 from .meal_repository import get_all_meals, get_meal_by_id
 from .conflict_analyzer import analyze_meal_conflict, normalize_ingredients
@@ -15,6 +16,8 @@ SLOT_PERCENTAGES = {
     "snack": 0.10,
     "dinner": 0.30
 }
+
+MAX_CANDIDATES_PER_SLOT = 5
 
 class InfeasiblePlanException(Exception):
     def __init__(self, message: str, constraint: str = "", day: str = "", slot: str = ""):
@@ -69,6 +72,7 @@ def is_meal_safe_for_constraints(meal: Dict[str, Any], health_vault: Dict[str, A
 def calculate_scaled_meal(meal: Dict[str, Any], target_slot_cal: float, user_conditions: str) -> Dict[str, Any]:
     """
     Calculates portion scaling [0.5, 2.5] and scaled nutrition attributes for a meal.
+    Enforces strict clinical validation so scaled nutrients never violate hard boundaries.
     """
     base_cal = float(meal.get("calories", 300))
     scale = target_slot_cal / base_cal if base_cal > 0 else 1.0
@@ -101,11 +105,21 @@ def calculate_scaled_meal(meal: Dict[str, Any], target_slot_cal: float, user_con
     if abs(scale - 1.0) >= 0.05:
         serving_desc = f"{meal['serving_description']} ({scale}x serving)"
 
+    # Hard clinical validation on scaled nutrients
+    is_safe = True
+    warnings = []
+    if "hypertension" in user_conditions and scaled_sodium >= 500.0:
+        is_safe = False
+        warnings.append(f"Scaled sodium {scaled_sodium}mg >= 500mg limit for hypertension.")
+    if "diabetes" in user_conditions and scaled_added_sugar > 5.0:
+        is_safe = False
+        warnings.append(f"Scaled added sugar {scaled_added_sugar}g > 5g limit for diabetes.")
+
     # Base conflict info
     conflict_info = {
-        "is_safe": True,
-        "conflict_severity": "none",
-        "warning_reasons": [],
+        "is_safe": is_safe,
+        "conflict_severity": "none" if is_safe else "critical",
+        "warning_reasons": warnings,
         "suggested_alternatives": [],
         "rule_results": []
     }
@@ -131,9 +145,102 @@ def calculate_scaled_meal(meal: Dict[str, Any], target_slot_cal: float, user_con
         "ingredient_tags": meal.get("ingredient_tags", []),
         "allergen_tags": meal.get("allergen_tags", []),
         "conflict": conflict_info,
-        "safety_score": 100.0,
-        "safety_class": "safe"
+        "safety_score": 100.0 if is_safe else 0.0,
+        "safety_class": "safe" if is_safe else "critical"
     }
+
+def _prepare_scaled_candidates_by_slot(
+    candidates_by_slot: Dict[str, List[Dict[str, Any]]],
+    target_calories: float,
+    user_conditions: str
+) -> Dict[str, Dict[str, Dict[str, Any]]]:
+    """
+    Precomputes nutrition scaling once per candidate/slot to eliminate redundant
+    calculate_scaled_meal calls inside the combinatorial search.
+    Returns: {slot: {meal_id: scaled_meal_dict}}
+    """
+    scaled_map: Dict[str, Dict[str, Dict[str, Any]]] = {s: {} for s in EXPECTED_SLOTS}
+    for slot in EXPECTED_SLOTS:
+        target_slot_cal = target_calories * SLOT_PERCENTAGES[slot]
+        for m in candidates_by_slot[slot]:
+            sc = calculate_scaled_meal(m, target_slot_cal, user_conditions)
+            # Clinical post-scaling filter: must remain safe
+            if not sc["conflict"]["is_safe"]:
+                continue
+            if "hypertension" in user_conditions and sc["sodium_mg"] >= 500.0:
+                continue
+            if "diabetes" in user_conditions and sc["added_sugar_g"] > 5.0:
+                continue
+            scaled_map[slot][m["id"]] = sc
+    return scaled_map
+
+def _prune_candidates(
+    scaled_candidates: List[Dict[str, Any]],
+    target_slot_cal: float,
+    max_candidates: int = MAX_CANDIDATES_PER_SLOT
+) -> List[Dict[str, Any]]:
+    """
+    Deterministically bounds the candidate pool to at most `max_candidates` per slot.
+    Ranking criteria:
+    1. Proximity to target slot calories: abs(scaled_cal - target_slot_cal)
+    2. Protein density: -protein_g
+    3. Stable tie-breaker: meal_id
+    """
+    def _rank_key(sc: Dict[str, Any]):
+        cal_dist = abs(sc.get("calories", 0.0) - target_slot_cal)
+        prot = sc.get("protein_g", 0.0)
+        m_id = str(sc.get("meal_id", ""))
+        return (round(cal_dist, 1), -prot, m_id)
+
+    sorted_candidates = sorted(scaled_candidates, key=_rank_key)
+    return sorted_candidates[:max_candidates]
+
+def _find_best_combination_worker(
+    candidates_pool: Dict[str, List[Dict[str, Any]]],
+    target_calories: float,
+    user_conditions: str,
+    lower_cal_bound: float,
+    upper_cal_bound: float
+) -> Optional[Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any]]]:
+    """
+    Pure CPU-bound combinatorial search over pre-scaled candidates.
+    Evaluates at most (5^4 = 625) combinations without re-calculating portion scaling.
+    """
+    best_c = None
+    best_s = float("inf")
+
+    b_list = candidates_pool.get("breakfast", [])
+    l_list = candidates_pool.get("lunch", [])
+    s_list = candidates_pool.get("snack", [])
+    d_list = candidates_pool.get("dinner", [])
+
+    for sc_b in b_list:
+        for sc_l in l_list:
+            for sc_s in s_list:
+                for sc_d in d_list:
+                    tot_cal = sc_b["calories"] + sc_l["calories"] + sc_s["calories"] + sc_d["calories"]
+                    tot_sod = sc_b["sodium_mg"] + sc_l["sodium_mg"] + sc_s["sodium_mg"] + sc_d["sodium_mg"]
+                    tot_sugar = sc_b["added_sugar_g"] + sc_l["added_sugar_g"] + sc_s["added_sugar_g"] + sc_d["added_sugar_g"]
+
+                    # Clinical Hard Constraints
+                    if "hypertension" in user_conditions and tot_sod >= 1480.0:
+                        continue
+                    if "diabetes" in user_conditions and tot_sugar > 20.0:
+                        continue
+                    if tot_cal < lower_cal_bound - 1.0 or tot_cal > upper_cal_bound + 1.0:
+                        continue
+
+                    # Score: calorie closeness + sodium minimization - protein reward
+                    cal_diff = abs(tot_cal - target_calories)
+                    sod_penalty = (tot_sod * 0.5) if "hypertension" in user_conditions else 0.0
+                    protein_tot = sc_b["protein_g"] + sc_l["protein_g"] + sc_s["protein_g"] + sc_d["protein_g"]
+
+                    score = cal_diff + sod_penalty - (protein_tot * 1.5)
+                    if score < best_s:
+                        best_s = score
+                        best_c = (sc_b, sc_l, sc_s, sc_d)
+
+    return best_c
 
 def generate_weekly_plan(
     user_id: str,
@@ -178,6 +285,16 @@ def generate_weekly_plan(
                 slot=slot
             )
 
+    # 2b. Pre-scale all candidates once per slot and validate scaled clinical safety
+    scaled_cache_by_slot = _prepare_scaled_candidates_by_slot(candidates_by_slot, target_calories, user_conditions)
+    for slot in EXPECTED_SLOTS:
+        if len(scaled_cache_by_slot[slot]) == 0:
+            raise InfeasiblePlanException(
+                message=f"No safe meal options available for slot '{slot}' matching user clinical/allergen profile after portion scaling.",
+                constraint="candidates_exhausted",
+                slot=slot
+            )
+
     # 3. Determine active week dates
     if not start_date:
         today = datetime.date.today()
@@ -209,8 +326,8 @@ def generate_weekly_plan(
         current_date = start_date + datetime.timedelta(days=day_idx)
         day_date_str = current_date.strftime("%Y-%m-%d")
 
-        # 4a. Build candidate pool for each slot honoring cooldown
-        eligible_by_slot: Dict[str, List[Dict[str, Any]]] = {}
+        # 4a. Build candidate pool for each slot honoring cooldown and bounded pruning
+        eligible_scaled_by_slot: Dict[str, List[Dict[str, Any]]] = {}
         for slot in EXPECTED_SLOTS:
             history = slot_history[slot]
             forbidden_ids = set()
@@ -219,56 +336,28 @@ def generate_weekly_plan(
             if len(history) >= 2:
                 forbidden_ids.add(history[-2])  # 2-day cooldown
 
-            el = [m for m in candidates_by_slot[slot] if m["id"] not in forbidden_ids]
-            if not el:
+            el_scaled = [sc for mid, sc in scaled_cache_by_slot[slot].items() if mid not in forbidden_ids]
+            if not el_scaled:
                 # Relax to 1-day cooldown (never consecutive if >=2 candidates available)
                 consecutive_forbidden = {history[-1]} if len(history) >= 1 else set()
-                el = [m for m in candidates_by_slot[slot] if m["id"] not in consecutive_forbidden]
-                if not el:
-                    el = candidates_by_slot[slot]
+                el_scaled = [sc for mid, sc in scaled_cache_by_slot[slot].items() if mid not in consecutive_forbidden]
+                if not el_scaled:
+                    el_scaled = list(scaled_cache_by_slot[slot].values())
                 warning_msg = f"Dataset limitation for {day_name} {slot}: Repeating meal after 1 day cooldown."
                 if warning_msg not in variety_warnings:
                     variety_warnings.append(warning_msg)
-            eligible_by_slot[slot] = el
+
+            target_slot_cal = target_calories * SLOT_PERCENTAGES[slot]
+            eligible_scaled_by_slot[slot] = _prune_candidates(el_scaled, target_slot_cal, MAX_CANDIDATES_PER_SLOT)
 
         # 4b. Find the optimal combination for the day
-        def evaluate_combinations(candidates_pool: Dict[str, List[Dict[str, Any]]]) -> Optional[Tuple[Any, Any, Any, Any]]:
-            best_c = None
-            best_s = float("inf")
-
-            for b in candidates_pool["breakfast"]:
-                sc_b = calculate_scaled_meal(b, target_calories * SLOT_PERCENTAGES["breakfast"], user_conditions)
-                for l in candidates_pool["lunch"]:
-                    sc_l = calculate_scaled_meal(l, target_calories * SLOT_PERCENTAGES["lunch"], user_conditions)
-                    for s in candidates_pool["snack"]:
-                        sc_s = calculate_scaled_meal(s, target_calories * SLOT_PERCENTAGES["snack"], user_conditions)
-                        for d in candidates_pool["dinner"]:
-                            sc_d = calculate_scaled_meal(d, target_calories * SLOT_PERCENTAGES["dinner"], user_conditions)
-
-                            tot_cal = sc_b["calories"] + sc_l["calories"] + sc_s["calories"] + sc_d["calories"]
-                            tot_sod = sc_b["sodium_mg"] + sc_l["sodium_mg"] + sc_s["sodium_mg"] + sc_d["sodium_mg"]
-                            tot_sugar = sc_b["added_sugar_g"] + sc_l["added_sugar_g"] + sc_s["added_sugar_g"] + sc_d["added_sugar_g"]
-
-                            # Clinical Hard Constraints
-                            if "hypertension" in user_conditions and tot_sod >= 1480.0:
-                                continue
-                            if "diabetes" in user_conditions and tot_sugar > 20.0:
-                                continue
-                            if tot_cal < lower_cal_bound - 1.0 or tot_cal > upper_cal_bound + 1.0:
-                                continue
-
-                            # Score: calorie closeness + sodium minimization
-                            cal_diff = abs(tot_cal - target_calories)
-                            sod_penalty = (tot_sod * 0.5) if "hypertension" in user_conditions else 0.0
-                            protein_tot = sc_b["protein_g"] + sc_l["protein_g"] + sc_s["protein_g"] + sc_d["protein_g"]
-
-                            score = cal_diff + sod_penalty - (protein_tot * 1.5)
-                            if score < best_s:
-                                best_s = score
-                                best_c = (sc_b, sc_l, sc_s, sc_d)
-            return best_c
-
-        best_combo = evaluate_combinations(eligible_by_slot)
+        best_combo = _find_best_combination_worker(
+            eligible_scaled_by_slot,
+            target_calories,
+            user_conditions,
+            lower_cal_bound,
+            upper_cal_bound
+        )
 
         # If strict 2-day cooldown prevents meeting daily sodium < 1500mg,
         # relax to 1-day cooldown (never consecutive) per Section 11 of the specification
@@ -276,12 +365,20 @@ def generate_weekly_plan(
             relaxed_pool = {}
             for slot in EXPECTED_SLOTS:
                 history = slot_history[slot]
-                relaxed_pool[slot] = [
-                    m for m in candidates_by_slot[slot]
-                    if len(history) == 0 or m["id"] != history[-1]
-                ] or candidates_by_slot[slot]
+                rel_scaled = [
+                    sc for mid, sc in scaled_cache_by_slot[slot].items()
+                    if len(history) == 0 or mid != history[-1]
+                ] or list(scaled_cache_by_slot[slot].values())
+                target_slot_cal = target_calories * SLOT_PERCENTAGES[slot]
+                relaxed_pool[slot] = _prune_candidates(rel_scaled, target_slot_cal, MAX_CANDIDATES_PER_SLOT)
 
-            best_combo = evaluate_combinations(relaxed_pool)
+            best_combo = _find_best_combination_worker(
+                relaxed_pool,
+                target_calories,
+                user_conditions,
+                lower_cal_bound,
+                upper_cal_bound
+            )
             warning_msg = f"Dataset limitation: Relaxed 2-day cooldown on {day_name} to preserve daily clinical constraints."
             if warning_msg not in variety_warnings:
                 variety_warnings.append(warning_msg)
@@ -427,6 +524,8 @@ def swap_day_slot_in_plan(
 
     # Calculate scaled meal
     new_scaled = calculate_scaled_meal(replacement_meal, target_slot_cal, user_conditions)
+    if not new_scaled.get("conflict", {}).get("is_safe", True):
+        return False, plan, f"Replacement meal '{replacement_meal['name']}' violates clinical boundaries after scaling."
     target_day_obj["meals"][current_meal_idx] = new_scaled
 
     # Recalculate day's totals
@@ -477,3 +576,26 @@ def swap_day_slot_in_plan(
         return False, plan, f"Swap invalidates plan: {'; '.join(val_res['errors'][:2])}"
 
     return True, candidate_plan, None
+
+async def generate_weekly_plan_async(
+    user_id: str,
+    target_calories: float,
+    health_vault: Dict[str, Any],
+    preferences: Dict[str, Any],
+    start_date: Optional[datetime.date] = None,
+    custom_meals: Optional[List[Dict[str, Any]]] = None
+) -> Dict[str, Any]:
+    """
+    Asynchronous interface offloading the CPU-bound meal planner search
+    to a background worker thread using asyncio.to_thread().
+    """
+    return await asyncio.to_thread(
+        generate_weekly_plan,
+        user_id=user_id,
+        target_calories=target_calories,
+        health_vault=health_vault,
+        preferences=preferences,
+        start_date=start_date,
+        custom_meals=custom_meals
+    )
+

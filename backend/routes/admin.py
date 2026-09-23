@@ -15,11 +15,13 @@ import sys
 import csv
 import io
 import json
+import re
 from uuid import uuid4
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from bson import ObjectId
 from fastapi import APIRouter, Header, HTTPException, Depends, Query, status, Request, Response
+from fastapi.responses import StreamingResponse
 import httpx
 import firebase_admin
 from firebase_admin import auth as firebase_auth
@@ -58,6 +60,28 @@ PREDEFINED_MODS = [
     {"email": "adityaswarnakar@zsehealth.internal", "name": "Aditya Swarnakar"},
     {"email": "armaansharma@zsehealth.internal", "name": "Armaan Sharma"},
 ]
+
+# --- ADMIN SEARCH & REGEX DEFENSE ---
+MAX_ADMIN_SEARCH_LENGTH = 200
+
+def _build_safe_regex_query(search: Optional[str], fields: List[str]) -> Optional[Dict[str, Any]]:
+    """
+    Sanitizes user search inputs using re.escape() and bounds input length to MAX_ADMIN_SEARCH_LENGTH.
+    Prevents ReDoS attacks and regex injection across MongoDB queries.
+    Returns None if search is empty or whitespace-only (omits $or query clause).
+    """
+    if not search:
+        return None
+    trimmed = search.strip()
+    if not trimmed:
+        return None
+    if len(trimmed) > MAX_ADMIN_SEARCH_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Search query exceeds maximum length of {MAX_ADMIN_SEARCH_LENGTH} characters."
+        )
+    escaped = re.escape(trimmed)
+    return {"$or": [{field: {"$regex": escaped, "$options": "i"}} for field in fields]}
 
 
 # --- LAZY COLLECTION HELPERS ---
@@ -755,13 +779,9 @@ async def list_users(
     users_col = _get_users_collection()
     query: Dict[str, Any] = {}
 
-    if search:
-        search_regex = {"$regex": search.strip(), "$options": "i"}
-        query["$or"] = [
-            {"email": search_regex},
-            {"name": search_regex},
-            {"uid": search_regex},
-        ]
+    search_filter = _build_safe_regex_query(search, ["email", "name", "uid"])
+    if search_filter:
+        query.update(search_filter)
 
     if tier:
         query["tier"] = tier.lower()
@@ -942,14 +962,18 @@ async def get_system_logs(
     if level and level.upper() != "ALL":
         query["level"] = level.upper()
 
-    if service:
-        query["service"] = {"$regex": service.strip(), "$options": "i"}
+    if service and service.strip():
+        trimmed_svc = service.strip()
+        if len(trimmed_svc) > MAX_ADMIN_SEARCH_LENGTH:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Service filter exceeds maximum length of {MAX_ADMIN_SEARCH_LENGTH} characters."
+            )
+        query["service"] = {"$regex": re.escape(trimmed_svc), "$options": "i"}
 
-    if search:
-        query["$or"] = [
-            {"message": {"$regex": search.strip(), "$options": "i"}},
-            {"service": {"$regex": search.strip(), "$options": "i"}},
-        ]
+    search_filter = _build_safe_regex_query(search, ["message", "service"])
+    if search_filter:
+        query.update(search_filter)
 
     cursor = logs_col.find(query).sort("timestamp", -1).limit(limit)
     entries = []
@@ -1363,13 +1387,9 @@ async def list_admin_audit_logs(
     if admin_email and admin_email.strip():
         query["admin_email"] = admin_email.strip().lower()
 
-    if search and search.strip():
-        clean_search = search.strip()
-        query["$or"] = [
-            {"target_resource_id": {"$regex": clean_search, "$options": "i"}},
-            {"admin_email": {"$regex": clean_search, "$options": "i"}},
-            {"action": {"$regex": clean_search, "$options": "i"}},
-        ]
+    search_filter = _build_safe_regex_query(search, ["target_resource_id", "admin_email", "action"])
+    if search_filter:
+        query.update(search_filter)
 
     total = await col.count_documents(query)
     cursor = col.find(query).sort([("timestamp", -1), ("event_id", -1)]).skip(skip).limit(limit)
@@ -1406,8 +1426,9 @@ async def export_admin_audit_logs_csv(
     admin: Dict[str, Any] = Depends(require_permission("canManageAdmins")),
 ):
     """
-    Streams or returns CSV formatted administrative audit records matching active filters.
-    Restricted strictly to Super Admin clearance. Hard-capped at 1,000 records for safety.
+    Streams CSV formatted administrative audit records matching active filters.
+    Restricted strictly to Super Admin clearance. Uses StreamingResponse with an async generator
+    over the Motor cursor, streaming individual RFC 4180 rows to prevent high memory pressure.
     """
     col = _get_audit_logs_collection()
     query: Dict[str, Any] = {}
@@ -1418,49 +1439,50 @@ async def export_admin_audit_logs_csv(
     if admin_email and admin_email.strip():
         query["admin_email"] = admin_email.strip().lower()
 
-    if search and search.strip():
-        clean_search = search.strip()
-        query["$or"] = [
-            {"target_resource_id": {"$regex": clean_search, "$options": "i"}},
-            {"admin_email": {"$regex": clean_search, "$options": "i"}},
-            {"action": {"$regex": clean_search, "$options": "i"}},
-        ]
+    search_filter = _build_safe_regex_query(search, ["target_resource_id", "admin_email", "action"])
+    if search_filter:
+        query.update(search_filter)
 
     # Bound export to safe max of 1000 records
     cursor = col.find(query).sort("timestamp", -1).limit(1000)
 
-    output = io.StringIO()
-    writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
-    writer.writerow([
-        "event_id",
-        "timestamp",
-        "action",
-        "admin_email",
-        "target_resource_type",
-        "target_resource_id",
-        "ip_address",
-        "details",
-    ])
-
-    async for doc in cursor:
-        ts = doc.get("timestamp")
-        ts_str = ts.isoformat() if isinstance(ts, datetime) else str(ts)
-        writer.writerow([
-            doc.get("event_id", ""),
-            ts_str,
-            doc.get("action", ""),
-            doc.get("admin_email", ""),
-            doc.get("target_resource_type", ""),
-            doc.get("target_resource_id", ""),
-            doc.get("ip_address", "") or "null",
-            json.dumps(doc.get("details", {})),
+    async def generate_csv():
+        # RFC 4180 compliant header row
+        header_buf = io.StringIO()
+        header_writer = csv.writer(header_buf, quoting=csv.QUOTE_MINIMAL)
+        header_writer.writerow([
+            "event_id",
+            "timestamp",
+            "action",
+            "admin_email",
+            "target_resource_type",
+            "target_resource_id",
+            "ip_address",
+            "details",
         ])
+        yield header_buf.getvalue()
 
-    csv_content = output.getvalue()
+        async for doc in cursor:
+            row_buf = io.StringIO()
+            row_writer = csv.writer(row_buf, quoting=csv.QUOTE_MINIMAL)
+            ts = doc.get("timestamp")
+            ts_str = ts.isoformat() if isinstance(ts, datetime) else str(ts)
+            row_writer.writerow([
+                doc.get("event_id", ""),
+                ts_str,
+                doc.get("action", ""),
+                doc.get("admin_email", ""),
+                doc.get("target_resource_type", ""),
+                doc.get("target_resource_id", ""),
+                doc.get("ip_address", "") or "null",
+                json.dumps(doc.get("details", {})),
+            ])
+            yield row_buf.getvalue()
+
     filename = f"z_sehealth_audit_trail_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
 
-    return Response(
-        content=csv_content,
+    return StreamingResponse(
+        generate_csv(),
         media_type="text/csv",
         headers={
             "Content-Disposition": f'attachment; filename="{filename}"',

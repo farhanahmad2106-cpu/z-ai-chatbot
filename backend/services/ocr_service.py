@@ -1,9 +1,10 @@
 import os
+import sys
 import json
 import base64
 import asyncio
 import httpx
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from services.image_preprocessor import preprocess_for_ocr
 
@@ -109,36 +110,98 @@ async def _call_sarvam_vision(base64_image: str, mime_type: str) -> str:
         response.raise_for_status()
         return response.json().get("text", "")
 
+NVIDIA_VISION_TIMEOUT = httpx.Timeout(timeout=60.0, connect=10.0)
+NON_RETRYABLE_STATUS = {400, 401, 403, 404, 422}
+
+def _get_nvidia_keys() -> List[str]:
+    """Retrieves unique, sanitized NVIDIA NIM API keys from main module or environment."""
+    main_mod = sys.modules.get("backend.main") or sys.modules.get("main") or sys.modules.get("__main__")
+    if main_mod and hasattr(main_mod, "get_nvidia_keys"):
+        try:
+            raw_keys = main_mod.get_nvidia_keys()
+        except Exception:
+            raw_keys = []
+    else:
+        raw_keys = []
+        for key_name in ["NVIDIA_API_KEY", "NVIDIA_API_KEY_1", "NVIDIA_API_KEY_2", "NVIDIA_API_KEY_3", "NVIDIA_API_KEY_4", "NVIDIA_API_KEY_5"]:
+            val = os.getenv(key_name)
+            if val:
+                raw_keys.append(val)
+
+    unique_keys: List[str] = []
+    for k in raw_keys:
+        if k and isinstance(k, str):
+            clean_k = k.strip()
+            if clean_k and clean_k not in unique_keys:
+                unique_keys.append(clean_k)
+    return unique_keys
+
 async def _call_nvidia_nim(base64_image: str, mime_type: str) -> str:
-    """Secondary: NVIDIA NIM API"""
-    api_key = os.getenv("NVIDIA_API_KEY")
-    if not api_key:
-        raise ValueError("NVIDIA_API_KEY missing")
-    
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            "https://integrate.api.nvidia.com/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": "nvidia/neva-22b",
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": SYSTEM_PROMPT},
-                            {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{base64_image}"}}
-                        ]
-                    }
-                ],
-                "max_tokens": 1024
-            },
-            timeout=3.0
-        )
-        response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"]
+    """Secondary: NVIDIA NIM API with 60s timeout and bounded key rotation on HTTP 429."""
+    keys = _get_nvidia_keys()
+    if not keys:
+        raise ValueError("NVIDIA_API_KEY missing or empty")
+
+    url = "https://integrate.api.nvidia.com/v1/chat/completions"
+    payload = {
+        "model": "nvidia/neva-22b",
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": SYSTEM_PROMPT},
+                    {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{base64_image}"}}
+                ]
+            }
+        ],
+        "max_tokens": 1024
+    }
+
+    last_error: Optional[Exception] = None
+
+    for idx, key in enumerate(keys):
+        headers = {
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json"
+        }
+        try:
+            async with httpx.AsyncClient(timeout=NVIDIA_VISION_TIMEOUT) as client:
+                response = await client.post(url, headers=headers, json=payload)
+
+                if response.status_code == 200:
+                    data = response.json()
+                    return data["choices"][0]["message"]["content"]
+
+                if response.status_code == 429:
+                    # Rate-limited: check Retry-After boundedly, then rotate to next key
+                    retry_after = response.headers.get("Retry-After")
+                    if retry_after:
+                        try:
+                            sleep_duration = min(float(retry_after), 5.0)
+                            if sleep_duration > 0:
+                                await asyncio.sleep(sleep_duration)
+                        except (ValueError, TypeError):
+                            pass
+
+                    print(f"[NVIDIA Vision] HTTP 429 rate limit on key index {idx+1}/{len(keys)}. Rotating to next key.")
+                    last_error = RuntimeError(f"NVIDIA key {idx+1} rate-limited (HTTP 429)")
+                    continue
+
+                if response.status_code in NON_RETRYABLE_STATUS:
+                    # Permanent client/auth error: do NOT rotate credentials blindly
+                    print(f"[NVIDIA Vision] Permanent HTTP {response.status_code} error on key index {idx+1}. Failing immediately.")
+                    raise RuntimeError(f"NVIDIA API returned non-retryable status {response.status_code}")
+
+                # 5xx server errors: log safely and try next key
+                print(f"[NVIDIA Vision] Server error HTTP {response.status_code} on key index {idx+1}. Attempting next available key.")
+                last_error = RuntimeError(f"NVIDIA API server error {response.status_code}")
+
+        except (httpx.TimeoutException, httpx.TransportError) as net_err:
+            print(f"[NVIDIA Vision] Network/Timeout error on key index {idx+1}: {type(net_err).__name__}")
+            last_error = net_err
+            continue
+
+    raise RuntimeError(f"All {len(keys)} NVIDIA API keys exhausted or failed: {last_error}")
 
 
 async def _call_gemini(image_bytes: bytes, mime_type: str) -> str:
@@ -208,22 +271,38 @@ async def _call_gemini(image_bytes: bytes, mime_type: str) -> str:
     raise RuntimeError("Both Gemini SDK and REST fallback failed.")
 
 def _parse_llm_json(raw_text: str) -> OCRAnalysisResponse:
-    """Cleans up markdown ticks and parses the LLM output into the Pydantic schema."""
-    cleaned = raw_text.strip()
-    if cleaned.startswith("```json"):
-        cleaned = cleaned[7:]
-    if cleaned.startswith("```"):
-        cleaned = cleaned[3:]
-    if cleaned.endswith("```"):
-        cleaned = cleaned[:-3]
-        
+    """
+    Robust bounded substring JSON parser with schema validation.
+    Extracts the first outermost JSON object {...} across conversational prose,
+    markdown code fences, and whitespace variations. Never uses eval().
+    """
+    if not raw_text or not isinstance(raw_text, str):
+        raise ValueError("Invalid or empty raw text for JSON parsing")
+
+    start = raw_text.find("{")
+    end = raw_text.rfind("}")
+
+    if start == -1 or end == -1 or end <= start:
+        raise ValueError("No JSON object found in response")
+
+    candidate = raw_text[start : end + 1]
+
     try:
-        data = json.loads(cleaned.strip())
-        if not data.get("estimated_macros") and data.get("nutrition_per_100g"):
-            data["estimated_macros"] = data["nutrition_per_100g"]
-        elif not data.get("nutrition_per_100g") and data.get("estimated_macros"):
-            data["nutrition_per_100g"] = data["estimated_macros"]
+        data = json.loads(candidate)
+    except json.JSONDecodeError as jde:
+        raise ValueError(f"Failed to decode JSON object: {jde}")
+
+    if not isinstance(data, dict):
+        raise ValueError(f"Expected JSON root to be a dictionary, got {type(data).__name__}")
+
+    # Reconcile estimated_macros and nutrition_per_100g
+    if not data.get("estimated_macros") and data.get("nutrition_per_100g"):
+        data["estimated_macros"] = data["nutrition_per_100g"]
+    elif not data.get("nutrition_per_100g") and data.get("estimated_macros"):
+        data["nutrition_per_100g"] = data["estimated_macros"]
+
+    try:
         return OCRAnalysisResponse(**data)
-    except Exception as e:
-        raise ValueError(f"Failed to parse LLM JSON response: {e}")
+    except Exception as ve:
+        raise ValueError(f"JSON data failed schema validation: {ve}")
 

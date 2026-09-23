@@ -1,11 +1,43 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-23 (Session: Priority-0 Backend Reliability Defect Remediation — Food Persistence, Atomic Macros, Offline Sync Idempotency, Razorpay Webhook Recovery)
+> **Last Updated:** 2026-09-23 (Session: Priority-1 Performance & Security Remediation — Planner Event-Loop Offloading, Vision Timeout/Failover Hardening, Bounded JSON Extraction, Admin ReDoS Defense, CSV Streaming)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-23
+**Work Done — Priority-1 Performance & Security Remediation:**
+- **Workstream A: Weekly Planner Event-Loop Optimization & Pruning (`backend/services/meal_planner/weekly_planner.py`, `backend/routes/meals.py`)**:
+  - Pre-scaled candidates once per slot before combinatorial search via `_prepare_scaled_candidates_by_slot`, eliminating redundant `calculate_scaled_meal` execution in nested loops.
+  - Implemented deterministic candidate pruning via `_prune_candidates`, capping candidate pools to at most 5 per slot based on calorie proximity, protein density, and meal ID tie-breaking, bounding daily search space to $\le 625$ combinations.
+  - Enforced post-scaling clinical bounds in `calculate_scaled_meal`: candidates whose scaled sodium is $\ge 500$mg under hypertension or added sugar $> 5$g under diabetes are marked unsafe and rejected.
+  - Extracted pure CPU worker `_find_best_combination_worker` and offloaded `generate_weekly_plan` in `backend/routes/meals.py` using `await asyncio.to_thread(generate_weekly_plan, ...)`, preventing FastAPI event-loop starvation.
+- **Workstream B: NVIDIA Vision Timeout & Key-Failover Hardening (`backend/services/ocr_service.py`)**:
+  - Replaced legacy 3.0s timeout with SLA-aligned 60.0s configuration (`httpx.Timeout(timeout=60.0, connect=10.0)`).
+  - Integrated deduplicated key resolver `_get_nvidia_keys()` supporting multi-key rotation on HTTP 429 rate limits.
+  - Handled `Retry-After` boundedly ($\le 5$s) and prevented wasteful key rotation on permanent client errors (400, 401, 403, 404, 422).
+  - Sanitized log output to guarantee API keys and Authorization headers are never leaked.
+- **Workstream C: Robust LLM JSON Extraction (`backend/services/ocr_service.py`)**:
+  - Refactored `_parse_llm_json` to use bounded substring extraction (`find("{")` to `rfind("}")`), parsing valid JSON payloads embedded within conversational prose or markdown code blocks without using `eval()`.
+  - Enforced dictionary structure validation and Pydantic `OCRAnalysisResponse` schema compliance.
+- **Workstream D: Admin Search Regex Injection & ReDoS Defense (`backend/routes/admin.py`)**:
+  - Implemented `_build_safe_regex_query` with `re.escape()` sanitization, treating regex metacharacters (`.*`, `(a+)+$`, `[`, `]`, `?`, etc.) as safe literal strings.
+  - Enforced `MAX_ADMIN_SEARCH_LENGTH = 200` returning HTTP 400 Bad Request on oversized search inputs.
+  - Explicitly handled empty and whitespace-only queries by omitting empty `$or` regex filters.
+  - Applied defense uniformly across audit log listings, CSV exports, user governance searches, and system log telemetry.
+- **Workstream E: Stream Large Admin CSV Exports (`backend/routes/admin.py`)**:
+  - Replaced full in-memory `io.StringIO` accumulation with `StreamingResponse` using an asynchronous generator iterating the Motor cursor.
+  - Utilized RFC 4180 compliant `csv.writer` formatting with per-row chunking, ensuring robust escaping for fields containing quotes, commas, and newlines with bounded memory usage.
+- **Verification & Zero Regressions**:
+  - Authored dedicated 18-test verification suite `tests/test_p1_remediation.py` (100% passing).
+  - Full backend pytest suite: **132/132 tests passed (100% across all 13 test files)**.
+  - Frontend Vitest suite: **54/54 tests passed (100%)**.
+  - Frontend production build: `npm --prefix frontend run build` completed with **0 errors**.
+
+---
+
+## 🗓️ Previous Session Summary
 **Date:** 2026-09-23
 **Work Done — Priority-0 Backend Reliability Defect Remediation:**
 - **Defect A: Food Persistence Failure Remediation (`backend/routes/scan.py`)**:
