@@ -1,19 +1,17 @@
-# db.py - Refined
-import os
-from pymongo import MongoClient
-from dotenv import load_dotenv
+from fastapi import Request
 
-load_dotenv()
+async def get_database(request: Request):
+    """
+    FastAPI dependency that returns the MongoDB database instance attached to app.state.
+    Ensures safe, non-global access to the database.
+    """
+    return request.app.state.db
 
-MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
+async def get_foods_collection(request: Request):
+    return request.app.state.db["foods"]
 
-try:
-    client = MongoClient(MONGODB_URI)
-    db = client["Z-sehealth"]
-    # Trigger a connection check
-    client.admin.command('ping') 
-    print("Successfully connected to MongoDB")
-except Exception as e:
-    print(f"MongoDB Connection Error: {e}")
+async def get_users_collection(request: Request):
+    return request.app.state.db["users"]
 
-foods_collection = db["foods"]
+async def get_system_logs_collection(request: Request):
+    return request.app.state.db["system_logs"]

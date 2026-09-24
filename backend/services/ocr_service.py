@@ -134,19 +134,12 @@ async def _call_sarvam_vision(base64_image: str, mime_type: str) -> str:
         return response.json().get("text", "")
 
 def _get_nvidia_keys() -> List[str]:
-    """Retrieves unique, sanitized NVIDIA NIM API keys from main module or environment."""
-    main_mod = sys.modules.get("backend.main") or sys.modules.get("main") or sys.modules.get("__main__")
-    if main_mod and hasattr(main_mod, "get_nvidia_keys"):
-        try:
-            raw_keys = main_mod.get_nvidia_keys()
-        except Exception:
-            raw_keys = []
-    else:
-        raw_keys = []
-        for key_name in ["NVIDIA_API_KEY", "NVIDIA_API_KEY_1", "NVIDIA_API_KEY_2", "NVIDIA_API_KEY_3", "NVIDIA_API_KEY_4", "NVIDIA_API_KEY_5"]:
-            val = os.getenv(key_name)
-            if val:
-                raw_keys.append(val)
+    """Retrieves unique, sanitized NVIDIA NIM API keys from environment."""
+    raw_keys = []
+    for key_name in ["NVIDIA_API_KEY", "NVIDIA_API_KEY_1", "NVIDIA_API_KEY_2", "NVIDIA_API_KEY_3", "NVIDIA_API_KEY_4", "NVIDIA_API_KEY_5"]:
+        val = os.getenv(key_name)
+        if val:
+            raw_keys.append(val)
 
     unique_keys: List[str] = []
     for k in raw_keys:

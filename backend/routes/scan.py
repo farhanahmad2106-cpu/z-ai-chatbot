@@ -1,12 +1,12 @@
-import sys
 import hashlib
 import re
 from datetime import datetime, timezone
-from typing import Optional
-from fastapi import APIRouter, UploadFile, File, Header, HTTPException, status, Form
+from typing import Optional, Any
+from fastapi import APIRouter, UploadFile, File, Header, HTTPException, status, Form, Depends
 from schemas.scan import OCRAnalysisResponse
 from services.ocr_service import extract_and_analyze
 import firebase_admin.auth as fb_auth
+from db import get_foods_collection, get_users_collection, get_system_logs_collection
 
 router = APIRouter(
     prefix="/api/scan",
@@ -16,38 +16,6 @@ router = APIRouter(
 ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 MB
 
-
-def _get_foods_collection():
-    for mod_name in ("backend.main", "main", "__main__"):
-        main_module = sys.modules.get(mod_name)
-        if main_module:
-            if hasattr(main_module, "foods_collection") and main_module.foods_collection is not None:
-                return main_module.foods_collection
-            if hasattr(main_module, "db") and main_module.db is not None:
-                return main_module.db["foods"]
-    return None
-
-
-def _get_system_logs_collection():
-    for mod_name in ("backend.main", "main", "__main__"):
-        main_module = sys.modules.get(mod_name)
-        if main_module:
-            if hasattr(main_module, "system_logs_collection") and main_module.system_logs_collection is not None:
-                return main_module.system_logs_collection
-            if hasattr(main_module, "db") and main_module.db is not None:
-                return main_module.db["system_logs"]
-    return None
-
-
-def _get_users_collection():
-    for mod_name in ("backend.main", "main", "__main__"):
-        main_module = sys.modules.get(mod_name)
-        if main_module:
-            if hasattr(main_module, "users_collection") and main_module.users_collection is not None:
-                return main_module.users_collection
-            if hasattr(main_module, "db") and main_module.db is not None:
-                return main_module.db["users"]
-    return None
 
 
 from middleware.quota_check import (
@@ -62,7 +30,10 @@ from middleware.quota_check import (
 async def analyze_back_of_pack(
     image: UploadFile = File(...),
     barcode: Optional[str] = Form(None),
-    authorization: Optional[str] = Header(None)
+    authorization: Optional[str] = Header(None),
+    foods_col: Any = Depends(get_foods_collection),
+    users_col: Any = Depends(get_users_collection),
+    logs_col: Any = Depends(get_system_logs_collection)
 ):
     """
     Endpoint for uploading a back-of-pack image to extract and normalize
@@ -113,7 +84,6 @@ async def analyze_back_of_pack(
 
     # Atomic quota check and reservation for authenticated users
     quota_reserved = False
-    users_col = _get_users_collection()
     if auth_uid and users_col is not None:
         user_doc = await users_col.find_one({"uid": auth_uid})
         if user_doc:
@@ -167,7 +137,6 @@ async def analyze_back_of_pack(
     ]
 
     # Verify database availability
-    foods_col = _get_foods_collection()
     if foods_col is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -259,7 +228,6 @@ async def analyze_back_of_pack(
         analysis_result.requires_user_review = True
     except Exception as exc:
         try:
-            logs_col = _get_system_logs_collection()
             if logs_col is not None:
                 await logs_col.insert_one({
                     "timestamp": datetime.now(timezone.utc).isoformat(),

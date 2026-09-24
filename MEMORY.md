@@ -1,11 +1,27 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-24 (Session: Master Prompt 4 — Production Bundle Code-Splitting & Living Documentation Synchronization)
+> **Last Updated:** 2026-09-24 (Session: Canonical Scan-to-Moderation Pipeline & MongoDB Dependency Architecture)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-24
+**Work Done — Canonical Scan-to-Moderation Pipeline & MongoDB Dependency Architecture:**
+- **Robust Database Access Architecture (`backend/db.py`, `backend/routes/scan.py`)**:
+  - Eliminated the brittle `sys.modules.get("backend.main")` hack for database collection resolution.
+  - Refactored `backend/db.py` to expose formal FastAPI dependencies (`get_database`, `get_foods_collection`, `get_users_collection`, `get_system_logs_collection`) that cleanly access `request.app.state.db` initialized during the application lifespan.
+  - Injected `Depends()` collections directly into `analyze_back_of_pack` in `backend/routes/scan.py`.
+- **Eliminated Hacks from OCR Service (`backend/services/ocr_service.py`)**:
+  - Removed `sys.modules` reflection for retrieving NVIDIA NIM API keys.
+  - Cleaned `_get_nvidia_keys()` to fetch directly from `os.getenv` environment variables, ensuring deterministic fallback rotation without module coupling.
+- **Automated Verification**:
+  - Re-authored `tests/test_scan_remediation.py` to supply mock dependencies safely as keyword arguments rather than utilizing brittle path-based `patch()` intercepts on internal module functions.
+  - Test suite re-execution: **8/8 scan remediation tests passing (100%)**.
+
+---
+
+## 🗓️ Previous Session Summary (Production Bundle Code-Splitting & Living Documentation Synchronization)
 **Date:** 2026-09-24
 **Work Done — Production Bundle Code-Splitting & Living Documentation Synchronization:**
 - **Route & Tab-Level Code-Splitting (`frontend/src/App.tsx`)**:

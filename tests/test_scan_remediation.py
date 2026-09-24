@@ -99,14 +99,16 @@ async def test_unknown_food_creates_pending_record():
         raw_ocr_text="Ingredients: Organic Oats, Honey, Chia Seeds"
     )
 
-    with patch("backend.routes.scan._get_foods_collection", return_value=mock_foods_col), \
-         patch("backend.routes.scan.extract_and_analyze", return_value=mock_analysis):
+    with patch("backend.routes.scan.extract_and_analyze", return_value=mock_analysis):
 
         mock_image = create_mock_upload_file()
         res = await analyze_back_of_pack(
             image=mock_image,
             barcode="0123456789012",
-            authorization=None
+            authorization=None,
+            foods_col=mock_foods_col,
+            users_col=None,
+            logs_col=None
         )
 
         assert res.is_verified is False
@@ -148,14 +150,16 @@ async def test_existing_food_does_not_create_duplicate():
         raw_ocr_text="Ingredients: Wheat flour, Sugar"
     )
 
-    with patch("backend.routes.scan._get_foods_collection", return_value=mock_foods_col), \
-         patch("backend.routes.scan.extract_and_analyze", return_value=mock_analysis):
+    with patch("backend.routes.scan.extract_and_analyze", return_value=mock_analysis):
 
         mock_image = create_mock_upload_file()
         res = await analyze_back_of_pack(
             image=mock_image,
             barcode="8901234567890",
-            authorization="Bearer test_token"
+            authorization="Bearer test_token",
+            foods_col=mock_foods_col,
+            users_col=None,
+            logs_col=None
         )
 
         # Verified existing item returned without new insertion
@@ -187,14 +191,16 @@ async def test_barcode_matching_preserves_leading_zeroes():
         raw_ocr_text="Ingredients: Salt"
     )
 
-    with patch("backend.routes.scan._get_foods_collection", return_value=mock_foods_col), \
-         patch("backend.routes.scan.extract_and_analyze", return_value=mock_analysis):
+    with patch("backend.routes.scan.extract_and_analyze", return_value=mock_analysis):
 
         mock_image = create_mock_upload_file()
         res = await analyze_back_of_pack(
             image=mock_image,
             barcode="  0001234567890  ",  # with whitespace
-            authorization=None
+            authorization=None,
+            foods_col=mock_foods_col,
+            users_col=None,
+            logs_col=None
         )
 
         # Barcode trimmed and matched as string preserving leading zeroes
@@ -217,15 +223,17 @@ async def test_authentication_identity_resolution():
     fake_uid = "firebase_user_qa_99"
     expected_anon_id = f"anon_{hashlib.sha256(fake_uid.encode('utf-8')).hexdigest()[:12]}"
 
-    with patch("backend.routes.scan._get_foods_collection", return_value=mock_foods_col), \
-         patch("backend.routes.scan.extract_and_analyze", return_value=mock_analysis), \
+    with patch("backend.routes.scan.extract_and_analyze", return_value=mock_analysis), \
          patch("firebase_admin.auth.verify_id_token", return_value={"uid": fake_uid}):
 
         # Valid Bearer token
         mock_image = create_mock_upload_file()
         res = await analyze_back_of_pack(
             image=mock_image,
-            authorization="Bearer valid_jwt_token"
+            authorization="Bearer valid_jwt_token",
+            foods_col=mock_foods_col,
+            users_col=None,
+            logs_col=None
         )
         assert len(mock_foods_col.docs) == 1
         assert mock_foods_col.docs[0]["submitted_by"] == expected_anon_id
@@ -238,7 +246,13 @@ async def test_authentication_identity_resolution():
             raw_ocr_text="Ingredient 2"
         )
         with patch("backend.routes.scan.extract_and_analyze", return_value=mock_analysis2):
-            res2 = await analyze_back_of_pack(image=mock_image2, authorization=None)
+            res2 = await analyze_back_of_pack(
+                image=mock_image2,
+                authorization=None,
+                foods_col=mock_foods_col,
+                users_col=None,
+                logs_col=None
+            )
             assert len(mock_foods_col.docs) == 2
             assert mock_foods_col.docs[1]["submitted_by"] == "anon_contributor"
 
@@ -249,19 +263,34 @@ async def test_invalid_image_inputs():
     # 1. Empty image
     mock_empty = create_mock_upload_file(content=b"")
     with pytest.raises(HTTPException) as exc1:
-        await analyze_back_of_pack(image=mock_empty)
+        await analyze_back_of_pack(
+            image=mock_empty,
+            foods_col=None,
+            users_col=None,
+            logs_col=None
+        )
     assert exc1.value.status_code == 400
 
     # 2. Unsupported MIME type
     mock_unsupported = create_mock_upload_file(content_type="application/pdf")
     with pytest.raises(HTTPException) as exc2:
-        await analyze_back_of_pack(image=mock_unsupported)
+        await analyze_back_of_pack(
+            image=mock_unsupported,
+            foods_col=None,
+            users_col=None,
+            logs_col=None
+        )
     assert exc2.value.status_code == 415
 
     # 3. Oversized file (> 5MB)
     mock_oversized = create_mock_upload_file(content=b"0" * (5 * 1024 * 1024 + 10))
     with pytest.raises(HTTPException) as exc3:
-        await analyze_back_of_pack(image=mock_oversized)
+        await analyze_back_of_pack(
+            image=mock_oversized,
+            foods_col=None,
+            users_col=None,
+            logs_col=None
+        )
     assert exc3.value.status_code == 413
 
 
@@ -276,11 +305,15 @@ async def test_ocr_failure_does_not_create_pending_food():
         raw_ocr_text=""  # empty OCR extraction
     )
 
-    with patch("backend.routes.scan._get_foods_collection", return_value=mock_foods_col), \
-         patch("backend.routes.scan.extract_and_analyze", return_value=mock_analysis):
+    with patch("backend.routes.scan.extract_and_analyze", return_value=mock_analysis):
 
         mock_image = create_mock_upload_file()
-        res = await analyze_back_of_pack(image=mock_image)
+        res = await analyze_back_of_pack(
+            image=mock_image,
+            foods_col=mock_foods_col,
+            users_col=None,
+            logs_col=None
+        )
 
         assert res.food_id is None
         assert res.is_verified is False
@@ -301,13 +334,16 @@ async def test_mongodb_failure_raises_500():
         raw_ocr_text="Ingredients: Sugar"
     )
 
-    with patch("backend.routes.scan._get_foods_collection", return_value=mock_foods_col), \
-         patch("backend.routes.scan._get_system_logs_collection", return_value=mock_logs_col), \
-         patch("backend.routes.scan.extract_and_analyze", return_value=mock_analysis):
+    with patch("backend.routes.scan.extract_and_analyze", return_value=mock_analysis):
 
         mock_image = create_mock_upload_file()
         with pytest.raises(HTTPException) as exc:
-            await analyze_back_of_pack(image=mock_image)
+            await analyze_back_of_pack(
+                image=mock_image,
+                foods_col=mock_foods_col,
+                users_col=None,
+                logs_col=mock_logs_col
+            )
         assert exc.value.status_code == 500
         assert exc.value.detail == "Failed to persist crowdsourced food item"
 
@@ -323,11 +359,15 @@ async def test_objectid_serialization():
         raw_ocr_text="Ingredients: Oats"
     )
 
-    with patch("backend.routes.scan._get_foods_collection", return_value=mock_foods_col), \
-         patch("backend.routes.scan.extract_and_analyze", return_value=mock_analysis):
+    with patch("backend.routes.scan.extract_and_analyze", return_value=mock_analysis):
 
         mock_image = create_mock_upload_file()
-        res = await analyze_back_of_pack(image=mock_image)
+        res = await analyze_back_of_pack(
+            image=mock_image,
+            foods_col=mock_foods_col,
+            users_col=None,
+            logs_col=None
+        )
 
         assert isinstance(res.food_id, str)
         # Ensure json.dumps works on the model
