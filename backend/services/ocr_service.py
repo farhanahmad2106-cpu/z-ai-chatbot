@@ -3,8 +3,13 @@ import sys
 import json
 import base64
 import asyncio
+import time
+import logging
+import re
 import httpx
 from typing import Dict, Any, Optional, List
+
+logger = logging.getLogger("ocr_service")
 
 from services.image_preprocessor import preprocess_for_ocr
 
@@ -51,12 +56,17 @@ Output MUST be valid JSON matching the OCRAnalysisResponse schema exactly:
 }
 """
 
+OCR_GLOBAL_TIMEOUT_SECONDS = 60.0
+NVIDIA_VISION_TIMEOUT = httpx.Timeout(timeout=60.0, connect=10.0)
+NON_RETRYABLE_STATUS = {400, 401, 403, 404, 422}
+
 async def extract_and_analyze(image_bytes: bytes, mime_type: str) -> OCRAnalysisResponse:
     """
-    Multi-Tier Vision/OCR Extraction Routing:
+    Multi-Tier Vision/OCR Extraction Routing with Bounded Global Operation Deadline:
     1. Primary: Sarvam AI Vision (or Local Edge Model)
-    2. Secondary: NVIDIA NIM Pool
-    3. Tertiary: Google Gemini Cloud
+    2. Secondary: NVIDIA NIM Pool (Multi-key rotation, 429 backoff, fast fail on 401/403)
+    3. Tertiary: Google Gemini Cloud API (Fallback when NVIDIA exhausted or fails)
+    Total end-to-end operation is strictly bounded by OCR_GLOBAL_TIMEOUT_SECONDS (60s).
     """
     # Preprocess image for OCR (contrast/sharpening/orientation)
     if mime_type in ["image/jpeg", "image/png", "image/webp"]:
@@ -65,28 +75,42 @@ async def extract_and_analyze(image_bytes: bytes, mime_type: str) -> OCRAnalysis
         mime_type = "image/jpeg"
         
     base64_image = base64.b64encode(image_bytes).decode("utf-8")
+    deadline = time.monotonic() + OCR_GLOBAL_TIMEOUT_SECONDS
+    op_start = time.monotonic()
     
-    # Tier 1: Try Sarvam AI / Edge (Simulated / Placeholder for actual client call)
+    # Tier 1: Try Sarvam AI / Edge (if configured)
     try:
-        res = await _call_sarvam_vision(base64_image, mime_type)
-        if res: return _parse_llm_json(res)
+        if time.monotonic() < deadline:
+            res = await _call_sarvam_vision(base64_image, mime_type)
+            if res:
+                logger.info("[OCR] Tier 1 Sarvam succeeded in %.2fs", time.monotonic() - op_start)
+                return _parse_llm_json(res)
     except Exception as e:
-        print(f"Tier 1 Sarvam/Edge failed: {e}")
+        logger.warning("[OCR] Tier 1 Sarvam/Edge unavailable or failed: %s", str(e))
 
-    # Tier 2: Try Google Gemini Cloud API (Primary active cloud vision model)
+    # Tier 2: Try NVIDIA NIM Pool (Primary food image analysis tier)
     try:
-        res = await _call_gemini(image_bytes, mime_type)
-        if res: return _parse_llm_json(res)
+        if time.monotonic() < deadline:
+            res = await _call_nvidia_nim(base64_image, mime_type, deadline=deadline)
+            if res:
+                logger.info("[OCR] Tier 2 NVIDIA NIM succeeded in %.2fs", time.monotonic() - op_start)
+                return _parse_llm_json(res)
+        else:
+            logger.warning("[OCR] Global deadline expired before Tier 2 NVIDIA NIM attempt")
     except Exception as e:
-        print(f"Tier 2 Gemini failed: {e}")
+        logger.warning("[OCR] Tier 2 NVIDIA NIM failed: %s. Initiating Tier 3 Gemini fallback.", str(e))
 
-    # Tier 3: Try NVIDIA NIM Pool
+    # Tier 3: Try Google Gemini Cloud API (Fallback tier)
     try:
-        res = await _call_nvidia_nim(base64_image, mime_type)
-        if res: return _parse_llm_json(res)
+        if time.monotonic() < deadline:
+            res = await _call_gemini(image_bytes, mime_type, deadline=deadline)
+            if res:
+                logger.info("[OCR] Tier 3 Gemini fallback succeeded in %.2fs", time.monotonic() - op_start)
+                return _parse_llm_json(res)
+        else:
+            logger.warning("[OCR] Global deadline expired before Tier 3 Gemini fallback")
     except Exception as e:
-        print(f"Tier 3 NVIDIA NIM failed: {e}")
-
+        logger.error("[OCR] Tier 3 Gemini fallback failed: %s", str(e))
 
     raise HTTPException(status_code=500, detail="All OCR parsing tiers failed. Please try again.")
 
@@ -95,8 +119,7 @@ async def _call_sarvam_vision(base64_image: str, mime_type: str) -> str:
     api_key = os.getenv("SARVAM_API_KEY")
     if not api_key:
         raise ValueError("SARVAM_API_KEY missing")
-    
-    # Example integration code for Sarvam vision API
+
     async with httpx.AsyncClient() as client:
         response = await client.post(
             "https://api.sarvam.ai/v1/vision/analyze",
@@ -109,9 +132,6 @@ async def _call_sarvam_vision(base64_image: str, mime_type: str) -> str:
         )
         response.raise_for_status()
         return response.json().get("text", "")
-
-NVIDIA_VISION_TIMEOUT = httpx.Timeout(timeout=60.0, connect=10.0)
-NON_RETRYABLE_STATUS = {400, 401, 403, 404, 422}
 
 def _get_nvidia_keys() -> List[str]:
     """Retrieves unique, sanitized NVIDIA NIM API keys from main module or environment."""
@@ -136,8 +156,12 @@ def _get_nvidia_keys() -> List[str]:
                 unique_keys.append(clean_k)
     return unique_keys
 
-async def _call_nvidia_nim(base64_image: str, mime_type: str) -> str:
-    """Secondary: NVIDIA NIM API with 60s timeout and bounded key rotation on HTTP 429."""
+async def _call_nvidia_nim(base64_image: str, mime_type: str, deadline: Optional[float] = None) -> str:
+    """
+    Secondary: NVIDIA NIM API with bounded key rotation on HTTP 429,
+    immediate failover on 401/403/non-retryable client errors, and monotonic deadline budgeting.
+    Credentials are never logged or exposed.
+    """
     keys = _get_nvidia_keys()
     if not keys:
         raise ValueError("NVIDIA_API_KEY missing or empty")
@@ -160,56 +184,103 @@ async def _call_nvidia_nim(base64_image: str, mime_type: str) -> str:
     last_error: Optional[Exception] = None
 
     for idx, key in enumerate(keys):
+        now = time.monotonic()
+        if deadline is not None and now >= deadline:
+            logger.warning("[NVIDIA Vision] OCR global deadline exceeded before key index %d", idx + 1)
+            raise TimeoutError("NVIDIA OCR global deadline exceeded")
+
+        remaining = (deadline - now) if deadline is not None else 60.0
+        attempt_timeout = httpx.Timeout(
+            timeout=min(60.0, max(1.0, remaining)),
+            connect=min(10.0, max(1.0, remaining))
+        )
+
         headers = {
             "Authorization": f"Bearer {key}",
             "Content-Type": "application/json"
         }
+        attempt_start = time.monotonic()
+
         try:
-            async with httpx.AsyncClient(timeout=NVIDIA_VISION_TIMEOUT) as client:
+            async with httpx.AsyncClient(timeout=attempt_timeout) as client:
                 response = await client.post(url, headers=headers, json=payload)
+                elapsed = time.monotonic() - attempt_start
+                status_class = f"{response.status_code // 100}xx"
+
+                logger.info(
+                    "[OCR] provider=nvidia attempt_count=%d key_index=%d status_class=%s duration=%.2fs fallback_used=false",
+                    idx + 1, idx + 1, status_class, elapsed
+                )
 
                 if response.status_code == 200:
                     data = response.json()
                     return data["choices"][0]["message"]["content"]
 
                 if response.status_code == 429:
-                    # Rate-limited: check Retry-After boundedly, then rotate to next key
+                    # Rate-limited: parse Retry-After capped at 5.0 seconds
                     retry_after = response.headers.get("Retry-After")
+                    sleep_duration = 0.0
                     if retry_after:
                         try:
                             sleep_duration = min(float(retry_after), 5.0)
-                            if sleep_duration > 0:
-                                await asyncio.sleep(sleep_duration)
                         except (ValueError, TypeError):
-                            pass
+                            sleep_duration = 1.0
+                    else:
+                        sleep_duration = 1.0
 
-                    print(f"[NVIDIA Vision] HTTP 429 rate limit on key index {idx+1}/{len(keys)}. Rotating to next key.")
-                    last_error = RuntimeError(f"NVIDIA key {idx+1} rate-limited (HTTP 429)")
+                    if deadline is not None and (time.monotonic() + sleep_duration >= deadline):
+                        logger.warning(
+                            "[NVIDIA Vision] Insufficient budget left (sleep=%.1fs) before deadline. Skipping sleep and rotating key.",
+                            sleep_duration
+                        )
+                    elif sleep_duration > 0:
+                        await asyncio.sleep(sleep_duration)
+
+                    logger.warning("[NVIDIA Vision] HTTP 429 rate limit on key index %d/%d. Rotating to next key.", idx + 1, len(keys))
+                    last_error = RuntimeError(f"NVIDIA key index {idx+1} rate-limited (HTTP 429)")
                     continue
 
                 if response.status_code in NON_RETRYABLE_STATUS:
-                    # Permanent client/auth error: do NOT rotate credentials blindly
-                    print(f"[NVIDIA Vision] Permanent HTTP {response.status_code} error on key index {idx+1}. Failing immediately.")
+                    # Permanent client/auth error: do NOT rotate credentials blindly; fail fast to trigger fallback
+                    logger.error(
+                        "[NVIDIA Vision] Permanent HTTP %d client error on key index %d. Failing immediately to trigger fallback.",
+                        response.status_code, idx + 1
+                    )
                     raise RuntimeError(f"NVIDIA API returned non-retryable status {response.status_code}")
 
                 # 5xx server errors: log safely and try next key
-                print(f"[NVIDIA Vision] Server error HTTP {response.status_code} on key index {idx+1}. Attempting next available key.")
+                logger.warning("[NVIDIA Vision] Server error HTTP %d on key index %d. Attempting next available key.", response.status_code, idx + 1)
                 last_error = RuntimeError(f"NVIDIA API server error {response.status_code}")
 
-        except (httpx.TimeoutException, httpx.TransportError) as net_err:
-            print(f"[NVIDIA Vision] Network/Timeout error on key index {idx+1}: {type(net_err).__name__}")
+        except httpx.TimeoutException as net_err:
+            elapsed = time.monotonic() - attempt_start
+            logger.warning("[NVIDIA Vision] Request timeout after %.2fs on key index %d", elapsed, idx + 1)
+            last_error = net_err
+            continue
+        except httpx.TransportError as net_err:
+            elapsed = time.monotonic() - attempt_start
+            logger.warning("[NVIDIA Vision] Transport error on key index %d: %s", idx + 1, type(net_err).__name__)
             last_error = net_err
             continue
 
     raise RuntimeError(f"All {len(keys)} NVIDIA API keys exhausted or failed: {last_error}")
 
 
-async def _call_gemini(image_bytes: bytes, mime_type: str) -> str:
-    """Tertiary: Gemini Cloud API (SDK + REST Fallback)"""
+async def _call_gemini(image_bytes: bytes, mime_type: str, deadline: Optional[float] = None) -> str:
+    """
+    Tertiary: Gemini Cloud API (SDK + REST Fallback) with deadline bounding.
+    Credentials and auth headers are never logged or exposed.
+    """
+    if deadline is not None and time.monotonic() >= deadline:
+        raise TimeoutError("OCR operation deadline exceeded before Gemini fallback")
+
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("GEMINI_API_KEY missing")
-        
+
+    remaining = (deadline - time.monotonic()) if deadline is not None else 30.0
+    gemini_timeout = min(30.0, max(1.0, remaining))
+
     # Method 1: Try google.genai SDK if available
     if genai is not None and types is not None:
         try:
@@ -222,15 +293,18 @@ async def _call_gemini(image_bytes: bytes, mime_type: str) -> str:
                     contents=[SYSTEM_PROMPT, part],
                     config=types.GenerateContentConfig(response_mime_type="application/json")
                 )
-            resp = await loop.run_in_executor(None, _run_gen)
+            resp = await asyncio.wait_for(loop.run_in_executor(None, _run_gen), timeout=gemini_timeout)
             if resp and resp.text:
                 return resp.text
         except Exception as sdk_err:
-            print(f"[OCR Service] Gemini SDK call failed, trying REST fallback: {sdk_err}")
+            logger.warning("[OCR Service] Gemini SDK call failed, trying REST fallback: %s", str(sdk_err))
 
     # Method 2: High-reliability direct REST API fallback (Zero external SDK requirement)
     base64_data = base64.b64encode(image_bytes).decode("utf-8")
     for model_name in ["gemini-2.5-flash", "gemini-1.5-flash"]:
+        if deadline is not None and time.monotonic() >= deadline:
+            break
+
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
         payload = {
             "contents": [
@@ -254,7 +328,9 @@ async def _call_gemini(image_bytes: bytes, mime_type: str) -> str:
             }
         }
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            cur_remaining = (deadline - time.monotonic()) if deadline is not None else 30.0
+            call_timeout = min(gemini_timeout, max(1.0, cur_remaining))
+            async with httpx.AsyncClient(timeout=call_timeout) as client:
                 resp = await client.post(url, json=payload)
                 if resp.status_code == 200:
                     data = resp.json()
@@ -264,28 +340,94 @@ async def _call_gemini(image_bytes: bytes, mime_type: str) -> str:
                         if parts and "text" in parts[0]:
                             return parts[0]["text"]
                 else:
-                    print(f"[OCR Service] Gemini REST ({model_name}) HTTP {resp.status_code}: {resp.text[:150]}")
+                    logger.warning("[OCR Service] Gemini REST (%s) HTTP %d returned error", model_name, resp.status_code)
         except Exception as rest_err:
-            print(f"[OCR Service] Gemini REST ({model_name}) error: {rest_err}")
+            logger.warning("[OCR Service] Gemini REST (%s) error: %s", model_name, str(rest_err))
 
     raise RuntimeError("Both Gemini SDK and REST fallback failed.")
+
+
+def _extract_outermost_json(raw_text: str) -> str:
+    """
+    Extracts the outermost JSON object {...} substring from raw model output.
+    Handles markdown fences, conversational preambles, trailing text, nested braces,
+    and braces inside quoted/escaped strings using a deterministic tokenizer/scanner.
+    Never uses eval().
+    """
+    text = raw_text.strip()
+
+    # 1. Fast path: text is already pure JSON
+    if text.startswith("{") and text.endswith("}"):
+        try:
+            json.loads(text)
+            return text
+        except json.JSONDecodeError:
+            pass
+
+    # 2. Markdown code fence extraction: ```json ... ``` or ``` ... ```
+    fence_pattern = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL | re.IGNORECASE)
+    match = fence_pattern.search(text)
+    if match:
+        candidate = match.group(1).strip()
+        try:
+            json.loads(candidate)
+            return candidate
+        except json.JSONDecodeError:
+            pass
+
+    # 3. State-machine scanner: find first '{', track string quotes & escape sequences
+    start_idx = text.find("{")
+    if start_idx == -1:
+        raise ValueError("No opening brace '{' found in response")
+
+    brace_depth = 0
+    in_string = False
+    escape = False
+    end_idx = -1
+
+    for i in range(start_idx, len(text)):
+        ch = text[i]
+
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+        else:
+            if ch == '"':
+                in_string = True
+            elif ch == "{":
+                brace_depth += 1
+            elif ch == "}":
+                brace_depth -= 1
+                if brace_depth == 0:
+                    end_idx = i
+                    break
+
+    if end_idx != -1 and brace_depth == 0:
+        candidate = text[start_idx : end_idx + 1]
+        return candidate
+
+    # Fallback to last '}' if state machine did not balance
+    last_brace = text.rfind("}")
+    if last_brace > start_idx:
+        return text[start_idx : last_brace + 1]
+
+    raise ValueError("No balanced JSON object found in response")
+
 
 def _parse_llm_json(raw_text: str) -> OCRAnalysisResponse:
     """
     Robust bounded substring JSON parser with schema validation.
-    Extracts the first outermost JSON object {...} across conversational prose,
-    markdown code fences, and whitespace variations. Never uses eval().
+    Extracts the outermost JSON object {...} across conversational prose,
+    markdown code fences, nested objects, and whitespace variations. Never uses eval().
     """
     if not raw_text or not isinstance(raw_text, str):
         raise ValueError("Invalid or empty raw text for JSON parsing")
 
-    start = raw_text.find("{")
-    end = raw_text.rfind("}")
-
-    if start == -1 or end == -1 or end <= start:
-        raise ValueError("No JSON object found in response")
-
-    candidate = raw_text[start : end + 1]
+    candidate = _extract_outermost_json(raw_text)
 
     try:
         data = json.loads(candidate)
@@ -305,4 +447,5 @@ def _parse_llm_json(raw_text: str) -> OCRAnalysisResponse:
         return OCRAnalysisResponse(**data)
     except Exception as ve:
         raise ValueError(f"JSON data failed schema validation: {ve}")
+
 

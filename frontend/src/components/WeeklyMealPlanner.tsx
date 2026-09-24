@@ -309,11 +309,18 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
   const currentItem = exportableItems[runnerIndex] || null;
   const currentProviderConfig = PROVIDER_CONFIG[selectedProvider];
 
+  // Calculate raw vs unique count
+  const rawRowsCount = useMemo(() => {
+    if (!groceryList) return 0;
+    return groceryList.categories.reduce((acc, cat) => acc + cat.items.length, 0);
+  }, [groceryList]);
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="quick-commerce-modal-title"
+      aria-describedby="quick-commerce-modal-desc"
       className="fixed inset-0 bg-black/90 backdrop-blur-xl z-50 flex items-center justify-center p-4 animate-in fade-in duration-200"
       onClick={handleModalClose}
     >
@@ -327,10 +334,10 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
             <div className="flex items-center gap-2">
               <Zap className="w-5 h-5 text-amber-400" />
               <h3 id="quick-commerce-modal-title" className="text-xl font-bold font-outfit text-white">
-                Quick-Commerce Grocery Export
+                Quick-Commerce Grocery Search
               </h3>
             </div>
-            <p className="text-xs text-gray-400 mt-1">
+            <p id="quick-commerce-modal-desc" className="text-xs text-gray-400 mt-1">
               Search ingredients directly on Indian quick-commerce platforms without manual entry.
             </p>
           </div>
@@ -349,7 +356,7 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
           <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2 block">
             Select Provider Platform
           </label>
-          <div className="grid grid-cols-3 gap-2">
+          <div role="radiogroup" aria-label="Select Provider Platform" className="grid grid-cols-3 gap-2">
             {(['blinkit', 'zepto', 'instamart'] as QuickCommerceProvider[]).map((prov) => {
               const cfg = PROVIDER_CONFIG[prov];
               const isSelected = selectedProvider === prov;
@@ -357,6 +364,8 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
                 <button
                   key={prov}
                   type="button"
+                  role="radio"
+                  aria-checked={isSelected}
                   onClick={() => {
                     setSelectedProvider(prov);
                     if (runnerState !== 'idle') handleStop();
@@ -379,9 +388,12 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
 
         {/* Summary & Filters Bar */}
         <div className="px-6 py-3 bg-slate-950/70 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800 font-mono text-gray-300">
-              Total: <strong>{allItems.length}</strong>
+              {rawRowsCount} grocery rows
+            </span>
+            <span className="px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800 font-mono text-emerald-300">
+              {allItems.length} unique searches
             </span>
             <span className="px-2.5 py-1 rounded-full bg-emerald-950/40 border border-emerald-800/40 text-emerald-400 font-mono">
               Unpurchased: <strong>{unpurchasedCount}</strong>
@@ -461,9 +473,10 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
                           </span>
                         )}
                       </div>
-                      {item.rawName !== item.sanitizedName && (
-                        <p className="text-[10px] text-gray-500 truncate">Orig: {item.rawName}</p>
-                      )}
+                      <p className="text-[10px] text-gray-400 truncate font-mono">
+                        {item.rawName}
+                        {item.quantity ? ` (${item.quantity})` : ''} <span className="text-emerald-400 font-bold">→</span> {item.sanitizedName}
+                      </p>
                     </div>
                   </div>
 
@@ -478,6 +491,7 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={() => setOpenedItemIds((prev) => new Set(prev).add(item.id))}
+                        aria-label={`Search ${item.sanitizedName} on ${currentProviderConfig.label}`}
                         className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-gray-300 hover:text-emerald-400 border border-slate-700 text-[10px] font-bold flex items-center gap-1 transition-all active:scale-95 focus-visible:outline-emerald-400"
                       >
                         Search <ExternalLink className="w-2.5 h-2.5" />
@@ -918,14 +932,16 @@ const WeeklyMealPlanner: React.FC<WeeklyMealPlannerProps> = ({
               <button
                 type="button"
                 onClick={() => setIsExportModalOpen(true)}
+                aria-label="Search ingredients on Quick-Commerce"
                 className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-2xl text-xs font-bold transition-all active:scale-95 focus-visible:outline-emerald-400"
               >
                 <Zap className="w-3.5 h-3.5 text-amber-400" />
-                ⚡ Order Ingredients on Quick-Commerce
+                ⚡ Search on Quick-Commerce
               </button>
               <button
                 type="button"
                 onClick={copyGroceryListToClipboard}
+                aria-label="Copy markdown checklist to clipboard"
                 className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-slate-950 rounded-2xl text-xs font-bold transition-all active:scale-95 shadow-md shadow-emerald-600/20 focus-visible:outline-emerald-400"
               >
                 <Copy className="w-3.5 h-3.5" />
@@ -1271,7 +1287,9 @@ const WeeklyMealPlanner: React.FC<WeeklyMealPlannerProps> = ({
                                                 e.stopPropagation();
                                                 setActivePopoverKey(null);
                                               }}
-                                              className={`flex items-center justify-between w-full px-2.5 py-1.5 text-xs font-bold rounded-xl transition-all border border-transparent ${cfg.accentBorder} bg-slate-900/80 hover:bg-slate-900 ${cfg.accentColor}`}
+                                              aria-label={`Search ${links.sanitizedName || item.name} on ${cfg.label}`}
+                                              title={`Search ${links.sanitizedName || item.name} on ${cfg.label}`}
+                                              className={`flex items-center justify-between w-full px-2.5 py-1.5 text-xs font-bold rounded-xl transition-all border border-transparent ${cfg.accentBorder} bg-slate-900/80 hover:bg-slate-900 ${cfg.accentColor} focus-visible:outline-emerald-400`}
                                             >
                                               <span>{cfg.label}</span>
                                               <ExternalLink className="w-3 h-3 opacity-70" />

@@ -373,3 +373,208 @@ def test_admin_csv_streaming_rfc4180_escaping(super_admin_auth):
         assert data_row[5] == "food_with,comma"  # Comma preserved without column splitting
         decoded_details = json.loads(data_row[7])
         assert decoded_details["notes"] == "Approved, with \"quotes\" and \n newline"
+
+
+# ============================================================================
+# 6. EXTENDED SLA, BENCHMARK & SECURITY VERIFICATION
+# ============================================================================
+
+def test_planner_execution_benchmark_under_1_5s():
+    """Benchmark: 7-day schedule generation completes in well under 1.5s."""
+    import time
+    health_vault = {"medicalConditions": "hypertension"}
+    preferences = {"diet": "None", "allergies": []}
+
+    t0 = time.perf_counter()
+    plan = generate_weekly_plan("user_bench", 2000.0, health_vault, preferences)
+    duration = time.perf_counter() - t0
+
+    assert plan is not None
+    assert len(plan["days"]) == 7
+    assert duration < 1.5, f"Planner duration was {duration:.3f}s (expected < 1.5s)"
+
+
+def test_planner_no_invalid_meal_via_minimum_scaling():
+    """A meal with excessive sodium cannot be admitted merely by scaling down to 0.5x minimum."""
+    extreme_sodium_meal = {
+        "id": "extreme_sod_1",
+        "name": "Excessive Salt Fish",
+        "meal_type": "lunch",
+        "calories": 400,
+        "protein_g": 20,
+        "carbs_g": 10,
+        "fat_g": 5,
+        "fiber_g": 1,
+        "sodium_mg": 1200,  # 0.5x scale gives 600mg sodium >= 500mg limit
+        "sugar_g": 0,
+        "added_sugar_g": 0,
+        "serving_description": "1 fillet",
+        "refined_flour": False,
+        "ingredients": ["fish", "salt"],
+        "allergen_tags": []
+    }
+    scaled = calculate_scaled_meal(extreme_sodium_meal, target_slot_cal=400.0, user_conditions="hypertension")
+    assert scaled["conflict"]["is_safe"] is False
+    assert scaled["sodium_mg"] >= 500.0
+
+    # Ensure pre-scaling slot filter removes it completely
+    candidates_by_slot = {"breakfast": [], "lunch": [extreme_sodium_meal], "snack": [], "dinner": []}
+    scaled_map = _prepare_scaled_candidates_by_slot(candidates_by_slot, target_calories=2000.0, user_conditions="hypertension")
+    assert "extreme_sod_1" not in scaled_map["lunch"]
+
+
+@pytest.mark.asyncio
+async def test_nvidia_global_deadline_exceeded():
+    """Verify that when the monotonic deadline is reached, OCR aborts immediately with TimeoutError."""
+    import time
+    past_deadline = time.monotonic() - 1.0  # Already in the past
+
+    with patch("backend.services.ocr_service._get_nvidia_keys", return_value=["test_key_1"]):
+        with pytest.raises(TimeoutError) as exc_info:
+            await _call_nvidia_nim("base64_data", "image/jpeg", deadline=past_deadline)
+        assert "deadline exceeded" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status_code", [400, 403, 404, 422])
+async def test_nvidia_client_errors_fail_fast(status_code):
+    """Client errors (400, 403, 404, 422) must fail immediately without rotating to next key."""
+    call_count = 0
+
+    async def mock_post(url, headers, json):
+        nonlocal call_count
+        call_count += 1
+        mock_resp = MagicMock()
+        mock_resp.status_code = status_code
+        return mock_resp
+
+    with patch("backend.services.ocr_service._get_nvidia_keys", return_value=["k1", "k2", "k3"]), \
+         patch("httpx.AsyncClient.post", side_effect=mock_post):
+        with pytest.raises(RuntimeError) as exc_info:
+            await _call_nvidia_nim("base64_data", "image/jpeg")
+        assert f"non-retryable status {status_code}" in str(exc_info.value)
+        assert call_count == 1, f"Expected 1 call for HTTP {status_code}, but got {call_count}"
+
+
+@pytest.mark.asyncio
+async def test_ocr_fallback_nvidia_to_gemini():
+    """When NVIDIA NIM fails, extract_and_analyze seamlessly falls back to Gemini Cloud."""
+    from backend.services.ocr_service import extract_and_analyze
+
+    sample_json = json.dumps({
+        "product_name": "Fallback Oats",
+        "brand": "Quaker",
+        "raw_ocr_text": "Oats 100%",
+        "parsed_ingredients": ["Rolled Oats"],
+        "detected_ins_additives": [],
+        "flagged_allergens": [],
+        "nutrition_per_100g": {"calories": 389, "protein": 16.9, "carbs": 66.3, "fat": 6.9, "sodium": 2, "sugar": 0},
+        "estimated_macros": {"calories": 389, "protein": 16.9, "carbs": 66.3, "fat": 6.9, "sodium": 2, "sugar": 0},
+        "requires_user_review": False
+    })
+
+    with patch("backend.services.ocr_service._call_sarvam_vision", side_effect=RuntimeError("Sarvam offline")), \
+         patch("backend.services.ocr_service._call_nvidia_nim", side_effect=RuntimeError("All NVIDIA keys exhausted")), \
+         patch("backend.services.ocr_service._call_gemini", return_value=sample_json):
+        result = await extract_and_analyze(b"fake_image_bytes", "image/jpeg")
+        assert result.product_name == "Fallback Oats"
+        assert result.brand == "Quaker"
+
+
+@pytest.mark.asyncio
+async def test_ocr_all_tiers_failed():
+    """When Sarvam, NVIDIA, and Gemini all fail, an HTTP 500 error is raised cleanly."""
+    from backend.services.ocr_service import extract_and_analyze
+    from fastapi import HTTPException
+
+    with patch("backend.services.ocr_service._call_sarvam_vision", side_effect=RuntimeError("Sarvam offline")), \
+         patch("backend.services.ocr_service._call_nvidia_nim", side_effect=RuntimeError("NVIDIA offline")), \
+         patch("backend.services.ocr_service._call_gemini", side_effect=RuntimeError("Gemini offline")):
+        with pytest.raises(HTTPException) as exc_info:
+            await extract_and_analyze(b"fake_image_bytes", "image/jpeg")
+        assert exc_info.value.status_code == 500
+        assert "All OCR parsing tiers failed" in exc_info.value.detail
+
+
+def test_ocr_secret_safe_logging(caplog):
+    """Ensure that sensitive API credentials and Authorization headers are never logged."""
+    import logging
+    secret_key = "nvapi-secret-key-super-confidential-998877"
+
+    async def mock_run():
+        async def mock_post(url, headers, json):
+            mock_resp = MagicMock()
+            mock_resp.status_code = 429
+            mock_resp.headers = {"Retry-After": "0"}
+            return mock_resp
+
+        with patch("backend.services.ocr_service._get_nvidia_keys", return_value=[secret_key]), \
+             patch("httpx.AsyncClient.post", side_effect=mock_post):
+            try:
+                await _call_nvidia_nim("base64_data", "image/jpeg")
+            except RuntimeError:
+                pass
+
+    with caplog.at_level(logging.DEBUG):
+        asyncio.run(mock_run())
+
+    captured_logs = caplog.text
+    assert secret_key not in captured_logs
+    assert "nvapi-secret" not in captured_logs
+    assert "Bearer " + secret_key not in captured_logs
+
+
+def test_parse_llm_json_braces_in_strings_and_nested():
+    """State-machine parser handles nested objects and braces inside string values."""
+    raw = (
+        'Here is the extracted nutrition facts:\n'
+        '{\n'
+        '  "product_name": "Masala Munch",\n'
+        '  "brand": "Kurkure",\n'
+        '  "raw_ocr_text": "Taste {Spicy} and Tangy",\n'
+        '  "parsed_ingredients": ["Corn", "Rice", "Spices {Special Blend}"],\n'
+        '  "detected_ins_additives": [{"code": "INS 330", "name": "Citric Acid", "risk": "low"}],\n'
+        '  "flagged_allergens": [],\n'
+        '  "nutrition_per_100g": {"calories": 558, "protein": 5.8, "carbs": 56.2, "fat": 34.5, "sodium": 850, "sugar": 1.5},\n'
+        '  "estimated_macros": {"calories": 558, "protein": 5.8, "carbs": 56.2, "fat": 34.5, "sodium": 850, "sugar": 1.5},\n'
+        '  "requires_user_review": false\n'
+        '}\n'
+        'Note: Some braces {like this} exist in trailing comments!'
+    )
+    res = _parse_llm_json(raw)
+    assert res.product_name == "Masala Munch"
+    assert res.raw_ocr_text == "Taste {Spicy} and Tangy"
+    assert res.parsed_ingredients[1] == "Rice"
+    assert len(res.detected_ins_additives) == 1
+    assert res.detected_ins_additives[0]["code"] == "INS 330"
+
+
+def test_admin_search_redos_payloads_literal():
+    """Verify that pathological ReDoS payloads are properly escaped and evaluate instantaneously."""
+    import time
+    redos_payloads = [
+        ".*",
+        "(a+)+$",
+        "(.+)+$",
+        "([a-zA-Z]+)*",
+        "^(a+)+$",
+        "(((a*)*)*)*"
+    ]
+    for payload in redos_payloads:
+        t0 = time.perf_counter()
+        query = _build_safe_regex_query(payload, ["email", "action"])
+        duration = time.perf_counter() - t0
+
+        assert query is not None
+        assert duration < 0.05, f"Regex escaping took too long: {duration}s"
+        pattern = query["$or"][0]["email"]["$regex"]
+        assert "\\(" in pattern or "\\." in pattern or "\\[" in pattern or "\\*" in pattern or "\\+" in pattern or "\\^" in pattern
+
+
+def test_admin_search_exact_200_chars_accepted():
+    """A search input of exactly 200 characters is accepted without HTTP 400."""
+    exact_200 = "a" * MAX_ADMIN_SEARCH_LENGTH
+    query = _build_safe_regex_query(exact_200, ["email"])
+    assert query is not None
+    assert len(query["$or"][0]["email"]["$regex"]) == 200
+

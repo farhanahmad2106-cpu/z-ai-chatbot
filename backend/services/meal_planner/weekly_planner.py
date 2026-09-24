@@ -2,6 +2,8 @@
 import uuid
 import datetime
 import asyncio
+import time
+import logging
 from typing import Dict, Any, List, Optional, Tuple
 from .meal_repository import get_all_meals, get_meal_by_id
 from .conflict_analyzer import analyze_meal_conflict, normalize_ingredients
@@ -9,6 +11,7 @@ from .rules import INGREDIENT_ALIASES
 from .validator import validate_weekly_plan, PlanValidationError, EXPECTED_DAYS, EXPECTED_SLOTS
 from .planner import normalize_custom_meal_for_planner
 
+logger = logging.getLogger("weekly_planner")
 
 SLOT_PERCENTAGES = {
     "breakfast": 0.25,
@@ -258,6 +261,7 @@ def generate_weekly_plan(
     - Daily calorie target ±5% window.
     - Deterministic fallback when dataset size limits variety.
     """
+    start_time = time.perf_counter()
     all_meals = list(get_all_meals())
     if custom_meals:
         for cm in custom_meals:
@@ -447,6 +451,14 @@ def generate_weekly_plan(
             message=f"Validation failed: {'; '.join(val_res['errors'][:3])}",
             constraint="plan_validation_failed"
         )
+
+    duration = time.perf_counter() - start_time
+    total_candidates_before = sum(len(c) for c in candidates_by_slot.values())
+    total_candidates_after = sum(len(c) for c in scaled_cache_by_slot.values())
+    logger.info(
+        "[WeeklyPlanner] planner_duration=%.3fs candidate_count_before_pruning=%d candidate_count_after_pruning=%d combination_count=625",
+        duration, total_candidates_before, total_candidates_after
+    )
 
     return plan_response
 

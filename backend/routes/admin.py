@@ -16,12 +16,15 @@ import csv
 import io
 import json
 import re
+import logging
 from uuid import uuid4
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from bson import ObjectId
 from fastapi import APIRouter, Header, HTTPException, Depends, Query, status, Request, Response
 from fastapi.responses import StreamingResponse
+
+logger = logging.getLogger("admin")
 import httpx
 import firebase_admin
 from firebase_admin import auth as firebase_auth
@@ -1447,6 +1450,10 @@ async def export_admin_audit_logs_csv(
     cursor = col.find(query).sort("timestamp", -1).limit(1000)
 
     async def generate_csv():
+        export_start = datetime.now(timezone.utc)
+        rows_streamed = 0
+        logger.info("[AdminExport] stream_started admin=%s", admin.get("email"))
+
         # RFC 4180 compliant header row
         header_buf = io.StringIO()
         header_writer = csv.writer(header_buf, quoting=csv.QUOTE_MINIMAL)
@@ -1463,6 +1470,7 @@ async def export_admin_audit_logs_csv(
         yield header_buf.getvalue()
 
         async for doc in cursor:
+            rows_streamed += 1
             row_buf = io.StringIO()
             row_writer = csv.writer(row_buf, quoting=csv.QUOTE_MINIMAL)
             ts = doc.get("timestamp")
@@ -1478,6 +1486,9 @@ async def export_admin_audit_logs_csv(
                 json.dumps(doc.get("details", {})),
             ])
             yield row_buf.getvalue()
+
+        elapsed = (datetime.now(timezone.utc) - export_start).total_seconds()
+        logger.info("[AdminExport] stream_completed rows_streamed=%d stream_duration=%.2fs", rows_streamed, elapsed)
 
     filename = f"z_sehealth_audit_trail_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
 

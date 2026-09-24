@@ -1,13 +1,75 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-24 (Session: Priority-0 Backend Reliability Remediation — Crowd Persistence Error Hardening, Atomic Daily Macro CAS & IST Boundary Reset, Offline Macro Bypass & Capped Sync Idempotency, Razorpay 3-State Leased Webhook Engine)
+> **Last Updated:** 2026-09-24 (Session: Multi-Provider Quick-Commerce Grocery Export & Deep-Linking Engine — Deterministic Ingredient Sanitizer, Blinkit/Zepto/Instamart Deep Links, Sequential Popover & Batch Modal UX, Rate-Limited Runner & Blocker Resilience)
 
 ---
 
 ## 🗓️ Last Session Summary
 **Date:** 2026-09-24
-**Work Done — Priority-0 Backend Reliability Remediation:**
+**Work Done — Multi-Provider Quick-Commerce Grocery Export & Deep-Linking Engine:**
+- **Centralized Provider Utility & Deterministic Sanitization Engine (`frontend/src/utils/groceryDeepLinks.ts`)**:
+  - Implemented pure, deterministic, side-effect free, strictly typed deep-link search generator for **Blinkit**, **Zepto**, and **Swiggy Instamart**.
+  - Built comprehensive culinary noise stripper removing preparation descriptors (`steamed`, `roasted`, `boiled`, `fried`, `grilled`, `baked`, `sautéed`, `finely chopped`, `roughly chopped`, `diced`, `sliced`, `minced`, `crushed`, `mashed`, `pureed`, `grated`, `soaked`, `sprouted`, `peeled`, `deseeded`, `fresh`, etc.).
+  - Built quantity & serving metadata remover handling fractions (`½`, `¼`, `1/2`, `1/4`), metric/imperial units (`g`, `kg`, `ml`, `l`, `tbsp`, `tsp`, `cups`), serving multipliers (`1.4x serving`), and counts (`(2 medium)`).
+  - Built Indian culinary alias normalizer: `Besan (Gram Flour) → Besan`, `Broken Wheat (Dalia) → Dalia`, `Kidney Beans (Rajma) → Rajma`, `Black Chickpeas (Kala Chana) → Kala Chana`, `Cold-pressed mustard oil → Mustard Oil`.
+  - Built culinary suffix normalizer: `Turmeric Powder → Turmeric`, while safely preserving compound spice identities (`Garam Masala`, `Baking Powder`, `Chilli Powder`, `Coriander Powder`).
+  - Added strict URL generation with `encodeURIComponent` and external domain security validation restricting URLs strictly to approved provider search endpoints (`https://blinkit.com/s/?q=`, `https://www.zeptonow.com/search?query=`, `https://www.swiggy.com/instamart/search?custom_back=true&query=`).
+  - Built conservative deduplication combining quantities across matching search queries while preserving unpurchased status.
+  - Implemented `formatSearchListForClipboard` generating clean newline-separated lists for quick-commerce search pasting.
+  - Implemented `safeOpenProviderSearch` with window reference validation to safely detect popup-blockers.
+- **Weekly Meal Planner UI Integration (`frontend/src/components/WeeklyMealPlanner.tsx`)**:
+  - **Per-Item Shopping Action & Popover**: Compact `ShoppingBag` button on every grocery row with floating dark brutalist popover for direct Blinkit, Zepto, and Instamart searches. Uses `e.stopPropagation()` ensuring row click/checkbox is never toggled. Accessible with visible focus rings, Escape key listener, outside-click close, and `target="_blank" rel="noopener noreferrer"`.
+  - **Batch Search Header CTA**: `⚡ Search on Quick-Commerce` button beside markdown copy action.
+  - **Batch Export Modal (`QuickCommerceExportModal`)**: Dark brutalist modal with accessible segmented radio group for provider selection (`Blinkit`, `Zepto`, `Instamart`), item statistics (`N grocery rows`, `U unique searches`, `M unpurchased`, `C checked`), optional "Include checked items" toggle, and original-to-sanitized query preview (`Besan (Gram Flour), 250g → Besan`).
+  - **Sequential Search Runner & Blocker Resilience**: Interactive runner opening one provider search tab at a time with 800ms throttle. Detects browser popup blocking, shifts to `blocked` state, displays warning banner with manual `[ Open Next ]` progression button, and provides Pause, Resume, Stop, and Reset controls.
+  - **Truthful Compliance Microcopy**: Factual search-only deep link communication; never claims items have been added to carts or purchased.
+- **Automated Verification & Build**:
+  - Authoring comprehensive unit test suite in `frontend/src/utils/groceryDeepLinks.test.ts` (22 unit & invariant tests passing 100%).
+  - Full frontend Vitest suite: **59/59 tests passing (100%)**.
+  - Full backend pytest suite: **149/149 tests passing (100% across all 14 test files)**.
+  - Full production build: `npm --prefix frontend run build` completed with **0 TypeScript compiler errors (exit code 0)**.
+
+---
+
+## 🗓️ Previous Session Summary (Priority-1 Performance & Vision SLA Remediation)
+- **P1-A: Weekly Planner Combinatorial Bounding, Clinical Invariants & Event-Loop Offloading (`backend/services/meal_planner/weekly_planner.py`, `backend/routes/meals.py`)**:
+  - Implemented deterministic candidate pre-scaling via `_prepare_scaled_candidates_by_slot`, eliminating redundant portion/scaling calculations in nested loops.
+  - Implemented deterministic candidate pruning via `_prune_candidates` bounding each slot to at most 5 candidates (ranked by caloric closeness, protein density, and deterministic ID tie-breaking), bounding combinatorial evaluations to $\le 625$ ($5^4$) per day.
+  - Enforced post-scaling clinical bounds in `calculate_scaled_meal`: meals scaled to 0.5x minimum are rejected if sodium $\ge 500$mg under hypertension or added sugar $> 5$g under diabetes; refined flour/maida strictly barred.
+  - Offloaded CPU-bound search from FastAPI event loop via `await asyncio.to_thread(generate_weekly_plan, ...)` in `backend/routes/meals.py` and `generate_weekly_plan_async`.
+  - Added observability metrics logging: `planner_duration`, `candidate_count_before_pruning`, `candidate_count_after_pruning`, and `combination_count`.
+  - Benchmark performance: 7-day revolving plan generation executes in ~0.26s (well below the < 1.5s SLA target).
+- **P1-B: NVIDIA NIM Reliability, Monotonic 60s SLA Budget, Key Rotation & Fallback Hierarchy (`backend/services/ocr_service.py`)**:
+  - Enforced 60s HTTP client timeout (`httpx.Timeout(timeout=60.0, connect=10.0)`).
+  - Engineered monotonic end-to-end operation deadline (`time.monotonic() + OCR_GLOBAL_TIMEOUT_SECONDS`) bounding cumulative retries, `Retry-After` sleeps, and fallbacks.
+  - Tiered fallback routing: Tier 1 Sarvam AI -> Tier 2 NVIDIA NIM Multi-Key Pool -> Tier 3 Google Gemini Cloud API.
+  - HTTP 429 rate limit handling: parses `Retry-After`, bounds delay to $\le 5$s (skips sleep if budget would expire), rotates keys.
+  - Client-error failover: HTTP 400, 401, 403, 404, 422 fail fast immediately to trigger Gemini fallback without wasteful credential rotation.
+  - Secret-safe logging: credentials, bearer tokens, and Authorization headers are never logged; uses non-reversible key indices.
+- **P1-C: Robust LLM JSON State-Machine Parser (`backend/services/ocr_service.py`)**:
+  - Engineered state-machine JSON substring scanner `_extract_outermost_json` tracking strings, escape sequences (`\"`), and brace depth.
+  - Safely parses plain JSON, markdown code fences, conversational preambles, and trailing comments containing braces without corruption.
+  - Zero use of `eval()` or `exec()`; explicit Pydantic schema validation with `OCRAnalysisResponse`.
+- **P1-D: Admin Search ReDoS Defense & Length Limiting (`backend/routes/admin.py`)**:
+  - Sanitized all user search parameters via `re.escape()` in `_build_safe_regex_query`, treating pathological payloads (e.g. `.*`, `(a+)+$`, `(.+)+$`, `([a-zA-Z]+)*`) as literal search text.
+  - Bounded input lengths to `MAX_ADMIN_SEARCH_LENGTH = 200` characters, rejecting oversized inputs with HTTP 400 Bad Request.
+  - Stripped empty/whitespace searches to omit redundant `$or` clauses and preserve index-backed query execution.
+- **P1-E: Streaming RFC 4180 Admin CSV Export (`backend/routes/admin.py`)**:
+  - Replaced in-memory `io.StringIO` result-set accumulation with Starlette `StreamingResponse` using an asynchronous generator over the database cursor.
+  - Employs incremental cursor consumption (`async for doc in cursor: yield row_buf.getvalue()`), eliminating full result-set memory materialization.
+  - Full RFC 4180 compliance escaping quotes, commas, embedded newlines, and nulls.
+  - Added export streaming telemetry: `stream_started`, `rows_streamed`, and `stream_duration`.
+- **Comprehensive Verification & Regression Suite**:
+  - Extended `tests/test_p1_remediation.py`: **31/31 unit & integration tests passing (100%)**.
+  - Full backend test suite: **143/143 tests passing (100% across all 14 test files)**.
+  - Frontend Vitest suite: **54/54 tests passing (100%)**.
+  - Python bytecode compilation: `compileall` succeeded with 0 errors.
+
+---
+
+## 🗓️ Previous Session Summary (P0 Backend Reliability)
+**Date:** 2026-09-24
 - **P0-A: Crowdsourced Food Persistence Reliability (`backend/routes/scan.py`)**:
   - Engineered multi-namespace collection resolution `_get_foods_collection()` and `_get_system_logs_collection()` searching `("backend.main", "main", "__main__")`.
   - Replaced silent persistence drops with explicit, deterministic `HTTPException(503, detail="Database connection unavailable")`.
