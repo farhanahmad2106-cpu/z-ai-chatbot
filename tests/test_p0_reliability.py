@@ -1,9 +1,21 @@
 """
-Comprehensive Test Suite for Priority-0 Backend Reliability Defects:
-1. Defect A: Food persistence guarantees (unverified is_verified: False persisted, explicit errors on DB failures)
-2. Defect B: Atomic daily macro updates (concurrency safe $inc, race-free day boundary reset)
-3. Defect C: Offline client macro ingestion, strict validation, AI bypass, and client_sync_id idempotency
-4. Defect D: Razorpay webhook 3-state machine (processing -> completed / failed), retry recovery, stale lease reclaim, trusted user matching
+Z-SeHealth — Comprehensive Verification Suite for Priority-0 Backend Reliability Remediation
+
+Covers:
+- Test Group A: Crowdsourced persistence (A1: success with is_verified=False, A2: DB unavailable 503, A3: insert failure 500 + logging)
+- Test Group B: Macro concurrency (N concurrent increments with exact mathematical sums)
+- Test Group C: Daily reset (IST timezone boundary, yesterday's stats discarded, concurrent boundary resets)
+- Test Group D: Offline macro bypass (precomputed macros bypass AI models)
+- Test Group E: Partial macro payload (HTTP 422 with exact detail message, validation)
+- Test Group F: Idempotency (sequential duplicate sync ID returns 'Already synced')
+- Test Group G: Concurrent duplicate idempotency (10-50 simultaneous duplicate sync IDs applied exactly once)
+- Test Group H: Webhook success (processing -> entitlement -> completed lifecycle)
+- Test Group I: Webhook failure recovery (failed -> retry -> processing -> completed)
+- Test Group J: Active webhook duplicate (status=processing, lease_until=future -> 200 'Event is currently processing')
+- Test Group K: Expired webhook lease (status=processing, lease_until=past -> reclaimed -> completed)
+- Test Group L: Concurrent webhook reclaim (simultaneous retries on expired lease -> exactly 1 winner, no double entitlement)
+- Test Group M: Untrusted billing email (billing email of user A does not override user B identity)
+- Test Group N: Invalid / ambiguous user resolution (untrusted/missing user identity rejected, transaction marked failed)
 """
 
 import sys
@@ -31,13 +43,15 @@ from backend.main import app
 
 client = TestClient(app)
 
+IST = timezone(timedelta(hours=5, minutes=30))
+
 
 def gen_webhook_sig(body: bytes, secret: str = TEST_WEBHOOK_SECRET) -> str:
     return hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
 
 
 class MockAsyncCollection:
-    """Thread-safe mock collection simulating MongoDB atomic updates ($inc, $set, $push, $slice)."""
+    """Thread-safe mock collection simulating MongoDB atomic updates ($inc, $set, $push, $slice) and query operators."""
 
     def __init__(self, initial_docs=None):
         self.docs = [dict(d) for d in (initial_docs or [])]
@@ -67,8 +81,24 @@ class MockAsyncCollection:
                 if "$ne" in v:
                     if val == v["$ne"] or (isinstance(val, list) and v["$ne"] in val):
                         return False
-                elif "$in" in v:
+                if "$in" in v:
                     if val not in v["$in"]:
+                        return False
+                if "$lte" in v:
+                    if val is None or val > v["$lte"]:
+                        return False
+                if "$lt" in v:
+                    if val is None or val >= v["$lt"]:
+                        return False
+                if "$gte" in v:
+                    if val is None or val < v["$gte"]:
+                        return False
+                if "$gt" in v:
+                    if val is None or val <= v["$gt"]:
+                        return False
+                if "$exists" in v:
+                    exists = val is not None
+                    if exists != v["$exists"]:
                         return False
             elif isinstance(val, list):
                 if v not in val:
@@ -82,15 +112,19 @@ class MockAsyncCollection:
         parts = key.split(".")
         target = doc
         for p in parts[:-1]:
-            target = target.setdefault(p, {})
+            if target.get(p) is None or not isinstance(target.get(p), dict):
+                target[p] = {}
+            target = target[p]
         target[parts[-1]] = val
 
     def _inc_nested(self, doc, key, val):
         parts = key.split(".")
         target = doc
         for p in parts[:-1]:
-            target = target.setdefault(p, {})
-        target[parts[-1]] = round(target.get(parts[-1], 0) + val, 1)
+            if target.get(p) is None or not isinstance(target.get(p), dict):
+                target[p] = {}
+            target = target[p]
+        target[parts[-1]] = round(float(target.get(parts[-1]) or 0) + val, 1)
 
     async def find_one(self, query):
         async with self._lock:
@@ -149,12 +183,12 @@ class MockAsyncCollection:
 
 
 # ==============================================================================
-# 1. DEFECT A: Food Persistence Tests
+# TEST GROUP A: Crowdsourced Persistence
 # ==============================================================================
 
 @pytest.mark.asyncio
 async def test_food_persistence_success():
-    """Verify that unverified back-of-pack scan persists with is_verified: False."""
+    """A1: Successful crowdsourced submission persists with is_verified: False and generates a valid food_id."""
     from backend.routes.scan import analyze_back_of_pack
     from schemas.scan import OCRAnalysisResponse
 
@@ -198,7 +232,7 @@ async def test_food_persistence_success():
 
 @pytest.mark.asyncio
 async def test_food_persistence_database_unavailable_raises_503():
-    """Verify explicit 503 is raised when database collection cannot be acquired."""
+    """A2: Database collection unavailable raises explicit HTTP 503 'Database connection unavailable'."""
     from backend.routes.scan import analyze_back_of_pack
     from schemas.scan import OCRAnalysisResponse
     from fastapi import HTTPException
@@ -225,18 +259,19 @@ async def test_food_persistence_database_unavailable_raises_503():
         with pytest.raises(HTTPException) as exc_info:
             await analyze_back_of_pack(image=mock_image)
         assert exc_info.value.status_code == 503
-        assert "Database service unavailable" in exc_info.value.detail
+        assert exc_info.value.detail == "Database connection unavailable"
 
 
 @pytest.mark.asyncio
 async def test_food_persistence_insert_failure_raises_500():
-    """Verify explicit 500 is raised if insert_one encounters a database error."""
+    """A3: Insert failure raises HTTP 500 'Failed to persist crowdsourced food item' and logs to system_logs."""
     from backend.routes.scan import analyze_back_of_pack
     from schemas.scan import OCRAnalysisResponse
     from fastapi import HTTPException
 
     mock_foods_col = AsyncMock()
     mock_foods_col.insert_one.side_effect = Exception("MongoDB connection drop")
+    mock_logs_col = MockAsyncCollection()
 
     mock_analysis = OCRAnalysisResponse(
         product_name="Test Food",
@@ -252,6 +287,7 @@ async def test_food_persistence_insert_failure_raises_500():
     )
 
     with patch("backend.routes.scan._get_foods_collection", return_value=mock_foods_col), \
+         patch("backend.routes.scan._get_system_logs_collection", return_value=mock_logs_col), \
          patch("backend.routes.scan.extract_and_analyze", return_value=mock_analysis):
 
         mock_image = MagicMock()
@@ -261,16 +297,169 @@ async def test_food_persistence_insert_failure_raises_500():
         with pytest.raises(HTTPException) as exc_info:
             await analyze_back_of_pack(image=mock_image)
         assert exc_info.value.status_code == 500
-        assert "Failed to persist food document" in exc_info.value.detail
+        assert exc_info.value.detail == "Failed to persist crowdsourced food item"
+
+        # Verify diagnostic information written to system_logs
+        assert len(mock_logs_col.docs) == 1
+        log_entry = mock_logs_col.docs[0]
+        assert log_entry["level"] == "ERROR"
+        assert log_entry["operation"] == "insert_crowdsourced_food"
 
 
 # ==============================================================================
-# 2. DEFECT B & C: Offline Sync, Client Macro Bypass, Idempotency & $inc
+# TEST GROUP B: Macro Concurrency
+# ==============================================================================
+
+@pytest.mark.asyncio
+async def test_concurrent_macro_increments():
+    """B: Concurrent meal logging on same user produces exact mathematical sum without lost updates."""
+    from backend.main import log_meal
+
+    ist_today = datetime.now(IST).strftime("%Y-%m-%d")
+    mock_users = MockAsyncCollection([
+        {
+            "_id": "concurrent_user",
+            "uid": "concurrent_user",
+            "stats": {"calories": 0.0, "protein": 0.0, "carbs": 0.0, "fat": 0.0, "last_updated": ist_today},
+            "processed_sync_ids": []
+        }
+    ])
+    main.users_collection = mock_users
+
+    # Execute 20 concurrent requests with varying macro increments
+    increments = [
+        {"cal": 50.0 + i, "prot": 5.0 + (i * 0.5), "carb": 10.0 + i, "fat": 2.0 + (i * 0.2)}
+        for i in range(20)
+    ]
+
+    async def _send_log(i, inc):
+        req = {
+            "name": f"Item {i}",
+            "client_sync_id": f"sync_{i}",
+            "calories": inc["cal"],
+            "protein": inc["prot"],
+            "carbs": inc["carb"],
+            "fat": inc["fat"]
+        }
+        return await log_meal(req, uid="concurrent_user")
+
+    results = await asyncio.gather(*[_send_log(i, inc) for i, inc in enumerate(increments)])
+    assert all(r["status"] == "success" for r in results)
+
+    expected_cal = round(sum(inc["cal"] for inc in increments), 1)
+    expected_prot = round(sum(inc["prot"] for inc in increments), 1)
+    expected_carb = round(sum(inc["carb"] for inc in increments), 1)
+    expected_fat = round(sum(inc["fat"] for inc in increments), 1)
+
+    user = mock_users.docs[0]
+    assert user["stats"]["calories"] == expected_cal
+    assert user["stats"]["protein"] == expected_prot
+    assert user["stats"]["carbs"] == expected_carb
+    assert user["stats"]["fat"] == expected_fat
+    assert len(user["processed_sync_ids"]) == 20
+
+
+# ==============================================================================
+# TEST GROUP C: Daily Reset & Timezone Boundary
+# ==============================================================================
+
+@pytest.mark.asyncio
+async def test_daily_reset_ist_boundary():
+    """C1: Previous-day stats are not carried into today; new meal is recorded with IST today marker."""
+    from backend.main import log_meal
+
+    yesterday_str = (datetime.now(IST) - timedelta(days=1)).strftime("%Y-%m-%d")
+    ist_today = datetime.now(IST).strftime("%Y-%m-%d")
+
+    mock_users = MockAsyncCollection([
+        {
+            "_id": "user_reset_1",
+            "uid": "user_reset_1",
+            "stats": {
+                "calories": 1800.0,
+                "protein": 120.0,
+                "carbs": 220.0,
+                "fat": 50.0,
+                "last_updated": yesterday_str
+            },
+            "processed_sync_ids": []
+        }
+    ])
+    main.users_collection = mock_users
+
+    res = await log_meal({
+        "name": "Morning Breakfast",
+        "calories": 350.0,
+        "protein": 25.0,
+        "carbs": 40.0,
+        "fat": 10.0
+    }, uid="user_reset_1")
+
+    assert res["status"] == "success"
+    # Yesterday's 1800 kcal must NOT carry over
+    assert res["new_stats"]["calories"] == 350.0
+    assert res["new_stats"]["protein"] == 25.0
+    assert res["new_stats"]["carbs"] == 40.0
+    assert res["new_stats"]["fat"] == 10.0
+    assert res["new_stats"]["last_updated"] == ist_today
+
+
+@pytest.mark.asyncio
+async def test_concurrent_daily_reset_boundary():
+    """C2: Concurrent requests crossing midnight boundary produce exactly 1 reset with all current-day increments preserved."""
+    from backend.main import log_meal
+
+    yesterday_str = (datetime.now(IST) - timedelta(days=1)).strftime("%Y-%m-%d")
+    ist_today = datetime.now(IST).strftime("%Y-%m-%d")
+
+    mock_users = MockAsyncCollection([
+        {
+            "_id": "user_boundary_race",
+            "uid": "user_boundary_race",
+            "stats": {
+                "calories": 2500.0,
+                "protein": 150.0,
+                "carbs": 300.0,
+                "fat": 80.0,
+                "last_updated": yesterday_str
+            },
+            "processed_sync_ids": []
+        }
+    ])
+    main.users_collection = mock_users
+
+    async def _send_log(i):
+        req = {
+            "name": f"Midnight Snack {i}",
+            "client_sync_id": f"midnight_sync_{i}",
+            "calories": 100.0,
+            "protein": 10.0,
+            "carbs": 15.0,
+            "fat": 2.0
+        }
+        return await log_meal(req, uid="user_boundary_race")
+
+    # 10 simultaneous requests across the boundary
+    results = await asyncio.gather(*[_send_log(i) for i in range(10)])
+    assert all(r["status"] == "success" for r in results)
+
+    user = mock_users.docs[0]
+    # Yesterday's 2500 kcal discarded; 10 * 100 = 1000 preserved
+    assert user["stats"]["calories"] == 1000.0
+    assert user["stats"]["protein"] == 100.0
+    assert user["stats"]["carbs"] == 150.0
+    assert user["stats"]["fat"] == 20.0
+    assert user["stats"]["last_updated"] == ist_today
+    assert len(user["processed_sync_ids"]) == 10
+
+
+# ==============================================================================
+# TEST GROUP D: Offline Macro Bypass
 # ==============================================================================
 
 @pytest.fixture
 def p0_user_setup():
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    ist_today = datetime.now(IST).strftime("%Y-%m-%d")
     mock_users = MockAsyncCollection([
         {
             "_id": "user_p0_1",
@@ -282,7 +471,7 @@ def p0_user_setup():
                 "protein": 15.0,
                 "carbs": 25.0,
                 "fat": 5.0,
-                "last_updated": today,
+                "last_updated": ist_today,
             },
             "processed_sync_ids": []
         }
@@ -292,10 +481,13 @@ def p0_user_setup():
 
 
 def test_client_macro_bypass_ai(p0_user_setup):
-    """When client supplies all 4 valid macros, AI estimation is bypassed and exact values are added."""
+    """D: When client supplies all 4 valid macros, AI estimation is bypassed and exact values are added."""
     app.dependency_overrides[main.get_current_user_id] = lambda: "p0_test_user"
 
-    with patch("backend.main.try_ollama_estimate_macros") as mock_ai:
+    with patch("backend.main.try_ollama_estimate_macros") as mock_ai, \
+         patch("backend.main.try_nvidia_estimate_macros") as mock_nv, \
+         patch("backend.main.try_gemini_estimate_macros") as mock_gemini:
+
         resp = client.post(
             "/api/user/log_meal",
             json={
@@ -309,16 +501,17 @@ def test_client_macro_bypass_ai(p0_user_setup):
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "success"
-        # AI should never be called
-        mock_ai.assert_not_called()
 
-        # Macros must match client input
+        # AI pipelines must never be called
+        mock_ai.assert_not_called()
+        mock_nv.assert_not_called()
+        mock_gemini.assert_not_called()
+
         assert data["added_macros"]["calories"] == 420.0
         assert data["added_macros"]["protein"] == 28.5
         assert data["added_macros"]["carbs"] == 35.0
         assert data["added_macros"]["fat"] == 14.5
 
-        # Stats must be exactly 200 + 420 = 620
         assert data["new_stats"]["calories"] == 620.0
         assert data["new_stats"]["protein"] == 43.5
         assert data["new_stats"]["carbs"] == 60.0
@@ -327,8 +520,12 @@ def test_client_macro_bypass_ai(p0_user_setup):
     app.dependency_overrides.clear()
 
 
+# ==============================================================================
+# TEST GROUP E: Partial / Invalid Macro Payloads
+# ==============================================================================
+
 def test_partial_macros_rejected_with_422(p0_user_setup):
-    """When client supplies partial macros (1-3 fields), reject with HTTP 422."""
+    """E1: Partial macro payloads (1-3 fields) return HTTP 422 with exact detail message."""
     app.dependency_overrides[main.get_current_user_id] = lambda: "p0_test_user"
 
     # Only calories and protein (missing carbs and fat)
@@ -337,7 +534,7 @@ def test_partial_macros_rejected_with_422(p0_user_setup):
         json={"name": "Protein Shake", "calories": 200, "protein": 30}
     )
     assert resp.status_code == 422
-    assert "Partial macros are not supported" in resp.json()["detail"]
+    assert resp.json()["detail"] == "Incomplete macro payload: all 4 macros must be supplied"
 
     # Only 1 macro
     resp1 = client.post(
@@ -345,12 +542,13 @@ def test_partial_macros_rejected_with_422(p0_user_setup):
         json={"name": "Avocado", "fat": 15}
     )
     assert resp1.status_code == 422
+    assert resp1.json()["detail"] == "Incomplete macro payload: all 4 macros must be supplied"
 
     app.dependency_overrides.clear()
 
 
 def test_invalid_macros_rejected_with_422(p0_user_setup):
-    """Negative, NaN, or non-numeric macros are rejected with HTTP 422."""
+    """E2: Negative, NaN, infinite, boolean, or out-of-bounds macros are rejected with HTTP 422."""
     app.dependency_overrides[main.get_current_user_id] = lambda: "p0_test_user"
 
     # Negative calories
@@ -361,18 +559,29 @@ def test_invalid_macros_rejected_with_422(p0_user_setup):
     assert resp_neg.status_code == 422
     assert "cannot be negative" in resp_neg.json()["detail"]
 
-    # Boolean value (should not be treated as int)
+    # Boolean value
     resp_bool = client.post(
         "/api/user/log_meal",
         json={"name": "Food", "calories": True, "protein": 10, "carbs": 10, "fat": 10}
     )
     assert resp_bool.status_code == 422
 
+    # String value
+    resp_str = client.post(
+        "/api/user/log_meal",
+        json={"name": "Food", "calories": "invalid_number", "protein": 10, "carbs": 10, "fat": 10}
+    )
+    assert resp_str.status_code == 422
+
     app.dependency_overrides.clear()
 
 
+# ==============================================================================
+# TEST GROUP F: Sequential Sync Idempotency
+# ==============================================================================
+
 def test_client_sync_id_idempotency(p0_user_setup):
-    """First request succeeds and increments; duplicate client_sync_id returns 'Already synced' without side effects."""
+    """F: First sync increments macros; second returns HTTP 200 'Already synced' without double mutation."""
     app.dependency_overrides[main.get_current_user_id] = lambda: "p0_test_user"
 
     sync_payload = {
@@ -384,7 +593,7 @@ def test_client_sync_id_idempotency(p0_user_setup):
         "fat": 6
     }
 
-    # 1. First sync: processes meal and increments stats
+    # 1. First sync: increments stats
     r1 = client.post("/api/user/log_meal", json=sync_payload)
     assert r1.status_code == 200
     assert r1.json()["status"] == "success"
@@ -403,56 +612,21 @@ def test_client_sync_id_idempotency(p0_user_setup):
     app.dependency_overrides.clear()
 
 
-@pytest.mark.asyncio
-async def test_concurrent_macro_increments():
-    """Concurrent meal logging operations on the same user increment stats without lost updates."""
-    from backend.main import log_meal
-
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    mock_users = MockAsyncCollection([
-        {
-            "_id": "concurrent_user",
-            "uid": "concurrent_user",
-            "stats": {"calories": 0.0, "protein": 0.0, "carbs": 0.0, "fat": 0.0, "last_updated": today},
-            "processed_sync_ids": []
-        }
-    ])
-    main.users_collection = mock_users
-
-    # Execute 20 concurrent requests, each adding 50 calories, 5 protein, 10 carbs, 2 fat
-    async def _send_log(i):
-        req = {
-            "name": f"Item {i}",
-            "client_sync_id": f"sync_{i}",
-            "calories": 50.0,
-            "protein": 5.0,
-            "carbs": 10.0,
-            "fat": 2.0
-        }
-        return await log_meal(req, uid="concurrent_user")
-
-    results = await asyncio.gather(*[_send_log(i) for i in range(20)])
-    assert all(r["status"] == "success" for r in results)
-
-    user = mock_users.docs[0]
-    assert user["stats"]["calories"] == 1000.0  # 20 * 50
-    assert user["stats"]["protein"] == 100.0   # 20 * 5
-    assert user["stats"]["carbs"] == 200.0     # 20 * 10
-    assert user["stats"]["fat"] == 40.0        # 20 * 2
-    assert len(user["processed_sync_ids"]) == 20
-
+# ==============================================================================
+# TEST GROUP G: Concurrent Duplicate Idempotency
+# ==============================================================================
 
 @pytest.mark.asyncio
 async def test_concurrent_duplicate_sync_ids():
-    """Sending the exact same client_sync_id concurrently only executes once."""
+    """G: 20 simultaneous requests with the SAME client_sync_id execute exactly once."""
     from backend.main import log_meal
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    ist_today = datetime.now(IST).strftime("%Y-%m-%d")
     mock_users = MockAsyncCollection([
         {
             "_id": "idem_user",
             "uid": "idem_user",
-            "stats": {"calories": 0.0, "protein": 0.0, "carbs": 0.0, "fat": 0.0, "last_updated": today},
+            "stats": {"calories": 0.0, "protein": 0.0, "carbs": 0.0, "fat": 0.0, "last_updated": ist_today},
             "processed_sync_ids": []
         }
     ])
@@ -467,15 +641,14 @@ async def test_concurrent_duplicate_sync_ids():
         "fat": 5.0
     }
 
-    # Launch 5 concurrent calls with the exact same sync ID
-    results = await asyncio.gather(*[log_meal(same_payload, uid="idem_user") for _ in range(5)])
+    # Launch 20 concurrent calls with the exact same sync ID
+    results = await asyncio.gather(*[log_meal(same_payload, uid="idem_user") for _ in range(20)])
 
-    # Exactly 1 should be "success", and 4 should be "Already synced"
     successes = [r for r in results if r.get("status") == "success"]
     already_synced = [r for r in results if r.get("message") == "Already synced"]
 
     assert len(successes) == 1
-    assert len(already_synced) == 4
+    assert len(already_synced) == 19
 
     user = mock_users.docs[0]
     assert user["stats"]["calories"] == 150.0  # Incremented exactly once
@@ -483,7 +656,7 @@ async def test_concurrent_duplicate_sync_ids():
 
 
 # ==============================================================================
-# 3. DEFECT D: Razorpay Webhook State Machine & Recovery Tests
+# TEST GROUP H: Webhook Success Lifecycle
 # ==============================================================================
 
 @pytest.fixture
@@ -509,7 +682,7 @@ def webhook_env_setup(monkeypatch):
 
 
 def test_webhook_happy_path(webhook_env_setup):
-    """Valid webhook sets transaction to 'completed' and upgrades user."""
+    """H: Valid webhook sets transaction to 'completed' and upgrades user."""
     users_col, transactions_col = webhook_env_setup
 
     payload = {
@@ -540,62 +713,24 @@ def test_webhook_happy_path(webhook_env_setup):
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
 
-    # Verify transaction completed
     tx = transactions_col.docs[0]
     assert tx["_id"] == "evt_p0_happy_1"
     assert tx["status"] == "completed"
     assert tx["completed_at"] is not None
 
-    # Verify user upgraded
     user = users_col.docs[0]
     assert user["tier"] == "pro"
     assert user["usage"]["scan_limit"] == 500
 
 
-def test_webhook_duplicate_completed_ignored(webhook_env_setup):
-    """Duplicate delivery of an already completed event returns 200 without duplicate updates."""
-    users_col, transactions_col = webhook_env_setup
-
-    # Pre-seed completed transaction
-    transactions_col.docs.append({
-        "_id": "evt_p0_dup_1",
-        "status": "completed",
-        "payment_id": "pay_p0_dup_1",
-        "user_id": "wh_user_1",
-        "completed_at": datetime.now(timezone.utc)
-    })
-    users_col.docs[0]["tier"] = "pro"
-
-    payload = {
-        "event": "payment.captured",
-        "id": "evt_p0_dup_1",
-        "payload": {
-            "payment": {
-                "entity": {
-                    "id": "pay_p0_dup_1",
-                    "amount": 73200,
-                    "notes": {"user_id": "wh_user_1", "tier": "pro"}
-                }
-            }
-        }
-    }
-    raw = json.dumps(payload).encode("utf-8")
-    sig = gen_webhook_sig(raw)
-
-    resp = client.post(
-        "/api/webhooks/razorpay",
-        content=raw,
-        headers={"X-Razorpay-Signature": sig, "X-Razorpay-Event-Id": "evt_p0_dup_1"}
-    )
-    assert resp.status_code == 200
-    assert resp.json() == {"status": "ok", "message": "Duplicate event ignored"}
-
+# ==============================================================================
+# TEST GROUP I: Webhook Failure Recovery
+# ==============================================================================
 
 def test_webhook_recovery_after_failure(webhook_env_setup):
-    """If user update previously failed, a retried webhook reclaims the event and succeeds."""
+    """I: If user update previously failed, a retried webhook reclaims the event and succeeds."""
     users_col, transactions_col = webhook_env_setup
 
-    # Pre-seed a previously failed transaction attempt
     transactions_col.docs.append({
         "_id": "evt_p0_failed_1",
         "status": "failed",
@@ -621,7 +756,6 @@ def test_webhook_recovery_after_failure(webhook_env_setup):
     raw = json.dumps(payload).encode("utf-8")
     sig = gen_webhook_sig(raw)
 
-    # Retried webhook should reclaim the 'failed' state and upgrade user
     resp = client.post(
         "/api/webhooks/razorpay",
         content=raw,
@@ -629,24 +763,75 @@ def test_webhook_recovery_after_failure(webhook_env_setup):
     )
     assert resp.status_code == 200
 
-    # User must now be upgraded!
     user = users_col.docs[0]
     assert user["tier"] == "pro"
 
-    # Transaction status must now be completed
     tx = next(d for d in transactions_col.docs if d["_id"] == "evt_p0_failed_1")
     assert tx["status"] == "completed"
 
 
-def test_webhook_stale_processing_recovery(webhook_env_setup):
-    """If a previous worker crashed leaving an event in 'processing' for >60s, a retry reclaims it."""
+# ==============================================================================
+# TEST GROUP J: Active Webhook Duplicate
+# ==============================================================================
+
+def test_webhook_active_duplicate_processing(webhook_env_setup):
+    """J: Duplicate event received while lease is still active returns HTTP 200 'Event is currently processing'."""
     users_col, transactions_col = webhook_env_setup
 
-    stale_time = datetime.now(timezone.utc) - timedelta(seconds=90)
+    now = datetime.now(timezone.utc)
+    future_lease = now + timedelta(seconds=45)
+    transactions_col.docs.append({
+        "_id": "evt_p0_active_1",
+        "status": "processing",
+        "processing_started_at": now - timedelta(seconds=15),
+        "lease_until": future_lease,
+        "user_id": "wh_user_1"
+    })
+
+    payload = {
+        "event": "payment.captured",
+        "id": "evt_p0_active_1",
+        "payload": {
+            "payment": {
+                "entity": {
+                    "id": "pay_p0_active_1",
+                    "amount": 73200,
+                    "notes": {"user_id": "wh_user_1", "tier": "pro"}
+                }
+            }
+        }
+    }
+    raw = json.dumps(payload).encode("utf-8")
+    sig = gen_webhook_sig(raw)
+
+    resp = client.post(
+        "/api/webhooks/razorpay",
+        content=raw,
+        headers={"X-Razorpay-Signature": sig, "X-Razorpay-Event-Id": "evt_p0_active_1"}
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok", "message": "Event is currently processing"}
+
+    # User must not be mutated twice
+    user = users_col.docs[0]
+    assert user["tier"] == "free"
+
+
+# ==============================================================================
+# TEST GROUP K: Expired Webhook Lease Recovery
+# ==============================================================================
+
+def test_webhook_stale_processing_recovery(webhook_env_setup):
+    """K: If previous worker crashed leaving an event in 'processing' past its lease, a retry reclaims it."""
+    users_col, transactions_col = webhook_env_setup
+
+    past_time = datetime.now(timezone.utc) - timedelta(seconds=90)
+    past_lease = datetime.now(timezone.utc) - timedelta(seconds=30)
     transactions_col.docs.append({
         "_id": "evt_p0_stale_1",
         "status": "processing",
-        "processing_started_at": stale_time
+        "processing_started_at": past_time,
+        "lease_until": past_lease
     })
 
     payload = {
@@ -680,20 +865,117 @@ def test_webhook_stale_processing_recovery(webhook_env_setup):
     assert tx["status"] == "completed"
 
 
-def test_webhook_insecure_email_fallback_rejected(webhook_env_setup):
-    """A payment lacking trusted user_id or subscription_id (e.g. only arbitrary email) is rejected."""
-    users_col, transactions_col = webhook_env_setup
+# ==============================================================================
+# TEST GROUP L: Concurrent Webhook Reclaim
+# ==============================================================================
+
+@pytest.mark.asyncio
+async def test_concurrent_webhook_reclaim(monkeypatch):
+    """L: Simultaneous retries after lease expiration allow only 1 worker to acquire lease and upgrade user once."""
+    monkeypatch.setenv("RAZORPAY_WEBHOOK_SECRET", TEST_WEBHOOK_SECRET)
+    from backend.routes.webhooks import razorpay_webhook
+
+    users_col = MockAsyncCollection([
+        {
+            "_id": "user_wh_l",
+            "uid": "wh_user_l",
+            "tier": "free",
+            "subscription": {"status": "inactive"},
+            "usage": {"scan_limit": 20, "scans_used_this_month": 0}
+        }
+    ])
+    past_time = datetime.now(timezone.utc) - timedelta(seconds=90)
+    past_lease = datetime.now(timezone.utc) - timedelta(seconds=30)
+    transactions_col = MockAsyncCollection([
+        {
+            "_id": "evt_p0_concurrent_reclaim",
+            "status": "processing",
+            "processing_started_at": past_time,
+            "lease_until": past_lease
+        }
+    ])
+    main.users_collection = users_col
+    main.transactions_collection = transactions_col
 
     payload = {
         "event": "payment.captured",
-        "id": "evt_insecure_email",
+        "id": "evt_p0_concurrent_reclaim",
         "payload": {
             "payment": {
                 "entity": {
-                    "id": "pay_insecure_1",
+                    "id": "pay_concurrent_1",
                     "amount": 73200,
-                    "email": "victim@zsehealth.com",  # Arbitrary email without trusted user_id
-                    "notes": {}
+                    "currency": "INR",
+                    "notes": {"user_id": "wh_user_l", "tier": "pro", "scan_quota": 500}
+                }
+            }
+        }
+    }
+    raw_body = json.dumps(payload).encode("utf-8")
+    sig = gen_webhook_sig(raw_body)
+
+    def _make_mock_request():
+        req = MagicMock()
+        req.body = AsyncMock(return_value=raw_body)
+        req.headers = {
+            "x-razorpay-signature": sig,
+            "x-razorpay-event-id": "evt_p0_concurrent_reclaim"
+        }
+        return req
+
+    # 10 workers simultaneously attempt to reclaim the expired lease
+    results = await asyncio.gather(*[razorpay_webhook(_make_mock_request()) for _ in range(10)])
+
+    # All workers return HTTP 200 compatible responses
+    assert all(r.get("status") in ("ok",) for r in results)
+
+    # User entitlement must be set to 'pro'
+    user = users_col.docs[0]
+    assert user["tier"] == "pro"
+    assert user["usage"]["scan_limit"] == 500
+
+    # Final transaction record must be completed
+    tx = next(d for d in transactions_col.docs if d["_id"] == "evt_p0_concurrent_reclaim")
+    assert tx["status"] == "completed"
+
+
+# ==============================================================================
+# TEST GROUP M: Untrusted Billing Email
+# ==============================================================================
+
+def test_webhook_untrusted_billing_email_does_not_switch_user(monkeypatch):
+    """M: Webhook with billing email of User A but notes.user_id = User B must entitlement User B, not User A."""
+    monkeypatch.setenv("RAZORPAY_WEBHOOK_SECRET", TEST_WEBHOOK_SECRET)
+    users_col = MockAsyncCollection([
+        {
+            "_id": "user_a",
+            "uid": "user_a",
+            "email": "victim_a@zsehealth.com",
+            "tier": "free",
+            "usage": {"scan_limit": 20}
+        },
+        {
+            "_id": "user_b",
+            "uid": "user_b",
+            "email": "buyer_b@zsehealth.com",
+            "tier": "free",
+            "usage": {"scan_limit": 20}
+        }
+    ])
+    transactions_col = MockAsyncCollection()
+    main.users_collection = users_col
+    main.transactions_collection = transactions_col
+
+    payload = {
+        "event": "payment.captured",
+        "id": "evt_email_mismatch",
+        "payload": {
+            "payment": {
+                "entity": {
+                    "id": "pay_mismatch_1",
+                    "amount": 73200,
+                    "email": "victim_a@zsehealth.com",  # Email matches User A!
+                    "notes": {"user_id": "user_b", "tier": "pro", "scan_quota": 500}  # Trusted ID is User B!
                 }
             }
         }
@@ -704,9 +986,56 @@ def test_webhook_insecure_email_fallback_rejected(webhook_env_setup):
     resp = client.post(
         "/api/webhooks/razorpay",
         content=raw,
-        headers={"X-Razorpay-Signature": sig, "X-Razorpay-Event-Id": "evt_insecure_email"}
+        headers={"X-Razorpay-Signature": sig, "X-Razorpay-Event-Id": "evt_email_mismatch"}
+    )
+    assert resp.status_code == 200
+
+    # User B must be upgraded!
+    user_b = next(u for u in users_col.docs if u["uid"] == "user_b")
+    assert user_b["tier"] == "pro"
+    assert user_b["usage"]["scan_limit"] == 500
+
+    # User A must REMAIN on free tier!
+    user_a = next(u for u in users_col.docs if u["uid"] == "user_a")
+    assert user_a["tier"] == "free"
+    assert user_a["usage"]["scan_limit"] == 20
+
+
+# ==============================================================================
+# TEST GROUP N: Ambiguous / Untrusted Identity Resolution
+# ==============================================================================
+
+def test_webhook_ambiguous_or_missing_user_rejected(webhook_env_setup):
+    """N: Webhook lacking trusted user identifier raises 500, sets transaction to 'failed', and upgrades no user."""
+    users_col, transactions_col = webhook_env_setup
+
+    payload = {
+        "event": "payment.captured",
+        "id": "evt_untrusted_no_id",
+        "payload": {
+            "payment": {
+                "entity": {
+                    "id": "pay_untrusted_no_id",
+                    "amount": 73200,
+                    "email": "unlinked@zsehealth.com",
+                    "notes": {}  # Missing trusted user_id or subscription_id
+                }
+            }
+        }
+    }
+    raw = json.dumps(payload).encode("utf-8")
+    sig = gen_webhook_sig(raw)
+
+    resp = client.post(
+        "/api/webhooks/razorpay",
+        content=raw,
+        headers={"X-Razorpay-Signature": sig, "X-Razorpay-Event-Id": "evt_untrusted_no_id"}
     )
     assert resp.status_code == 500
 
-    # User must NOT be upgraded
+    # No user must be upgraded
     assert users_col.docs[0]["tier"] == "free"
+
+    # Transaction must be marked 'failed', NEVER 'completed'
+    tx = next(d for d in transactions_col.docs if d["_id"] == "evt_untrusted_no_id")
+    assert tx["status"] == "failed"

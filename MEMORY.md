@@ -1,11 +1,48 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-23 (Session: Priority-1 Performance & Security Remediation — Planner Event-Loop Offloading, Vision Timeout/Failover Hardening, Bounded JSON Extraction, Admin ReDoS Defense, CSV Streaming)
+> **Last Updated:** 2026-09-24 (Session: Priority-0 Backend Reliability Remediation — Crowd Persistence Error Hardening, Atomic Daily Macro CAS & IST Boundary Reset, Offline Macro Bypass & Capped Sync Idempotency, Razorpay 3-State Leased Webhook Engine)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-24
+**Work Done — Priority-0 Backend Reliability Remediation:**
+- **P0-A: Crowdsourced Food Persistence Reliability (`backend/routes/scan.py`)**:
+  - Engineered multi-namespace collection resolution `_get_foods_collection()` and `_get_system_logs_collection()` searching `("backend.main", "main", "__main__")`.
+  - Replaced silent persistence drops with explicit, deterministic `HTTPException(503, detail="Database connection unavailable")`.
+  - Replaced raw exception disclosure with `HTTPException(500, detail="Failed to persist crowdsourced food item")` and defensive error telemetry to `system_logs`.
+  - Enforced deterministic SHA-256 token pseudonymization `anon_<sha256[:12]>` without exposing raw UIDs or credentials.
+  - Guaranteed unverified crowdsourced scans produce persisted food documents with `is_verified: False` and valid generated `food_id`.
+- **P0-B: Daily Macro Concurrency Correctness (`backend/routes/custom_meals.py`, `backend/main.py`)**:
+  - Eradicated all read-modify-write patterns and unsafe `$set: {"stats": ...}` across the codebase.
+  - Implemented atomic MongoDB `$inc` operations for `stats.calories`, `stats.protein`, `stats.carbs`, and `stats.fat`.
+  - Enforced canonical `Asia/Kolkata` (UTC+05:30) calendar-day calculations (`ist_today`).
+  - Engineered atomic CAS daily reset: when crossing midnight, first request atomically transitions `stats` to today's values; concurrent requests failing the reset predicate immediately fall back to atomic `$inc` on current-day counters, eliminating double resets and lost increments.
+  - Hardened against legacy/missing/null `stats` fields to prevent dot-notation failure.
+- **P0-C & P0-D: Offline Client Macro Ingestion & Capped Sync Idempotency (`backend/main.py`)**:
+  - Client macro bypass: When client provides all 4 valid macros (`calories`, `protein`, `carbs`, `fat`), AI pipelines (Ollama, NVIDIA, Gemini) are completely bypassed.
+  - Partial macro rejection: If 1-3 macros provided, rejects with HTTP 422 and exact specification `detail="Incomplete macro payload: all 4 macros must be supplied"`.
+  - Strict numeric validation: Rejects booleans, strings, NaNs, infinities, and negative values.
+  - Atomic idempotency engine: Couples `processed_sync_ids: {"$ne": client_sync_id}` filter with `$inc` and `$push` using `$slice: -500` (capped array).
+  - Verified concurrent duplicate requests: Under 20 simultaneous duplicate submissions, exactly 1 succeeds and 19 return HTTP 200 `{"status": "ok", "message": "Already synced"}` with zero duplicate macro increments.
+- **P0-E: Webhook 3-State Machine & Atomic Lease Reclamation (`backend/routes/webhooks.py`)**:
+  - Engineered resilient 3-state webhook lifecycle: `processing`, `completed`, `failed`.
+  - Added 60-second operational lease `lease_until = now + timedelta(seconds=60)`.
+  - Active duplicate events return HTTP 200 `{"status": "ok", "message": "Event is currently processing"}` without duplicate entitlement execution.
+  - Atomic conditional lease reclamation: Retries on `failed` or expired `processing` leases execute an atomic CAS update on `{"_id": event_id, "$or": [{"status": "failed"}, {"status": "processing", "lease_until": {"$lte": now}}]}` ensuring only 1 worker claims the lease under concurrent retries.
+  - Strict identity resolution: Entitlements granted exclusively via trusted `notes.user_id` / `notes.uid` or verified `subscription_id`; untrusted/ambiguous mappings and arbitrary billing emails are rejected.
+  - Entitlement updates are idempotent and transactions only transition to `completed` after user update succeeds.
+- **Comprehensive Verification & Zero Regressions**:
+  - Authored comprehensive 18-test verification suite `tests/test_p0_reliability.py` covering Groups A through N (100% passing).
+  - Configured `pytest.ini` with `pythonpath = backend`.
+  - Full backend pytest suite: **136/136 tests passed (100% across all 14 test files)**.
+  - Frontend Vitest suite: **54/54 tests passed (100%)**.
+  - Frontend production build: `tsc -b && vite build` completed with **0 errors**.
+
+---
+
+## 🗓️ Previous Session Summary
 **Date:** 2026-09-23
 **Work Done — Priority-1 Performance & Security Remediation:**
 - **Workstream A: Weekly Planner Event-Loop Optimization & Pruning (`backend/services/meal_planner/weekly_planner.py`, `backend/routes/meals.py`)**:

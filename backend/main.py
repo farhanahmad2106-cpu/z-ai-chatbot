@@ -24,6 +24,8 @@ from firebase_admin import credentials, auth as firebase_auth
 from datetime import datetime, timezone, timedelta
 from fastapi import Header, Request
 
+IST = timezone(timedelta(hours=5, minutes=30))
+
 # --- FREEMIUM & ADMIN: Import routers ---
 from routes.subscriptions import router as subscriptions_router
 from routes.webhooks import router as webhooks_router
@@ -142,9 +144,12 @@ async def background_db_init():
             background=True
         )
         await users_collection.create_index([("processed_sync_ids", 1)], background=True)
+        await users_collection.create_index([("subscription.razorpay_subscription_id", 1)], background=True)
+        await users_collection.create_index([("uid", 1)], background=True)
         await transactions_collection.create_index([("status", 1)], background=True)
         await transactions_collection.create_index([("payment_id", 1)], background=True)
         await transactions_collection.create_index([("subscription_id", 1)], background=True)
+        await transactions_collection.create_index([("lease_until", 1)], background=True)
 
 
         count = await foods_collection.count_documents({})
@@ -951,16 +956,25 @@ async def get_user_stats(uid: str = Depends(get_current_user_id)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    now = datetime.now(timezone.utc)
-    today_str = now.strftime("%Y-%m-%d")
+    today_str = datetime.now(IST).strftime("%Y-%m-%d")
     
     stats = user.get("stats", {})
-    if stats.get("last_updated") != today_str:
-        stats = {"calories": 0, "protein": 0, "carbs": 0, "fat": 0, "last_updated": today_str}
-        await users_collection.update_one(
+    if not isinstance(stats, dict) or stats.get("last_updated") != today_str:
+        reset_res = await users_collection.update_one(
             {"uid": uid, "stats.last_updated": {"$ne": today_str}},
-            {"$set": {"stats": stats}}
+            {"$set": {
+                "stats.calories": 0.0,
+                "stats.protein": 0.0,
+                "stats.carbs": 0.0,
+                "stats.fat": 0.0,
+                "stats.last_updated": today_str
+            }}
         )
+        if reset_res.matched_count == 0:
+            user = await users_collection.find_one({"uid": uid})
+            stats = user.get("stats", {}) if user else {}
+        else:
+            stats = {"calories": 0.0, "protein": 0.0, "carbs": 0.0, "fat": 0.0, "last_updated": today_str}
         
     goals = user.get("daily_goals", {
         "calories": 2000,
@@ -1245,6 +1259,8 @@ async def log_meal(request: dict, uid: str = Depends(get_current_user_id)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    user_id_val = user["_id"]
+
     # 2. Check client_sync_id idempotency
     client_sync_id = request.get("client_sync_id")
     if client_sync_id is not None:
@@ -1278,7 +1294,7 @@ async def log_meal(request: dict, uid: str = Depends(get_current_user_id)):
     elif 0 < len(present_macros) < 4:
         raise HTTPException(
             status_code=422,
-            detail="Partial macros are not supported. Provide all 4 macros (calories, protein, carbs, fat) or none to use AI estimation."
+            detail="Incomplete macro payload: all 4 macros must be supplied"
         )
     else:
         # 0 macros provided - run AI estimation pipeline
@@ -1311,13 +1327,20 @@ async def log_meal(request: dict, uid: str = Depends(get_current_user_id)):
             }
 
     # 4. Atomic Concurrency-Safe Mutation & Idempotency Registration
-    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    ist_today = datetime.now(IST).strftime("%Y-%m-%d")
     cal = round(float(macros["calories"]), 1)
     prot = round(float(macros["protein"]), 1)
     carb = round(float(macros["carbs"]), 1)
     fat = round(float(macros["fat"]), 1)
 
-    base_filter = {"uid": uid}
+    # Ensure missing or null stats does not fail dot notation
+    if user.get("stats") is None or not isinstance(user.get("stats"), dict):
+        await users_collection.update_one(
+            {"_id": user_id_val, "$or": [{"stats": None}, {"stats": {"$exists": False}}]},
+            {"$set": {"stats": {"calories": 0.0, "protein": 0.0, "carbs": 0.0, "fat": 0.0, "last_updated": ""}}}
+        )
+
+    base_filter = {"_id": user_id_val}
     if client_sync_id:
         base_filter["processed_sync_ids"] = {"$ne": client_sync_id}
 
@@ -1337,30 +1360,28 @@ async def log_meal(request: dict, uid: str = Depends(get_current_user_id)):
             }
         }
 
-    # Attempt 1: Increment if stats are already initialized for today
+    # Attempt 1: Increment if stats are already initialized for today's IST date
     query_today = dict(base_filter)
-    query_today["stats.last_updated"] = today_str
+    query_today["stats.last_updated"] = ist_today
     res = await users_collection.update_one(query_today, inc_doc)
 
     if res.matched_count == 0:
         # Either stats not initialized for today, OR client_sync_id was processed concurrently
         if client_sync_id:
-            check_user = await users_collection.find_one({"uid": uid, "processed_sync_ids": client_sync_id})
+            check_user = await users_collection.find_one({"_id": user_id_val, "processed_sync_ids": client_sync_id})
             if check_user:
                 return {"status": "ok", "message": "Already synced"}
 
         # Attempt 2: Atomically reset to today's stats if not yet today
         query_reset = dict(base_filter)
-        query_reset["stats.last_updated"] = {"$ne": today_str}
+        query_reset["stats.last_updated"] = {"$ne": ist_today}
         set_doc = {
             "$set": {
-                "stats": {
-                    "calories": cal,
-                    "protein": prot,
-                    "carbs": carb,
-                    "fat": fat,
-                    "last_updated": today_str,
-                }
+                "stats.calories": cal,
+                "stats.protein": prot,
+                "stats.carbs": carb,
+                "stats.fat": fat,
+                "stats.last_updated": ist_today,
             }
         }
         if client_sync_id:
@@ -1374,13 +1395,13 @@ async def log_meal(request: dict, uid: str = Depends(get_current_user_id)):
         reset_res = await users_collection.update_one(query_reset, set_doc)
         if reset_res.matched_count == 0:
             if client_sync_id:
-                check_user = await users_collection.find_one({"uid": uid, "processed_sync_ids": client_sync_id})
+                check_user = await users_collection.find_one({"_id": user_id_val, "processed_sync_ids": client_sync_id})
                 if check_user:
                     return {"status": "ok", "message": "Already synced"}
             # Concurrent process initialized today's stats; apply atomic increment
             await users_collection.update_one(query_today, inc_doc)
 
-    updated_user = await users_collection.find_one({"uid": uid})
+    updated_user = await users_collection.find_one({"_id": user_id_val})
     fresh_stats = updated_user.get("stats", {}) if updated_user else {}
     return {"status": "success", "added_macros": macros, "new_stats": fresh_stats}
 

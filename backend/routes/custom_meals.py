@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Header
 from typing import List, Optional, Dict, Any
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import uuid
 import sys
+
+IST = timezone(timedelta(hours=5, minutes=30))
 
 try:
     from schemas.custom_meal import (
@@ -23,21 +25,24 @@ except ImportError:
 
 
 def get_users_collection():
-    main_mod = sys.modules.get("main") or sys.modules.get("backend.main")
-    if main_mod and hasattr(main_mod, "users_collection"):
-        return main_mod.users_collection
+    for mod_name in ("backend.main", "main", "__main__"):
+        main_mod = sys.modules.get(mod_name)
+        if main_mod and hasattr(main_mod, "users_collection") and main_mod.users_collection is not None:
+            return main_mod.users_collection
     return None
 
 def get_custom_meals_collection():
-    main_mod = sys.modules.get("main") or sys.modules.get("backend.main")
-    if main_mod and hasattr(main_mod, "custom_meals_collection"):
-        return main_mod.custom_meals_collection
+    for mod_name in ("backend.main", "main", "__main__"):
+        main_mod = sys.modules.get(mod_name)
+        if main_mod and hasattr(main_mod, "custom_meals_collection") and main_mod.custom_meals_collection is not None:
+            return main_mod.custom_meals_collection
     return None
 
 async def get_current_user_id(authorization: Optional[str] = Header(None)) -> str:
-    main_mod = sys.modules.get("main") or sys.modules.get("backend.main")
-    if main_mod and hasattr(main_mod, "get_current_user_id"):
-        return await main_mod.get_current_user_id(authorization)
+    for mod_name in ("backend.main", "main", "__main__"):
+        main_mod = sys.modules.get(mod_name)
+        if main_mod and hasattr(main_mod, "get_current_user_id"):
+            return await main_mod.get_current_user_id(authorization)
     raise HTTPException(status_code=401, detail="Authentication dependency not ready")
 
 router = APIRouter(prefix="/api/meals/custom", tags=["custom_meals"])
@@ -97,56 +102,58 @@ async def create_custom_meal(
 
     await custom_meals_col.insert_one(doc)
 
-    # Optional today's meal logging - Atomic $inc concurrency safe
+    # Optional today's meal logging - Atomic $inc concurrency safe using IST calendar day
     if request.log_to_today and users_col is not None and user_doc:
-        today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        ist_today = datetime.now(IST).strftime("%Y-%m-%d")
         per_serv = analysis["per_serving_nutrition"]
         cal_inc = round(float(per_serv.calories), 1)
         prot_inc = round(float(per_serv.protein_g), 1)
         carbs_inc = round(float(per_serv.carbs_g), 1)
         fat_inc = round(float(per_serv.fat_g), 1)
 
+        user_id_val = user_doc["_id"]
+
+        # Ensure legacy or missing/null stats doesn't break dot notation
+        if user_doc.get("stats") is None or not isinstance(user_doc.get("stats"), dict):
+            await users_col.update_one(
+                {"_id": user_id_val, "$or": [{"stats": None}, {"stats": {"$exists": False}}]},
+                {"$set": {"stats": {"calories": 0.0, "protein": 0.0, "carbs": 0.0, "fat": 0.0, "last_updated": ""}}}
+            )
+
+        inc_doc = {
+            "$inc": {
+                "stats.calories": cal_inc,
+                "stats.protein": prot_inc,
+                "stats.carbs": carbs_inc,
+                "stats.fat": fat_inc,
+            }
+        }
+
         # 1. Try atomic increment if stats already initialized for today
         res = await users_col.update_one(
-            {"_id": user_doc["_id"], "stats.last_updated": today_str},
-            {
-                "$inc": {
-                    "stats.calories": cal_inc,
-                    "stats.protein": prot_inc,
-                    "stats.carbs": carbs_inc,
-                    "stats.fat": fat_inc,
-                }
-            }
+            {"_id": user_id_val, "stats.last_updated": ist_today},
+            inc_doc
         )
 
-        # 2. If stats were not initialized for today, atomically initialize
+        # 2. If stats were not initialized for today, atomically transition to today
         if res.matched_count == 0:
             reset_res = await users_col.update_one(
-                {"_id": user_doc["_id"], "stats.last_updated": {"$ne": today_str}},
+                {"_id": user_id_val, "stats.last_updated": {"$ne": ist_today}},
                 {
                     "$set": {
-                        "stats": {
-                            "calories": cal_inc,
-                            "protein": prot_inc,
-                            "carbs": carbs_inc,
-                            "fat": fat_inc,
-                            "last_updated": today_str,
-                        }
+                        "stats.calories": cal_inc,
+                        "stats.protein": prot_inc,
+                        "stats.carbs": carbs_inc,
+                        "stats.fat": fat_inc,
+                        "stats.last_updated": ist_today,
                     }
                 }
             )
             # If another concurrent request initialized today in the interim, increment
             if reset_res.matched_count == 0:
                 await users_col.update_one(
-                    {"_id": user_doc["_id"], "stats.last_updated": today_str},
-                    {
-                        "$inc": {
-                            "stats.calories": cal_inc,
-                            "stats.protein": prot_inc,
-                            "stats.carbs": carbs_inc,
-                            "stats.fat": fat_inc,
-                        }
-                    }
+                    {"_id": user_id_val, "stats.last_updated": ist_today},
+                    inc_doc
                 )
 
     return CustomMealResponse(**doc)

@@ -10,7 +10,7 @@ import json
 import hashlib
 import hmac
 from fastapi import APIRouter, Request, HTTPException
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import pymongo.errors
 
 def get_razorpay_webhook_secret() -> str:
@@ -54,25 +54,28 @@ def _verify_razorpay_signature(body: bytes, signature: str) -> bool:
 def _get_users_collection():
     """Lazy import to avoid circular dependency with main.py."""
     import sys
-    main_module = sys.modules.get("backend.main") or sys.modules.get("main") or sys.modules.get("__main__")
-    if main_module and hasattr(main_module, "users_collection"):
-        return main_module.users_collection
+    for mod_name in ("backend.main", "main", "__main__"):
+        main_module = sys.modules.get(mod_name)
+        if main_module and hasattr(main_module, "users_collection"):
+            return main_module.users_collection
     raise RuntimeError("users_collection not available")
 
 def _get_logs_collection():
     """Lazy import to avoid circular dependency with main.py."""
     import sys
-    main_module = sys.modules.get("backend.main") or sys.modules.get("main") or sys.modules.get("__main__")
-    if main_module and hasattr(main_module, "system_logs_collection"):
-        return main_module.system_logs_collection
+    for mod_name in ("backend.main", "main", "__main__"):
+        main_module = sys.modules.get(mod_name)
+        if main_module and hasattr(main_module, "system_logs_collection"):
+            return main_module.system_logs_collection
     return None
 
 def _get_transactions_collection():
     """Lazy import to avoid circular dependency with main.py."""
     import sys
-    main_module = sys.modules.get("backend.main") or sys.modules.get("main") or sys.modules.get("__main__")
-    if main_module and hasattr(main_module, "transactions_collection"):
-        return main_module.transactions_collection
+    for mod_name in ("backend.main", "main", "__main__"):
+        main_module = sys.modules.get(mod_name)
+        if main_module and hasattr(main_module, "transactions_collection"):
+            return main_module.transactions_collection
     raise RuntimeError("transactions_collection not available")
 
 async def _log_webhook_event(level: str, service: str, message: str, details: dict = None):
@@ -128,7 +131,7 @@ async def razorpay_webhook(request: Request):
     
     payment_id = payment_entity.get("id")
     amount = payment_entity.get("amount")
-    user_id = notes.get("user_id")
+    user_id = notes.get("user_id") or notes.get("uid")
     
     event_id = request.headers.get("x-razorpay-event-id") or payload.get("id")
     if not event_id and payment_id:
@@ -145,6 +148,7 @@ async def razorpay_webhook(request: Request):
         
     transactions_collection = _get_transactions_collection()
     now = datetime.now(timezone.utc)
+    lease_until = now + timedelta(seconds=60)
     claim_acquired = False
     
     try:
@@ -159,6 +163,7 @@ async def razorpay_webhook(request: Request):
             "currency": payment_entity.get("currency", "INR"),
             "status": "processing",
             "processing_started_at": now,
+            "lease_until": lease_until,
             "method": payment_entity.get("method"),
             "email": payment_entity.get("email"),
             "notes": notes,
@@ -181,42 +186,57 @@ async def razorpay_webhook(request: Request):
                 existing_status = val if isinstance(val, str) else None
 
             if existing_status == "completed" or (existing_status is None and not isinstance(existing, dict)):
-                # Already completed (or default mock in unit tests)
+                # Already completed
                 print(f"Webhook {event_id} already completed. Skipping.")
                 await _log_webhook_event("INFO", "Webhook", f"Duplicate webhook event ignored: {event_id}")
                 return {"status": "ok", "message": "Duplicate event ignored"}
-            elif existing_status == "failed":
-                # Previous attempt failed - allow retry by reclaiming lease
-                print(f"Webhook {event_id} previously failed. Reclaiming for retry.")
-                reclaim = await transactions_collection.update_one(
-                    {"_id": event_id, "status": "failed"},
-                    {"$set": {"status": "processing", "processing_started_at": now}}
-                )
-                if getattr(reclaim, "modified_count", 0) > 0 or getattr(reclaim, "matched_count", 0) > 0:
-                    claim_acquired = True
-            elif existing_status == "processing":
-                # Check for stale lease (>60 seconds)
-                proc_time = existing.get("processing_started_at") if isinstance(existing, dict) else None
-                is_stale = False
-                if proc_time and isinstance(proc_time, datetime):
-                    if proc_time.tzinfo is None:
-                        proc_time = proc_time.replace(tzinfo=timezone.utc)
-                    if (now - proc_time).total_seconds() > 60:
-                        is_stale = True
-                else:
-                    is_stale = True
 
-                if is_stale:
-                    print(f"Webhook {event_id} has stale processing lease. Reclaiming.")
-                    reclaim = await transactions_collection.update_one(
-                        {"_id": event_id, "status": "processing"},
-                        {"$set": {"processing_started_at": now, "reclaimed_at": now}}
-                    )
-                    if getattr(reclaim, "modified_count", 0) > 0 or getattr(reclaim, "matched_count", 0) > 0:
-                        claim_acquired = True
-                else:
-                    print(f"Webhook {event_id} is currently processing by another worker.")
-                    return {"status": "processing", "message": "Event is currently being processed"}
+            # Check if event is actively leased by another worker
+            curr_lease = existing.get("lease_until") if isinstance(existing, dict) else None
+            proc_time = existing.get("processing_started_at") if isinstance(existing, dict) else None
+
+            if curr_lease and isinstance(curr_lease, datetime) and curr_lease.tzinfo is None:
+                curr_lease = curr_lease.replace(tzinfo=timezone.utc)
+            if proc_time and isinstance(proc_time, datetime) and proc_time.tzinfo is None:
+                proc_time = proc_time.replace(tzinfo=timezone.utc)
+
+            is_active_processing = False
+            if existing_status == "processing":
+                if curr_lease and curr_lease > now:
+                    is_active_processing = True
+                elif not curr_lease and proc_time and (now - proc_time).total_seconds() <= 60:
+                    is_active_processing = True
+
+            if is_active_processing:
+                print(f"Webhook {event_id} is currently processing by another worker.")
+                return {"status": "ok", "message": "Event is currently processing"}
+
+            # Event is 'failed' or has expired processing lease: atomically reclaim
+            new_lease = now + timedelta(seconds=60)
+            reclaim = await transactions_collection.update_one(
+                {
+                    "_id": event_id,
+                    "$or": [
+                        {"status": "failed"},
+                        {"status": "processing", "lease_until": {"$lte": now}},
+                        {"status": "processing", "lease_until": {"$exists": False}, "processing_started_at": {"$lte": now - timedelta(seconds=60)}}
+                    ]
+                },
+                {"$set": {
+                    "status": "processing",
+                    "lease_until": new_lease,
+                    "processing_started_at": now,
+                    "reclaimed_at": now
+                }}
+            )
+            if getattr(reclaim, "modified_count", 0) > 0 or getattr(reclaim, "matched_count", 0) > 0:
+                claim_acquired = True
+            else:
+                recheck = await transactions_collection.find_one({"_id": event_id})
+                recheck_status = recheck.get("status") if isinstance(recheck, dict) else None
+                if recheck_status == "completed":
+                    return {"status": "ok", "message": "Duplicate event ignored"}
+                return {"status": "ok", "message": "Event is currently processing"}
 
     if not claim_acquired:
         return {"status": "ok", "message": "Duplicate event ignored"}
@@ -233,7 +253,7 @@ async def razorpay_webhook(request: Request):
             user_filter = None
             if user_id:
                 user_filter = {"uid": user_id}
-            elif subscription_id:
+            elif subscription_id and not subscription_id.startswith("sub_pay_"):
                 user_filter = {"subscription.razorpay_subscription_id": subscription_id}
 
             if user_filter:
@@ -261,7 +281,7 @@ async def razorpay_webhook(request: Request):
 
         elif event == "subscription.activated":
             scan_limit = TIER_SCAN_LIMITS.get(tier, 20)
-            await users_collection.update_one(
+            sub_res = await users_collection.update_one(
                 {"subscription.razorpay_subscription_id": subscription_id},
                 {"$set": {
                     "tier": tier,
@@ -273,11 +293,13 @@ async def razorpay_webhook(request: Request):
                     "usage.scans_used_this_month": 0,
                 }}
             )
+            if hasattr(sub_res, "matched_count") and sub_res.matched_count == 0:
+                raise RuntimeError(f"Subscription target user not found for subscription_id: {subscription_id}")
             print(f"[OK] Subscription activated: tier={tier}, sub_id={subscription_id}")
 
         elif event == "subscription.charged":
             scan_limit = TIER_SCAN_LIMITS.get(tier, 20)
-            await users_collection.update_one(
+            sub_res = await users_collection.update_one(
                 {"subscription.razorpay_subscription_id": subscription_id},
                 {"$set": {
                     "tier": tier,
@@ -286,10 +308,12 @@ async def razorpay_webhook(request: Request):
                     "usage.scan_limit": scan_limit,
                 }}
             )
+            if hasattr(sub_res, "matched_count") and sub_res.matched_count == 0:
+                raise RuntimeError(f"Subscription target user not found for subscription_id: {subscription_id}")
             print(f"[OK] Subscription renewed: tier={tier}, sub_id={subscription_id}")
 
         elif event == "subscription.charged.failed":
-            await users_collection.update_one(
+            sub_res = await users_collection.update_one(
                 {"subscription.razorpay_subscription_id": subscription_id},
                 {"$set": {
                     "tier": "free",
@@ -297,6 +321,8 @@ async def razorpay_webhook(request: Request):
                     "usage.scan_limit": 20,
                 }}
             )
+            if hasattr(sub_res, "matched_count") and sub_res.matched_count == 0:
+                raise RuntimeError(f"Subscription target user not found for subscription_id: {subscription_id}")
             print(f"[WARN] Charge failed — downgraded to free: sub_id={subscription_id}")
 
         elif event == "subscription.cancelled":
@@ -306,7 +332,7 @@ async def razorpay_webhook(request: Request):
             else:
                 end_date_str = today_str
 
-            await users_collection.update_one(
+            sub_res = await users_collection.update_one(
                 {"subscription.razorpay_subscription_id": subscription_id},
                 {"$set": {
                     "subscription.status": "cancelled",
@@ -314,10 +340,12 @@ async def razorpay_webhook(request: Request):
                     "subscription.auto_renew": False,
                 }}
             )
+            if hasattr(sub_res, "matched_count") and sub_res.matched_count == 0:
+                raise RuntimeError(f"Subscription target user not found for subscription_id: {subscription_id}")
             print(f"Subscription cancelled. Premium access until {end_date_str}: sub_id={subscription_id}")
 
         elif event == "subscription.completed":
-            await users_collection.update_one(
+            sub_res = await users_collection.update_one(
                 {"subscription.razorpay_subscription_id": subscription_id},
                 {"$set": {
                     "tier": "free",
@@ -326,6 +354,8 @@ async def razorpay_webhook(request: Request):
                     "usage.scan_limit": 20,
                 }}
             )
+            if hasattr(sub_res, "matched_count") and sub_res.matched_count == 0:
+                raise RuntimeError(f"Subscription target user not found for subscription_id: {subscription_id}")
             print(f"Subscription completed — downgraded to free: sub_id={subscription_id}")
 
         elif event == "subscription.updated":
