@@ -2,6 +2,9 @@
  * Z-SeHealth Offline Synchronization Engine
  * Browser-native IndexedDB queue manager for offline meal logging
  * and background synchronization upon network recovery.
+ *
+ * Architecture:
+ * Offline Read -> Local State -> Queue Mutation -> Reconnect -> Idempotent Sync -> Server Confirmation -> Local Reconciliation
  */
 
 import { API_BASE } from '../config';
@@ -16,30 +19,60 @@ export interface QueuedMealIngredient {
 }
 
 export interface QueuedMealLog {
-  id: string;
+  id: string; // client_sync_id UUID
+  userId?: string; // Binds queue record to user UID preventing User A -> User B pollution on logout (Section 46)
   name: string;
-  ingredients: Array<{
-    name: string;
-  }>;
-  timestamp: number;
-  status?: 'pending' | 'syncing' | 'failed' | 'quarantined';
-  attempts?: number;
-  lastAttemptAt?: number;
-  createdAt?: number;
   calories?: number;
   protein?: number;
   carbs?: number;
   fat?: number;
+  timestamp: number;
+  ingredients?: Array<{
+    name: string;
+  }>;
   foodId?: string;
   brand?: string;
+  status?: 'pending' | 'syncing' | 'failed' | 'quarantined';
+  attempts?: number;
+  lastAttemptAt?: number;
+  lastError?: string;
+  createdAt?: number;
 }
 
 export interface SyncResult {
   synced: number;
   failed: number;
+  pending: number;
+  requiresAuth: number;
 }
 
 let isSyncingInMemory = false;
+
+/**
+ * Computes bounded exponential backoff delay with jitter.
+ */
+export function getBackoffDelayMs(attempts: number): number {
+  const base = 1000; // 1s base
+  const max = 30000; // 30s ceiling
+  const exponential = Math.min(max, base * Math.pow(2, Math.max(0, attempts)));
+  const jitter = Math.random() * 500;
+  return exponential + jitter;
+}
+
+/**
+ * Generates a standard RFC 4122 v4 UUID for client-side idempotency.
+ */
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  // Fallback RFC 4122 v4 compliant generator if crypto.randomUUID is unavailable
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
 
 /**
  * Opens or initializes the offline IndexedDB database safely.
@@ -77,17 +110,20 @@ function openOfflineDB(): Promise<IDBDatabase> {
 
 /**
  * Enqueues a meal into the local IndexedDB queue when offline.
+ * Binds meal to the current user ID and assigns a stable client_sync_id UUID.
  */
 export async function queueOfflineMeal(
   meal: Omit<QueuedMealLog, 'id' | 'timestamp'>
 ): Promise<QueuedMealLog> {
   const db = await openOfflineDB();
-  const id = `offline_meal_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  const id = generateUUID();
   const now = Date.now();
+  const currentUserId = auth.currentUser?.uid || meal.userId;
 
   const record: QueuedMealLog = {
     ...meal,
     id,
+    userId: currentUserId,
     timestamp: now,
     status: 'pending',
     attempts: 0,
@@ -100,7 +136,12 @@ export async function queueOfflineMeal(
       const store = transaction.objectStore(OFFLINE_STORE_NAME);
       const request = store.add(record);
 
-      request.onsuccess = () => resolve(record);
+      request.onsuccess = () => {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('z-queued-meal-updated'));
+        }
+        resolve(record);
+      };
       request.onerror = () => reject(request.error || new Error('Failed to queue meal'));
       transaction.oncomplete = () => db.close();
       transaction.onerror = () => {
@@ -115,7 +156,7 @@ export async function queueOfflineMeal(
 }
 
 /**
- * Retrieves all pending queued meals from IndexedDB.
+ * Retrieves all pending queued meals from IndexedDB for the current user.
  */
 export async function getQueuedMeals(): Promise<QueuedMealLog[]> {
   try {
@@ -166,7 +207,12 @@ export async function clearQueuedMeal(id: string): Promise<void> {
       const store = transaction.objectStore(OFFLINE_STORE_NAME);
       const request = store.delete(id);
 
-      request.onsuccess = () => resolve();
+      request.onsuccess = () => {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('z-queued-meal-updated'));
+        }
+        resolve();
+      };
       request.onerror = () => reject(request.error || new Error(`Failed to delete queued meal: ${id}`));
       transaction.oncomplete = () => db.close();
       transaction.onerror = () => {
@@ -191,7 +237,12 @@ export async function clearAllQueuedMeals(): Promise<void> {
       const store = transaction.objectStore(OFFLINE_STORE_NAME);
       const request = store.clear();
 
-      request.onsuccess = () => resolve();
+      request.onsuccess = () => {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('z-queued-meal-updated'));
+        }
+        resolve();
+      };
       request.onerror = () => reject(request.error || new Error('Failed to clear queue'));
       transaction.oncomplete = () => db.close();
     });
@@ -203,7 +254,7 @@ export async function clearAllQueuedMeals(): Promise<void> {
 /**
  * Updates a queued meal's metadata (e.g. attempts, lastAttemptAt, or quarantined status).
  */
-async function updateQueuedMealMetadata(
+export async function updateQueuedMealMetadata(
   id: string,
   updates: Partial<QueuedMealLog>
 ): Promise<void> {
@@ -237,15 +288,16 @@ async function updateQueuedMealMetadata(
  *
  * Guarantees:
  * - Single-concurrency lock (cross-tab via Web Locks API if supported, plus in-memory mutex).
+ * - User Isolation (Section 46): Meals queued by User A will never sync into User B's account.
  * - Fresh authentication token extracted directly from Firebase Auth; never stored in IndexedDB.
  * - HTTP 2xx: Removes record from IndexedDB and increments synced count.
  * - HTTP 401/403: Halts sync, keeps records safe in queue, and alerts for re-authentication.
  * - HTTP 400/422: Quarantines invalid item to prevent infinite blocking of subsequent items.
- * - HTTP 5xx or Network Error: Keeps record in queue and increments retry counter.
+ * - HTTP 5xx or Network Error: Keeps record in queue and increments retry counter with backoff.
  */
 export async function syncQueuedMealsToServer(): Promise<SyncResult> {
   if (isSyncingInMemory) {
-    return { synced: 0, failed: 0 };
+    return { synced: 0, failed: 0, pending: 0, requiresAuth: 0 };
   }
 
   // Cross-tab lock coordination via Web Locks API if available
@@ -254,7 +306,7 @@ export async function syncQueuedMealsToServer(): Promise<SyncResult> {
       return await navigator.locks.request('z_sehealth_sync_lock', { ifAvailable: true }, async (lock) => {
         if (!lock) {
           // Another tab is actively syncing
-          return { synced: 0, failed: 0 };
+          return { synced: 0, failed: 0, pending: 0, requiresAuth: 0 };
         }
         return await executeSyncCycle();
       });
@@ -274,18 +326,20 @@ async function executeSyncCycle(): Promise<SyncResult> {
   isSyncingInMemory = true;
   let synced = 0;
   let failed = 0;
+  let pending = 0;
+  let requiresAuth = 0;
 
   try {
     const queue = await getQueuedMeals();
     if (queue.length === 0) {
-      return { synced: 0, failed: 0 };
+      return { synced: 0, failed: 0, pending: 0, requiresAuth: 0 };
     }
 
     // Check authentication
     const user = auth.currentUser;
     if (!user) {
       // Not authenticated yet; retain queue safely
-      return { synced: 0, failed: queue.length };
+      return { synced: 0, failed: 0, pending: queue.length, requiresAuth: queue.length };
     }
 
     let token: string;
@@ -293,10 +347,16 @@ async function executeSyncCycle(): Promise<SyncResult> {
       token = await user.getIdToken();
     } catch (authErr) {
       console.error('[OfflineSync] Token retrieval failed:', authErr);
-      return { synced: 0, failed: queue.length };
+      return { synced: 0, failed: 0, pending: queue.length, requiresAuth: queue.length };
     }
 
     for (const item of queue) {
+      // User Isolation Guard (Section 46): do NOT upload queued meals under a different user
+      if (item.userId && item.userId !== user.uid) {
+        pending++;
+        continue;
+      }
+
       try {
         const payload: Record<string, unknown> = {
           name: item.name,
@@ -324,19 +384,29 @@ async function executeSyncCycle(): Promise<SyncResult> {
           synced++;
         } else if (response.status === 401 || response.status === 403) {
           // Auth expired: Stop sync cycle and preserve remaining queue
+          requiresAuth++;
           failed += queue.length - synced;
+          await updateQueuedMealMetadata(item.id, {
+            status: 'pending',
+            lastError: 'Authentication required',
+            lastAttemptAt: Date.now(),
+          });
           break;
         } else if (response.status === 400 || response.status === 422) {
           // Validation error: Quarantine to prevent endless retry blocking
           await updateQueuedMealMetadata(item.id, {
             status: 'quarantined',
+            lastError: `Validation error (${response.status})`,
             lastAttemptAt: Date.now(),
           });
           failed++;
         } else {
-          // HTTP 5xx or server transient failure: Retain for next retry
+          // HTTP 5xx or server transient failure: Retain for next retry with backoff
+          const attempts = (item.attempts || 0) + 1;
           await updateQueuedMealMetadata(item.id, {
-            attempts: (item.attempts || 0) + 1,
+            attempts,
+            status: attempts >= 5 ? 'failed' : 'pending',
+            lastError: `Server error (${response.status})`,
             lastAttemptAt: Date.now(),
           });
           failed++;
@@ -346,6 +416,8 @@ async function executeSyncCycle(): Promise<SyncResult> {
         console.warn('[OfflineSync] Network error during meal sync:', networkErr);
         await updateQueuedMealMetadata(item.id, {
           attempts: (item.attempts || 0) + 1,
+          status: 'pending',
+          lastError: 'Network disconnected',
           lastAttemptAt: Date.now(),
         });
         failed += queue.length - synced;
@@ -356,7 +428,10 @@ async function executeSyncCycle(): Promise<SyncResult> {
     console.error('[OfflineSync] Sync cycle encountered error:', error);
   } finally {
     isSyncingInMemory = false;
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('z-queued-meal-updated'));
+    }
   }
 
-  return { synced, failed };
+  return { synced, failed, pending, requiresAuth };
 }

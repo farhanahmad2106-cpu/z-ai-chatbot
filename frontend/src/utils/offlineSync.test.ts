@@ -215,4 +215,96 @@ describe('offlineSync - IndexedDB Offline Queue and Synchronization', () => {
     const count = await getQueuedMealCount();
     expect(count).toBe(0);
   });
+
+  it('calculates exponential backoff delay within bounded range with jitter', async () => {
+    const { getBackoffDelayMs } = await import('./offlineSync');
+    
+    // Attempt 0: base 1000ms + [0, 500) jitter
+    const delay0 = getBackoffDelayMs(0);
+    expect(delay0).toBeGreaterThanOrEqual(1000);
+    expect(delay0).toBeLessThan(1600);
+
+    // Attempt 1: 2000ms + [0, 500) jitter
+    const delay1 = getBackoffDelayMs(1);
+    expect(delay1).toBeGreaterThanOrEqual(2000);
+    expect(delay1).toBeLessThan(2600);
+
+    // Attempt 10: capped at 30,000ms max + [0, 500) jitter
+    const delay10 = getBackoffDelayMs(10);
+    expect(delay10).toBeGreaterThanOrEqual(30000);
+    expect(delay10).toBeLessThan(30600);
+  });
+
+  it('preserves client_sync_id across retries for server-side idempotency', async () => {
+    const meal = await queueOfflineMeal({
+      name: 'Idempotent Roti',
+      ingredients: [{ name: 'Wheat Flour' }],
+      calories: 120,
+    });
+
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: vi.fn().mockResolvedValue({ status: 'ok' }),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    await syncQueuedMealsToServer();
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const requestBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(requestBody.client_sync_id).toBe(meal.id);
+    expect(requestBody.name).toBe('Idempotent Roti');
+  });
+
+  it('enforces User Isolation (Section 46) so User A queued meal is not synced to User B account', async () => {
+    // Queue a meal bound explicitly to user-alpha
+    await queueOfflineMeal({
+      name: 'Alpha Secret Salad',
+      ingredients: [],
+      userId: 'user-alpha-123',
+    });
+
+    // Mock auth with user-beta
+    const { auth } = await import('../firebase');
+    const originalUser = auth.currentUser;
+    (auth as any).currentUser = {
+      uid: 'user-beta-456',
+      getIdToken: vi.fn().mockResolvedValue('token-beta'),
+    };
+
+    const mockFetch = vi.fn();
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await syncQueuedMealsToServer();
+
+    // User A's meal should NOT be dispatched under User B
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(result.synced).toBe(0);
+    expect(result.pending).toBe(1);
+
+    // Restore user
+    (auth as any).currentUser = originalUser;
+  });
+
+  it('stops retry cycle and flags requiresAuth when server returns 401 Unauthorized', async () => {
+    await queueOfflineMeal({ name: 'Expired Token Meal', ingredients: [] });
+
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: vi.fn().mockResolvedValue({ detail: 'Token expired' }),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await syncQueuedMealsToServer();
+
+    expect(result.synced).toBe(0);
+    expect(result.requiresAuth).toBe(1);
+
+    // Item must remain in queue waiting for re-authentication
+    const remaining = await getQueuedMeals();
+    expect(remaining.length).toBe(1);
+    expect(remaining[0].lastError).toBe('Authentication required');
+  });
 });

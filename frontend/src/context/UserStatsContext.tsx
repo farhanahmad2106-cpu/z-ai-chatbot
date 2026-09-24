@@ -273,6 +273,7 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
         await queueOfflineMeal({
           name: foodItem?.name || 'Meal',
           ingredients: Array.isArray(foodItem?.ingredients) ? foodItem.ingredients : [],
+          userId: currentUser.uid,
           ...estimatedMacros,
         });
 
@@ -330,6 +331,7 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
         await queueOfflineMeal({
           name: foodItem?.name || 'Meal',
           ingredients: Array.isArray(foodItem?.ingredients) ? foodItem.ingredients : [],
+          userId: currentUser.uid,
           ...estimatedMacros,
         });
 

@@ -1,13 +1,56 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-24 (Session: Multi-Provider Quick-Commerce Grocery Export & Deep-Linking Engine — Deterministic Ingredient Sanitizer, Blinkit/Zepto/Instamart Deep Links, Sequential Popover & Batch Modal UX, Rate-Limited Runner & Blocker Resilience)
+> **Last Updated:** 2026-09-24 (Session: Master Prompt 2 — Production-Grade Offline-First PWA & Background Synchronization Engine — React 19 + Vite + Workbox | Track 2)
 
 ---
 
 ## 🗓️ Last Session Summary
 **Date:** 2026-09-24
-**Work Done — Multi-Provider Quick-Commerce Grocery Export & Deep-Linking Engine:**
+**Work Done — Production-Grade Offline-First PWA & Synchronization Engine (Track 2):**
+- **Vite PWA & Workbox Service Worker Architecture (`frontend/vite.config.ts`)**:
+  - Integrated `vite-plugin-pwa` with `registerType: 'autoUpdate'` and `generateSW` Workbox strategy.
+  - Manifest configured: Standalone display, `#020617` theme/background color, portrait orientation, maskable icons (`pwa-192x192.png`, `pwa-512x512.png`).
+  - Application shell precached for offline startup and client routing (`/`, `/dashboard`, `/search`, `/scan`, `/planner`, legal documents).
+  - Navigation fallback to `/index.html` with explicit denylist on API routes (`/api/*`).
+  - Runtime Caches:
+    - Public food catalog (`/api/foods*`, `/api/search/food*`): `StaleWhileRevalidate` with bounded cache size (60 entries, 24h TTL) and HTTP status restrictions (0, 200).
+    - Static Assets (`.png`, `.svg`, `.ico`, `.webp`, `.jpg`): `CacheFirst` (60 entries, 30-day TTL).
+    - Google Fonts (`fonts.googleapis.com`, `fonts.gstatic.com`): `CacheFirst` (30 entries, 1-year TTL).
+    - Static Legal Markdown (`/legal/*.md`): `CacheFirst` (10 entries, 7-day TTL).
+    - Sensitive Endpoints explicitly `NetworkOnly`: `/api/admin/*`, `/api/subscription/*`, `/api/webhooks/*`, `/api/scan/*`, `/api/auth/*`, `/api/user/*`.
+  - Zero caching of `POST`, `PUT`, `PATCH`, `DELETE` mutations.
+- **IndexedDB Authoritative Offline Queue (`frontend/src/utils/offlineSync.ts`)**:
+  - Implemented versioned IndexedDB database (`z_sehealth_offline_db`, store `pending_meal_logs`).
+  - RFC 4122 v4 UUID generator for stable, client-side idempotency (`client_sync_id`), preserved across retries.
+  - User Isolation Guard (Section 46): Queued records explicitly bind `userId: currentUser.uid`. Meals queued by User A are never uploaded under User B's session upon login switch.
+  - Zero storage of authentication tokens, passwords, or secrets in IndexedDB; fresh Firebase tokens are extracted at execution time.
+  - Bounded exponential backoff with random jitter (`getBackoffDelayMs`).
+  - Single-flight concurrency coordination: Web Locks API (`navigator.locks.request('z_sehealth_sync_lock')`) with in-memory mutex fallback, eliminating multi-tab race conditions.
+  - Error classification:
+    - HTTP 2xx: Removes record from IndexedDB, increments `synced`.
+    - HTTP 401/403: Halts cycle, flags `requiresAuth`, retains queue for re-authentication.
+    - HTTP 400/422: Quarantines invalid item to prevent infinite poison pill retry loops.
+    - HTTP 5xx / Network Disconnect: Retains item in queue, increments retry count with backoff.
+  - Event dispatch: Dispatches `z-queued-meal-updated` on all queue mutations.
+- **Offline Meal Logging Flow (`frontend/src/context/UserStatsContext.tsx`)**:
+  - `logMeal`: Directly queues to IndexedDB when offline, updates visible local state optimistically, and informs user with truthful microcopy: `"Meal saved locally. It will sync when you're back online."`.
+  - Online fallback: If online `fetch` fails due to a network drop, gracefully falls back to IndexedDB queue with zero data loss.
+- **Accessible Offline & Synchronization Header Indicators (`frontend/src/App.tsx`)**:
+  - Implemented all 5 UI states: Offline (`⚡ Offline Mode — Local data active`), Syncing (`↻ Syncing queued meals…`), Synced (`✓ Synced queued meals`), Pending (`○ X meals waiting to sync`), Sync failure (`! Sync needs attention`).
+  - Responsive layout: Desktop badge + Mobile status banner below navigation.
+  - Accessibility: `role="status"` and `aria-live="polite"` attributes announce state transitions cleanly without stealing focus.
+- **4-Tier Food Search Fallback (`frontend/src/components/Search.tsx`)**:
+  - Deterministic priority: 1. Fresh Network Result → 2. Cached Food Result (`z_sehealth_cached_search_foods`) → 3. `DEFAULT_FALLBACK_FOODS` (canonical 18+ regional foods) → 4. Controlled Empty State.
+- **Automated Verification & Build**:
+  - Expanded unit test suite in `frontend/src/utils/offlineSync.test.ts` (9 comprehensive unit tests covering UUID generation, backoff calculation, user isolation, idempotency, and 401 expiration).
+  - Frontend Vitest: **66/66 tests passing (100%)**.
+  - Backend pytest: **149/149 tests passing (100%)**.
+  - Frontend production build (`tsc -b && vite build`): **Exit code 0**, successfully generating `dist/sw.js` and `dist/manifest.webmanifest`.
+
+---
+
+## 🗓️ Previous Session Summary (Multi-Provider Quick-Commerce Grocery Export & Deep-Linking Engine)
 - **Centralized Provider Utility & Deterministic Sanitization Engine (`frontend/src/utils/groceryDeepLinks.ts`)**:
   - Implemented pure, deterministic, side-effect free, strictly typed deep-link search generator for **Blinkit**, **Zepto**, and **Swiggy Instamart**.
   - Built comprehensive culinary noise stripper removing preparation descriptors (`steamed`, `roasted`, `boiled`, `fried`, `grilled`, `baked`, `sautéed`, `finely chopped`, `roughly chopped`, `diced`, `sliced`, `minced`, `crushed`, `mashed`, `pureed`, `grated`, `soaked`, `sprouted`, `peeled`, `deseeded`, `fresh`, etc.).

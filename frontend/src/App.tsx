@@ -19,7 +19,7 @@ import { useUserProfile } from './context/UserProfileContext';
 import Footer from './components/Footer';
 import LegalViewer from './components/legal/LegalViewer';
 import MealPlanner from './components/MealPlanner';
-import { syncQueuedMealsToServer } from './utils/offlineSync';
+import { syncQueuedMealsToServer, getQueuedMealCount } from './utils/offlineSync';
 
 export type AppTab = 'dashboard' | 'search' | 'scan' | 'profile' | 'settings' | 'pricing' | 'admin' | 'privacy' | 'terms' | 'refund' | 'cookies' | 'planner';
 
@@ -53,6 +53,7 @@ function App() {
   // --- Offline & Sync States ---
   const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
   const [syncStatusMessage, setSyncStatusMessage] = useState<string | null>(null);
+  const [pendingCount, setPendingCount] = useState<number>(0);
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { currentUser, setShowLoginModal, logout } = useAuth();
@@ -141,27 +142,76 @@ function App() {
     };
   }, []);
 
+  // --- Track offline queued meals count ---
+  useEffect(() => {
+    let isMounted = true;
+    const updatePendingCount = async () => {
+      try {
+        const count = await getQueuedMealCount();
+        if (isMounted) setPendingCount(count);
+      } catch {
+        // IDB unavailable
+      }
+    };
+    updatePendingCount();
+
+    window.addEventListener('z-queued-meal-updated', updatePendingCount);
+    return () => {
+      isMounted = false;
+      window.removeEventListener('z-queued-meal-updated', updatePendingCount);
+    };
+  }, []);
+
   // --- Network status & Background Sync on reconnection ---
   useEffect(() => {
     const handleOnline = async () => {
       setIsOffline(false);
+      setSyncStatusMessage('↻ Syncing queued meals…');
       try {
         const result = await syncQueuedMealsToServer();
+        const remaining = await getQueuedMealCount();
+        setPendingCount(remaining);
+
         if (result.synced > 0) {
-          setSyncStatusMessage(`✓ Synced ${result.synced} queued meal${result.synced > 1 ? 's' : ''}`);
+          setSyncStatusMessage(result.synced === 1 ? '✓ Synced queued meals' : `✓ Synced ${result.synced} queued meals`);
           if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
           syncTimeoutRef.current = setTimeout(() => {
             setSyncStatusMessage(null);
           }, 3000);
+        } else if (result.requiresAuth > 0) {
+          setSyncStatusMessage('! Sign in to sync pending meals');
+          if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+          syncTimeoutRef.current = setTimeout(() => {
+            setSyncStatusMessage(null);
+          }, 5000);
+        } else if (result.failed > 0) {
+          setSyncStatusMessage('! Sync needs attention');
+          if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+          syncTimeoutRef.current = setTimeout(() => {
+            setSyncStatusMessage(null);
+          }, 4000);
+        } else {
+          setSyncStatusMessage(null);
         }
       } catch (err) {
         console.error("Background sync error on online event:", err);
+        setSyncStatusMessage('! Sync needs attention');
+        if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+        syncTimeoutRef.current = setTimeout(() => {
+          setSyncStatusMessage(null);
+        }, 4000);
       }
     };
 
-    const handleOffline = () => {
+    const handleOffline = async () => {
       setIsOffline(true);
       setSyncStatusMessage(null);
+      try {
+        const count = await getQueuedMealCount();
+        setPendingCount(count);
+      } catch {
+        // ignore
+      }
     };
 
     window.addEventListener('online', handleOnline);
@@ -273,19 +323,23 @@ function App() {
             )}
           </nav>
 
-          <div className="hidden md:flex items-center gap-3">
-            {isOffline && (
+          <div className="hidden md:flex items-center gap-3" role="status" aria-live="polite">
+            {isOffline ? (
               <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-300 border border-amber-500/30 flex items-center gap-1.5 shadow-sm">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
                 ⚡ Offline Mode — Local data active
               </span>
-            )}
-            {syncStatusMessage && (
+            ) : syncStatusMessage ? (
               <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5 shadow-sm animate-in fade-in duration-300">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                 {syncStatusMessage}
               </span>
-            )}
+            ) : pendingCount > 0 ? (
+              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-sky-500/10 text-sky-300 border border-sky-500/30 flex items-center gap-1.5 shadow-sm animate-in fade-in duration-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
+                ○ {pendingCount} meal{pendingCount > 1 ? 's' : ''} waiting to sync
+              </span>
+            ) : null}
             {currentUser ? (
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2 bg-amber-500/10 px-3 py-1.5 rounded-xl border border-amber-500/20 shadow-sm">
@@ -339,21 +393,28 @@ function App() {
         </div>
 
         {/* Mobile Offline / Sync Status Banner */}
-        {(isOffline || syncStatusMessage) && (
-          <div className="md:hidden w-full pb-2.5 flex justify-center px-4">
-            {isOffline ? (
-              <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/30 flex items-center gap-1.5 shadow-sm">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                ⚡ Offline Mode — Local data active
-              </span>
-            ) : (
-              <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5 shadow-sm animate-in fade-in duration-300">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                {syncStatusMessage}
-              </span>
-            )}
-          </div>
-        )}
+        <div role="status" aria-live="polite" className="md:hidden">
+          {(isOffline || syncStatusMessage || pendingCount > 0) && (
+            <div className="w-full pb-2.5 flex justify-center px-4">
+              {isOffline ? (
+                <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/30 flex items-center gap-1.5 shadow-sm">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                  ⚡ Offline Mode — Local data active
+                </span>
+              ) : syncStatusMessage ? (
+                <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5 shadow-sm animate-in fade-in duration-300">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  {syncStatusMessage}
+                </span>
+              ) : pendingCount > 0 ? (
+                <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-sky-500/10 text-sky-300 border border-sky-500/30 flex items-center gap-1.5 shadow-sm animate-in fade-in duration-300">
+                  <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
+                  ○ {pendingCount} meal{pendingCount > 1 ? 's' : ''} waiting to sync
+                </span>
+              ) : null}
+            </div>
+          )}
+        </div>
       </header>
 
       {/* ---- Freemium: PaymentStatus Overlay ---- */}
