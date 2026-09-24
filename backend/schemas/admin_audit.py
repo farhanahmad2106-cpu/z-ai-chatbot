@@ -31,11 +31,14 @@ class AdminAuditEvent(BaseModel):
     event_id: str = Field(description="Unique immutable identifier for this audit event")
     schema_version: int = Field(default=1, description="Audit event schema version for backward compatibility")
     action: AuditActionType = Field(description="The privileged administrative action performed")
-    admin_email: str = Field(description="Email address of the authenticated administrator who initiated the mutation")
+    actor_id: Optional[str] = Field(default=None, description="Stable user/admin ID of the actor")
+    actor_email: Optional[str] = Field(default=None, description="Email of the authenticated administrator")
+    admin_email: str = Field(description="Email address of the authenticated administrator (canonical/backwards-compat)")
     target_resource_id: str = Field(description="Unique identifier of the target resource mutated")
     target_resource_type: AuditResourceType = Field(description="Classification of target resource")
     details: Dict[str, Any] = Field(default_factory=dict, description="Structured non-sensitive mutation metadata")
     ip_address: Optional[str] = Field(default=None, description="IP address of the administrator if available")
+    request_id: Optional[str] = Field(default=None, description="Correlation request ID")
     timestamp: datetime = Field(description="Timezone-aware UTC timestamp of the audit event")
 
 
@@ -44,3 +47,4 @@ class AdminAuditListResponse(BaseModel):
     total: int = Field(description="Total count of audit events matching query filters")
     skip: int = Field(description="Pagination offset")
     limit: int = Field(description="Pagination limit")
+    has_more: bool = Field(default=False, description="Flag indicating if more records exist beyond the current page")

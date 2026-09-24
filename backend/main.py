@@ -139,8 +139,14 @@ async def background_db_init():
         await admin_audit_logs_collection.create_index([("timestamp", -1)], background=True)
         await admin_audit_logs_collection.create_index([("action", 1)], background=True)
         await admin_audit_logs_collection.create_index([("admin_email", 1)], background=True)
+        await admin_audit_logs_collection.create_index([("actor_email", 1)], background=True)
+        await admin_audit_logs_collection.create_index([("actor_id", 1)], background=True)
         await admin_audit_logs_collection.create_index(
             [("action", 1), ("admin_email", 1), ("timestamp", -1)],
+            background=True
+        )
+        await admin_audit_logs_collection.create_index(
+            [("target_resource_type", 1), ("target_resource_id", 1), ("timestamp", -1)],
             background=True
         )
         await users_collection.create_index([("processed_sync_ids", 1)], background=True)

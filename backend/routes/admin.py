@@ -160,33 +160,47 @@ async def log_admin_audit_event(
     action: AuditActionType,
     target_resource_type: AuditResourceType,
     target_resource_id: str,
-    admin: Dict[str, Any],
-    details: Dict[str, Any],
+    admin: Optional[Dict[str, Any]] = None,
+    details: Optional[Dict[str, Any]] = None,
     request: Optional[Request] = None,
     raise_on_failure: bool = False,
+    actor: Optional[Dict[str, Any]] = None,
+    actor_id: Optional[str] = None,
 ) -> AdminAuditEvent:
     """
     Constructs and persists an immutable audit event in admin_audit_logs.
-    Derives admin identity and IP address strictly from authenticated backend context.
+    Derives admin identity, stable ID, and IP address strictly from authenticated backend context.
     """
-    admin_email = (admin.get("email") or "").strip().lower()
+    actor_dict = actor or admin or {}
+    actor_email = (actor_dict.get("email") or "").strip().lower()
+    admin_email = actor_email
+    derived_actor_id = actor_id or str(actor_dict.get("id") or actor_dict.get("_id") or actor_dict.get("uid") or "") or None
+
     ip_address = None
+    request_id = None
     if request:
         forwarded = request.headers.get("x-forwarded-for")
         if forwarded:
             ip_address = forwarded.split(",")[0].strip()
         elif request.client and request.client.host:
             ip_address = request.client.host
+        request_id = request.headers.get("x-request-id") or request.headers.get("x-correlation-id") or getattr(request.state, "request_id", None)
+
+    if not request_id:
+        request_id = f"req_{uuid4().hex[:12]}"
 
     event = AdminAuditEvent(
         event_id=f"audit_{uuid4().hex}",
         schema_version=1,
         action=action,
+        actor_id=derived_actor_id,
+        actor_email=actor_email,
         admin_email=admin_email,
         target_resource_id=str(target_resource_id),
         target_resource_type=target_resource_type,
-        details=_sanitize_audit_details(details),
+        details=_sanitize_audit_details(details or {}),
         ip_address=ip_address,
+        request_id=request_id,
         timestamp=datetime.now(timezone.utc),
     )
 
@@ -200,7 +214,7 @@ async def log_admin_audit_event(
             "ERROR",
             "AuditLog",
             f"Failed to record audit event {action} for {target_resource_id}",
-            {"error": str(e), "action": action, "admin_email": admin_email},
+            {"error": str(e), "action": action, "admin_email": admin_email, "actor_id": derived_actor_id},
         )
         if raise_on_failure:
             raise HTTPException(
@@ -1367,6 +1381,14 @@ async def process_refund(
     }
 
 
+def _sanitize_csv_cell(val: Any) -> str:
+    """Neutralizes spreadsheet formula injection prefixes (=, +, -, @)."""
+    s = str(val if val is not None else "")
+    if s and s[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return f"'{s}"
+    return s
+
+
 # --- 10. MULTI-ADMIN ACTIVITY AUDIT TRAIL ---
 @router.get("/audit-logs", response_model=AdminAuditListResponse)
 async def list_admin_audit_logs(
@@ -1388,9 +1410,10 @@ async def list_admin_audit_logs(
         query["action"] = action.upper()
 
     if admin_email and admin_email.strip():
-        query["admin_email"] = admin_email.strip().lower()
+        clean_email = admin_email.strip().lower()
+        query["$or"] = [{"admin_email": clean_email}, {"actor_email": clean_email}]
 
-    search_filter = _build_safe_regex_query(search, ["target_resource_id", "admin_email", "action"])
+    search_filter = _build_safe_regex_query(search, ["target_resource_id", "admin_email", "actor_email", "action"])
     if search_filter:
         query.update(search_filter)
 
@@ -1401,23 +1424,29 @@ async def list_admin_audit_logs(
     async for doc in cursor:
         items.append(
             AdminAuditEvent(
-                event_id=doc["event_id"],
+                event_id=doc.get("event_id") or str(doc.get("_id") or ""),
                 schema_version=doc.get("schema_version", 1),
                 action=doc["action"],
-                admin_email=doc["admin_email"],
+                actor_id=doc.get("actor_id"),
+                actor_email=doc.get("actor_email") or doc.get("admin_email"),
+                admin_email=doc.get("admin_email") or doc.get("actor_email") or "",
                 target_resource_id=doc["target_resource_id"],
                 target_resource_type=doc["target_resource_type"],
                 details=doc.get("details", {}),
                 ip_address=doc.get("ip_address"),
+                request_id=doc.get("request_id"),
                 timestamp=doc["timestamp"] if isinstance(doc["timestamp"], datetime) else datetime.fromisoformat(str(doc["timestamp"])),
             )
         )
+
+    has_more = (skip + len(items)) < total
 
     return AdminAuditListResponse(
         items=items,
         total=total,
         skip=skip,
         limit=limit,
+        has_more=has_more,
     )
 
 
@@ -1432,6 +1461,7 @@ async def export_admin_audit_logs_csv(
     Streams CSV formatted administrative audit records matching active filters.
     Restricted strictly to Super Admin clearance. Uses StreamingResponse with an async generator
     over the Motor cursor, streaming individual RFC 4180 rows to prevent high memory pressure.
+    Applies formula injection defense against spreadsheet execution.
     """
     col = _get_audit_logs_collection()
     query: Dict[str, Any] = {}
@@ -1440,9 +1470,10 @@ async def export_admin_audit_logs_csv(
         query["action"] = action.upper()
 
     if admin_email and admin_email.strip():
-        query["admin_email"] = admin_email.strip().lower()
+        clean_email = admin_email.strip().lower()
+        query["$or"] = [{"admin_email": clean_email}, {"actor_email": clean_email}]
 
-    search_filter = _build_safe_regex_query(search, ["target_resource_id", "admin_email", "action"])
+    search_filter = _build_safe_regex_query(search, ["target_resource_id", "admin_email", "actor_email", "action"])
     if search_filter:
         query.update(search_filter)
 
@@ -1466,6 +1497,8 @@ async def export_admin_audit_logs_csv(
             "target_resource_id",
             "ip_address",
             "details",
+            "request_id",
+            "actor_id",
         ])
         yield header_buf.getvalue()
 
@@ -1475,15 +1508,18 @@ async def export_admin_audit_logs_csv(
             row_writer = csv.writer(row_buf, quoting=csv.QUOTE_MINIMAL)
             ts = doc.get("timestamp")
             ts_str = ts.isoformat() if isinstance(ts, datetime) else str(ts)
+            details_json = json.dumps(doc.get("details", {}))
             row_writer.writerow([
-                doc.get("event_id", ""),
+                _sanitize_csv_cell(doc.get("event_id", "")),
                 ts_str,
-                doc.get("action", ""),
-                doc.get("admin_email", ""),
-                doc.get("target_resource_type", ""),
-                doc.get("target_resource_id", ""),
-                doc.get("ip_address", "") or "null",
-                json.dumps(doc.get("details", {})),
+                _sanitize_csv_cell(doc.get("action", "")),
+                _sanitize_csv_cell(doc.get("admin_email", "") or doc.get("actor_email", "")),
+                _sanitize_csv_cell(doc.get("target_resource_type", "")),
+                _sanitize_csv_cell(doc.get("target_resource_id", "")),
+                _sanitize_csv_cell(doc.get("ip_address", "") or "null"),
+                _sanitize_csv_cell(details_json),
+                _sanitize_csv_cell(doc.get("request_id", "") or ""),
+                _sanitize_csv_cell(doc.get("actor_id", "") or ""),
             ])
             yield row_buf.getvalue()
 

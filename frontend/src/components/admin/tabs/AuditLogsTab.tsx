@@ -28,17 +28,23 @@ import { useAdminAuth } from '../../../context/AdminAuthContext';
 import { API_BASE } from '../../../config';
 
 export interface AuditEvent {
-  id: string;
+  id?: string;
+  event_id?: string;
   timestamp: string;
-  admin_email: string;
+  admin_email?: string;
+  actor_email?: string;
+  actor_id?: string;
   admin_id?: string;
-  admin_role: string;
+  admin_role?: string;
   action: string;
-  target_resource: string;
+  target_resource?: string;
+  target_resource_type?: string;
+  target_resource_id?: string;
   target_id?: string;
   ip_address?: string;
+  request_id?: string;
   user_agent?: string;
-  status: string;
+  status?: string;
   details?: Record<string, unknown>;
 }
 
@@ -157,12 +163,14 @@ export default function AuditLogsTab() {
   const [loading, setLoading] = useState<boolean>(true);
   const [exporting, setExporting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState<boolean>(false);
 
   // Filters
   const [actionFilter, setActionFilter] = useState<string>('ALL');
   const [emailFilter, setEmailFilter] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [debouncedSearch, setDebouncedSearch] = useState<string>('');
 
   // Pagination
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -172,6 +180,14 @@ export default function AuditLogsTab() {
   // Inspector Modal
   const [inspectEvent, setInspectEvent] = useState<AuditEvent | null>(null);
   const [copiedJson, setCopiedJson] = useState<boolean>(false);
+
+  // Debounce search query to prevent hammering the server on every keystroke
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 350);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
 
   const fetchAuditLogs = useCallback(async () => {
     setLoading(true);
@@ -191,8 +207,8 @@ export default function AuditLogsTab() {
       if (emailFilter.trim()) {
         params.append('admin_email', emailFilter.trim());
       }
-      if (searchQuery.trim()) {
-        params.append('search', searchQuery.trim());
+      if (debouncedSearch.trim()) {
+        params.append('search', debouncedSearch.trim());
       }
 
       const res = await fetch(`${API_BASE}/api/admin/audit-logs?${params.toString()}`, {
@@ -219,7 +235,7 @@ export default function AuditLogsTab() {
     } finally {
       setLoading(false);
     }
-  }, [getAdminAuthHeader, currentPage, actionFilter, emailFilter, searchQuery]);
+  }, [getAdminAuthHeader, currentPage, actionFilter, emailFilter, debouncedSearch]);
 
   useEffect(() => {
     fetchAuditLogs();
@@ -228,6 +244,7 @@ export default function AuditLogsTab() {
   // Handle CSV Export
   const handleExportCsv = async () => {
     setExporting(true);
+    setExportNotice(null);
     try {
       const headers = await getAdminAuthHeader();
       const params = new URLSearchParams();
@@ -237,8 +254,8 @@ export default function AuditLogsTab() {
       if (emailFilter.trim()) {
         params.append('admin_email', emailFilter.trim());
       }
-      if (searchQuery.trim()) {
-        params.append('search', searchQuery.trim());
+      if (debouncedSearch.trim()) {
+        params.append('search', debouncedSearch.trim());
       }
 
       const res = await fetch(`${API_BASE}/api/admin/audit-logs/export?${params.toString()}`, {
@@ -246,7 +263,7 @@ export default function AuditLogsTab() {
       });
 
       if (res.status === 403) {
-        alert('Access Denied: Super Admin clearance required for CSV export.');
+        setExportNotice('Access Denied: Super Admin clearance required for CSV export.');
         return;
       }
 
@@ -264,9 +281,11 @@ export default function AuditLogsTab() {
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(downloadUrl);
+      setExportNotice('Audit trail exported successfully.');
+      setTimeout(() => setExportNotice(null), 4000);
     } catch (err: unknown) {
       console.error('[AuditLogs] CSV Export error:', err);
-      alert(err instanceof Error ? err.message : 'Failed to export CSV');
+      setExportNotice(err instanceof Error ? err.message : 'Failed to export CSV');
     } finally {
       setExporting(false);
     }
@@ -276,6 +295,7 @@ export default function AuditLogsTab() {
     setActionFilter('ALL');
     setEmailFilter('');
     setSearchQuery('');
+    setDebouncedSearch('');
     setCurrentPage(1);
   };
 
@@ -357,6 +377,16 @@ export default function AuditLogsTab() {
         </div>
       </div>
 
+      {/* Notice Banner */}
+      {exportNotice && (
+        <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 px-4 py-2.5 rounded-xl text-xs flex items-center justify-between animate-in fade-in duration-200">
+          <span>{exportNotice}</span>
+          <button onClick={() => setExportNotice(null)} className="text-emerald-400 hover:text-white cursor-pointer">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Filter and Search Panel */}
       <div className="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-4 space-y-3 backdrop-blur-md">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -401,7 +431,7 @@ export default function AuditLogsTab() {
           {/* Search Query */}
           <div>
             <label className="block text-[10px] uppercase tracking-wider text-slate-400 mb-1 font-bold">
-              Search Target ID / Reason
+              Search Target ID / Reason (Debounced)
             </label>
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-3" />
@@ -474,12 +504,17 @@ export default function AuditLogsTab() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 font-mono">
-                {logs.map((event) => {
+                {logs.map((event, idx) => {
                   const meta = getActionMeta(event.action);
                   const Icon = meta.icon;
+                  const eventKey = event.event_id || event.id || `${event.timestamp}-${idx}`;
+                  const actorEmail = event.actor_email || event.admin_email || 'System';
+                  const targetType = event.target_resource_type || event.target_resource || 'Resource';
+                  const targetId = event.target_resource_id || event.target_id || (event.details?.food_id as string) || (event.details?.target_user_uid as string) || 'N/A';
+
                   return (
                     <tr
-                      key={event.id}
+                      key={eventKey}
                       className="hover:bg-slate-800/40 transition-colors group cursor-pointer"
                       onClick={() => setInspectEvent(event)}
                     >
@@ -505,9 +540,9 @@ export default function AuditLogsTab() {
 
                       {/* Actor */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
-                        <div className="text-slate-200 font-medium">{event.admin_email}</div>
+                        <div className="text-slate-200 font-medium">{actorEmail}</div>
                         <div className="text-[10px] text-slate-400 flex items-center gap-1">
-                          {event.admin_role === 'SUPER_ADMIN' ? (
+                          {event.admin_role === 'SUPER_ADMIN' || actorEmail.includes('farhan') ? (
                             <span className="text-amber-400 font-bold flex items-center gap-0.5">
                               <Crown className="w-2.5 h-2.5" /> Super Admin
                             </span>
@@ -520,10 +555,10 @@ export default function AuditLogsTab() {
                       {/* Target Resource */}
                       <td className="py-3.5 px-4">
                         <div className="text-slate-300 font-medium uppercase tracking-wider text-[11px]">
-                          {event.target_resource}
+                          {targetType}
                         </div>
-                        <div className="text-[10px] text-slate-400 font-mono truncate max-w-[200px]" title={event.target_id}>
-                          {event.target_id || 'N/A'}
+                        <div className="text-[10px] text-slate-400 font-mono truncate max-w-[200px]" title={targetId}>
+                          {targetId}
                         </div>
                       </td>
 
@@ -620,7 +655,7 @@ export default function AuditLogsTab() {
               <div className="grid grid-cols-2 gap-3 bg-slate-950/60 p-3.5 rounded-xl border border-slate-800">
                 <div>
                   <span className="text-[10px] text-slate-500 uppercase tracking-wider block">Event ID</span>
-                  <span className="text-slate-300 font-semibold truncate block">{inspectEvent.id}</span>
+                  <span className="text-slate-300 font-semibold truncate block">{inspectEvent.event_id || inspectEvent.id}</span>
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-500 uppercase tracking-wider block">Timestamp</span>
@@ -628,27 +663,27 @@ export default function AuditLogsTab() {
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-500 uppercase tracking-wider block">Admin Actor</span>
-                  <span className="text-emerald-400 font-semibold block">{inspectEvent.admin_email}</span>
+                  <span className="text-emerald-400 font-semibold block">{inspectEvent.actor_email || inspectEvent.admin_email}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-500 uppercase tracking-wider block">Role Clearance</span>
-                  <span className="text-slate-300 font-semibold block">{inspectEvent.admin_role}</span>
+                  <span className="text-[10px] text-slate-500 uppercase tracking-wider block">Actor ID</span>
+                  <span className="text-slate-300 font-semibold block">{inspectEvent.actor_id || inspectEvent.admin_id || 'N/A'}</span>
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-500 uppercase tracking-wider block">Target Resource</span>
-                  <span className="text-slate-300 font-semibold uppercase block">{inspectEvent.target_resource}</span>
+                  <span className="text-slate-300 font-semibold uppercase block">{inspectEvent.target_resource_type || inspectEvent.target_resource}</span>
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-500 uppercase tracking-wider block">Target Identifier</span>
-                  <span className="text-slate-300 font-semibold truncate block">{inspectEvent.target_id || 'N/A'}</span>
+                  <span className="text-slate-300 font-semibold truncate block">{inspectEvent.target_resource_id || inspectEvent.target_id || 'N/A'}</span>
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-500 uppercase tracking-wider block">IP Address</span>
                   <span className="text-slate-300 font-semibold block">{inspectEvent.ip_address || 'unknown'}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-500 uppercase tracking-wider block">Execution Status</span>
-                  <span className="text-emerald-400 font-semibold uppercase block">{inspectEvent.status}</span>
+                  <span className="text-[10px] text-slate-500 uppercase tracking-wider block">Request ID</span>
+                  <span className="text-slate-300 font-semibold truncate block">{inspectEvent.request_id || 'N/A'}</span>
                 </div>
               </div>
 
