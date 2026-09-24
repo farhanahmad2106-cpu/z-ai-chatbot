@@ -470,6 +470,21 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
     }
   }, [currentUser]);
 
+  // Automatically reconcile authoritative user stats whenever queued meals are synced
+  useEffect(() => {
+    const handleQueuedMealSynced = (event: Event) => {
+      const customEvent = event as CustomEvent<SyncResult>;
+      if (customEvent.detail?.synced && customEvent.detail.synced > 0) {
+        fetchStats();
+      }
+    };
+
+    window.addEventListener('z-queued-meal-synced', handleQueuedMealSynced);
+    return () => {
+      window.removeEventListener('z-queued-meal-synced', handleQueuedMealSynced);
+    };
+  }, [fetchStats]);
+
   const syncQueuedMeals = useCallback(async (): Promise<SyncResult> => {
     const result = await syncQueuedMealsToServer();
     if (result.synced > 0) {

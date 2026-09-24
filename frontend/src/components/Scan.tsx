@@ -120,7 +120,16 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
         }
       }
 
-      // 2 & 3. Backend Catalog -> Open Food Facts cascade
+      // 2. Check offline state: if offline, do not attempt remote network catalog
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        setBarcodeNotFound(true);
+        setScanError('Offline Mode: Barcode not in local cache. Connect to the internet to query the global food catalog.');
+        setLoading(false);
+        if (navigator.vibrate) navigator.vibrate([50, 100, 50, 100]);
+        return;
+      }
+
+      // 3. Remote Enrichment: Backend Catalog -> Open Food Facts cascade
       const response = await fetch(`${API_BASE}/api/foods/barcode/${barcode}`, {
         signal: abortControllerRef.current.signal
       });
@@ -128,6 +137,18 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
         const data = await response.json();
         setAnalysisResult(data);
         if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+
+        // Persist newly fetched barcode food into local cache for future offline lookups
+        try {
+          const currentCached = localStorage.getItem('z_sehealth_cached_search_foods');
+          const list = currentCached ? JSON.parse(currentCached) : [];
+          if (!list.some((item: any) => item.barcode === barcode || item._id === data._id)) {
+            list.unshift({ ...data, barcode });
+            localStorage.setItem('z_sehealth_cached_search_foods', JSON.stringify(list.slice(0, 100)));
+          }
+        } catch {
+          // Ignore local cache write error
+        }
       } else {
         // 4. OCR Fallback UI trigger
         setBarcodeNotFound(true);

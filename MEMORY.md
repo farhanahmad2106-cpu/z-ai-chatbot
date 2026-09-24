@@ -1,11 +1,48 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-24 (Session: Master Implementation — Multi-Provider Quick-Commerce Export & Deep-Linking Engine)
+> **Last Updated:** 2026-09-24 (Session: Master Implementation — Track 2: Production Offline-First PWA, IndexedDB Queue & Background Sync Engine)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-24
+**Work Done — Track 2: Production Offline-First PWA, IndexedDB Queue & Background Sync Engine:**
+- **PWA & Workbox Runtime Caching Hardening (`frontend/vite.config.ts`)**:
+  - Validated PWA manifest (`name: "Z-SeHealth: AI Food & Chemical Analyzer"`, `short_name: "Z-SeHealth"`, theme/bg `#020617`, standalone display, verified existing `/pwa-192x192.png` and `/pwa-512x512.png` maskable icons).
+  - Precached application shell (`index.html`, JS, CSS, fonts, legal docs) with navigation fallback to `/index.html` (API denylist `/^\/api/`).
+  - Scoped public food catalog runtime caching: `StaleWhileRevalidate` on `/api/foods*` and `/api/search/food*` with `maxAgeSeconds: 86400` (24 hours per spec) and `maxEntries: 100`.
+  - Hardened security route boundary: strict `NetworkOnly` on `/api/(?:admin|subscription|webhooks|scan|user|auth|payment|compliance)(?:\/.*)?$`, completely blocking cached storage of health vault, user profiles, consent records, admin dashboards, auth tokens, or payment data.
+- **Authoritative Versioned IndexedDB Queue & Multi-Tab Synchronization Engine (`frontend/src/utils/offlineSync.ts`)**:
+  - Implemented versioned IndexedDB database (`z_sehealth_offline_db` v2) with isolated stores: `pending_meal_logs` and `sync_leases`.
+  - Non-destructive `onupgradeneeded` migration safely preserves existing queued records.
+  - Generates RFC 4122 v4 UUID `client_sync_id` exactly once upon queue insertion, stably reused across all network retries for idempotent server processing.
+  - Implemented authoritative `QueuedMealLog` contract with `retryCount`, `attempts`, `nextAttemptAt`, `lastError`, `status` (`pending`, `quarantined`, `failed`), and exported `NewQueuedMealLog` type.
+  - Implemented typed public APIs: `queueOfflineMeal`, `getQueuedMeals`, `clearQueuedMeal`, `getQueuedMealCount`, `markMealRetry`, `acquireIndexedDBLease`, `releaseIndexedDBLease`.
+  - **Two-Tier Cross-Tab Concurrency Guard**:
+    - Tier 1: Web Locks API (`navigator.locks.request('z_sehealth_sync_lock', { ifAvailable: true })`).
+    - Tier 2: IndexedDB Lease Mutex (`sync_leases` store) with `ownerId` (tab session ID), `acquiredAt`, 15-second `expiresAt`, safe cleanup, and automatic stale-lease recovery.
+    - Tier 3: In-memory execution mutex (`isSyncingInMemory`).
+    - Real-time cross-tab event notification via `BroadcastChannel('z_sehealth_sync_channel')`.
+  - **Bounded Exponential Backoff & Error Classification**:
+    - Network Disconnect / 500 / 502 / 503 / 504: Increments `retryCount`, schedules jittered exponential backoff (`getBackoffDelayMs`), transitions to `'failed'` after 5 retries.
+    - 429 Rate Limiting: Parses `Retry-After` header when provided, fallback to exponential backoff.
+    - 401 / 403 Expired Auth: Immediately pauses sync cycle without dropping queue items; sets `requiresAuth` and surfaces actionable re-authentication prompt.
+    - 400 / 404 / 422 Bad Request / Validation: Transitions item to `'quarantined'`, preventing poison-pill blocking of subsequent valid items.
+- **Stats Reconciliation & Double-Counting Prevention (`frontend/src/context/UserStatsContext.tsx`)**:
+  - Added event listener for `z-queued-meal-synced` CustomEvent: triggers background `fetchStats()` when meals are confirmed by the server, synchronizing canonical server totals without double counting.
+- **Client-Side Barcode Decoding & Local Cache Population (`frontend/src/components/Scan.tsx`)**:
+  - Separated offline client-side ZXing decoding from network-bound Open Food Facts / backend AI catalog enrichment.
+  - Offline lookup checks local `z_sehealth_cached_search_foods` first; if offline and missing, gracefully alerts user that network is required for initial catalog lookup.
+  - When online fetch succeeds, automatically persists barcode items to `z_sehealth_cached_search_foods` for instant future offline scanning.
+- **Automated Verification**:
+  - Frontend Vitest suite: **84/84 passed (100%)** (added 4 new tests covering Web Locks concurrency, IndexedDB lease fallback, stale lease recovery, 429 Retry-After, and idempotent server deduplication).
+  - Backend pytest suite: **153/153 passed (100%)**.
+  - Production build: `npm --prefix frontend run build` completed with **0 TypeScript errors (exit code 0)**; verified `dist/sw.js` and `dist/manifest.webmanifest`.
+
+---
+
+## 🗓️ Previous Session Summary (Multi-Provider Quick-Commerce Export & Deep-Linking Engine)
 **Date:** 2026-09-24
 **Work Done — Multi-Provider Quick-Commerce Export & Deep-Linking Engine:**
 - **Centralized Provider Utility & Pure Sanitization Engine (`frontend/src/utils/groceryDeepLinks.ts`)**:

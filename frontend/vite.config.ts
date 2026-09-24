@@ -78,7 +78,7 @@ export default defineConfig({
               cacheName: 'z-sehealth-food-api-v1',
               expiration: {
                 maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24 * 7 // 7 days
+                maxAgeSeconds: 60 * 60 * 24 // 24 hours per offline-first spec
               },
               cacheableResponse: {
                 statuses: [0, 200]
@@ -130,9 +130,9 @@ export default defineConfig({
               }
             }
           },
-          // 5. SECURITY SENSITIVE ROUTES - NetworkOnly (never cache admin, subscription, webhooks, scan)
+          // 5. SECURITY SENSITIVE ROUTES - NetworkOnly (never cache admin, subscription, webhooks, user, auth, payment, compliance, scan)
           {
-            urlPattern: ({ url }) => /\/api\/(?:admin|subscription|webhooks|scan)\/.*/i.test(url.pathname),
+            urlPattern: ({ url }) => /\/api\/(?:admin|subscription|webhooks|scan|user|auth|payment|compliance)(?:\/.*)?$/i.test(url.pathname),
             handler: 'NetworkOnly'
           }
         ]
