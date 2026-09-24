@@ -16,6 +16,7 @@ export interface QuickCommerceLinks {
 
 export interface QuickCommerceProviderConfig {
   id: QuickCommerceProvider;
+  name: string;
   label: string;
   shortLabel: string;
 }
@@ -27,18 +28,37 @@ export interface ProviderConfig extends QuickCommerceProviderConfig {
 }
 
 export interface GrocerySearchItem {
-  id: string;
-  rawName: string;
-  sanitizedName: string;
-  quantity?: string;
-  department?: string;
+  name: string;
+  quantity: string;
+  searchName: string;
   checked: boolean;
+  id?: string;
+  rawName?: string;
+  sanitizedName?: string;
+  department?: string;
 }
 
-export type RunnerState = 'idle' | 'running' | 'paused' | 'blocked' | 'completed';
+export type RunnerStatus =
+  | 'idle'
+  | 'running'
+  | 'paused'
+  | 'blocked'
+  | 'completed'
+  | 'stopped';
+
+export type RunnerState = RunnerStatus;
 export type ItemRunnerStatus = 'pending' | 'opened' | 'blocked' | 'skipped';
 
 export const DEFAULT_OPEN_DELAY_MS = 800;
+
+/**
+ * Strict allowlist of approved provider origins.
+ */
+export const ALLOWED_PROVIDER_ORIGINS = [
+  'https://blinkit.com',
+  'https://www.zeptonow.com',
+  'https://www.swiggy.com',
+] as const;
 
 /**
  * Centralized Provider Configuration
@@ -47,6 +67,7 @@ export const DEFAULT_OPEN_DELAY_MS = 800;
 export const PROVIDER_CONFIG: Record<QuickCommerceProvider, ProviderConfig> = {
   blinkit: {
     id: 'blinkit',
+    name: 'Blinkit',
     label: 'Blinkit',
     shortLabel: 'Blinkit',
     accentColor: 'text-amber-400',
@@ -58,6 +79,7 @@ export const PROVIDER_CONFIG: Record<QuickCommerceProvider, ProviderConfig> = {
   },
   zepto: {
     id: 'zepto',
+    name: 'Zepto',
     label: 'Zepto',
     shortLabel: 'Zepto',
     accentColor: 'text-purple-400',
@@ -69,6 +91,7 @@ export const PROVIDER_CONFIG: Record<QuickCommerceProvider, ProviderConfig> = {
   },
   instamart: {
     id: 'instamart',
+    name: 'Swiggy Instamart',
     label: 'Swiggy Instamart',
     shortLabel: 'Instamart',
     accentColor: 'text-orange-400',
@@ -81,13 +104,81 @@ export const PROVIDER_CONFIG: Record<QuickCommerceProvider, ProviderConfig> = {
 };
 
 /**
- * Allowed base search URL prefixes for external link security review.
+ * Validates that a generated or provided search URL strictly conforms to approved provider origins and paths.
  */
-const ALLOWED_URL_PREFIXES = [
-  'https://blinkit.com/s/?q=',
-  'https://www.zeptonow.com/search?query=',
-  'https://www.swiggy.com/instamart/search?custom_back=true&query=',
-];
+export function isValidProviderUrl(url: string, expectedProvider?: QuickCommerceProvider): boolean {
+  if (!url || typeof url !== 'string') return false;
+
+  // Strict protocol/scheme check: Disallow javascript:, data:, blob:, or plain http:
+  if (
+    url.startsWith('javascript:') ||
+    url.startsWith('data:') ||
+    url.startsWith('blob:') ||
+    url.startsWith('http://')
+  ) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:') return false;
+
+    if (expectedProvider === 'blinkit') {
+      return (
+        parsed.origin === 'https://blinkit.com' &&
+        parsed.pathname === '/s/' &&
+        parsed.searchParams.has('q') &&
+        Boolean(parsed.searchParams.get('q'))
+      );
+    }
+    if (expectedProvider === 'zepto') {
+      return (
+        parsed.origin === 'https://www.zeptonow.com' &&
+        parsed.pathname === '/search' &&
+        parsed.searchParams.has('query') &&
+        Boolean(parsed.searchParams.get('query'))
+      );
+    }
+    if (expectedProvider === 'instamart') {
+      return (
+        parsed.origin === 'https://www.swiggy.com' &&
+        parsed.pathname === '/instamart/search' &&
+        parsed.searchParams.has('query') &&
+        Boolean(parsed.searchParams.get('query'))
+      );
+    }
+
+    // If expectedProvider is unspecified, test against any allowed origin and search path
+    if (
+      parsed.origin === 'https://blinkit.com' &&
+      parsed.pathname === '/s/' &&
+      parsed.searchParams.has('q') &&
+      Boolean(parsed.searchParams.get('q'))
+    ) {
+      return true;
+    }
+    if (
+      parsed.origin === 'https://www.zeptonow.com' &&
+      parsed.pathname === '/search' &&
+      parsed.searchParams.has('query') &&
+      Boolean(parsed.searchParams.get('query'))
+    ) {
+      return true;
+    }
+    if (
+      parsed.origin === 'https://www.swiggy.com' &&
+      parsed.pathname === '/instamart/search' &&
+      parsed.searchParams.has('query') &&
+      Boolean(parsed.searchParams.get('query'))
+    ) {
+      return true;
+    }
+
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Known Indian grocery alias replacements (case-insensitive).
@@ -149,6 +240,7 @@ const CULINARY_DESCRIPTORS: RegExp[] = [
   /\bpeeled\b/gi,
   /\bdeseeded\b/gi,
   /\bfresh\b/gi,
+  /(?:^|\s+)(?:ताज़ा|ताजा)(?=\s+|$)/gi,
   /\bchutney\s+powder\b/gi,
 ];
 
@@ -161,16 +253,60 @@ const PROTECTED_COMPOUND_REGEX = /\b(chilli|red chilli|kashmiri chilli|coriander
  * Units pattern matching common metric, imperial, culinary, and count measures.
  */
 const UNITS_PATTERN =
-  '(?:g|gm|gms|gram|grams|kg|kgs|kilo|kilos|kilogram|kilograms|mg|ml|l|litre|litres|liter|liters|tsp|tbsp|teaspoon|teaspoons|tablespoon|tablespoons|cup|cups|piece|pieces|pcs|pc|bunch|bunches|packet|packets|pack|packs|pinch|pinches|clove|cloves|can|cans|slice|slices|medium|large|small)';
+  '(?:g|gm|gms|gram|grams|kg|kgs|kilo|kilos|kilogram|kilograms|mg|ml|l|litre|litres|liter|liters|tsp|tbsp|teaspoon|teaspoons|tablespoon|tablespoons|cup|cups|piece|pieces|pcs|pc|bunch|bunches|packet|packets|pack|packs|pinch|pinches|clove|cloves|can|cans|slice|slices|serving|servings|medium|large|small)';
 
 /**
- * Fraction and number pattern supporting Unicode fractions and slash notation.
- * Note: Fractions (1/2) must appear before [\\d.]+ so that "1" is not eagerly consumed.
+ * Fraction pattern supporting Unicode fractions and slash notation.
  */
-const NUM_PATTERN = '(?:\\d+\\s+)?(?:\\d+\\/\\d+|[½⅓¼¾⅔⅛⅜⅝⅞]|[\\d.]+)';
+const FRACTION_PATTERN = '(?:\\d+\\s+)?(?:\\d+\\/\\d+|[¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞])';
 
 /**
- * Formats a string to Title Case while preserving non-Latin scripts (e.g. Devanagari).
+ * Full number pattern including decimals and fractions.
+ */
+const NUM_PATTERN = '(?:\\d+\\s+)?(?:\\d+\\/\\d+|[¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]|[\\d.]+)';
+
+/**
+ * Identifies if a parenthetical expression represents culinary noise, quantities, or servings
+ * versus essential product variants (e.g. "(Unsweetened Almond)").
+ */
+function isNoiseParenthetical(content: string): boolean {
+  const trimmed = content.trim().toLowerCase();
+  if (!trimmed) return true;
+
+  // 1. Serving multipliers: "1.4x serving", "2x serving", "1 serving", "serving"
+  if (/^\d*(?:\.\d+)?x?\s*serving/i.test(trimmed)) return true;
+
+  // 2. Quantities, weights, fractions, approx, or count modifiers: "2 medium", "approx 150g", "150g", "250 ml", "1/2 cup"
+  if (
+    /(?:approx\.?|approximately|\d|[¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞])/i.test(trimmed) &&
+    /(?:\d|[¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]|approx|medium|large|small|g|kg|ml|l|cup|tbsp|tsp|piece|pieces|pc|pcs|clove|slice|bunch|packet)/i.test(trimmed)
+  ) {
+    return true;
+  }
+
+  // 3. Preparation instructions: "finely chopped", "steamed", "roasted", "boiled", "diced", "sliced", "minced"
+  if (
+    /^(?:finely\s+chopped|roughly\s+chopped|coarsely\s+chopped|chopped|diced|sliced|minced|crushed|mashed|pureed|puréed|grated|steamed|roasted|boiled|fried|grilled|baked|sautéed|sauteed|cooked|soaked|sprouted|peeled|deseeded)$/i.test(trimmed)
+  ) {
+    return true;
+  }
+
+  // 4. Usage / garnish / optional notes: "optional", "for garnish", "garnish", "to taste", "as needed"
+  if (/^(?:optional|for\s+garnish|garnish|to\s+taste|as\s+needed)$/i.test(trimmed)) {
+    return true;
+  }
+
+  // 5. Common count combinations: "2 medium", "1 small", "3 cloves"
+  if (/^\d+\s*(?:medium|large|small|pieces?|pcs?|cups?|tbsp|tsp|cloves?|slices?)$/i.test(trimmed)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Formats a string to Title Case while preserving non-Latin scripts (e.g. Devanagari)
+ * and retaining punctuation/parentheses on product variants.
  */
 function normalizeTitleCase(str: string): string {
   return str
@@ -178,10 +314,12 @@ function normalizeTitleCase(str: string): string {
     .filter(Boolean)
     .map((word) => {
       // If the word contains non-Latin characters (e.g. Hindi), leave untouched
-      if (!/^[a-zA-Z]+$/.test(word)) {
+      if (!/^[a-zA-Z()\-',.%#+]+$/.test(word)) {
         return word;
       }
-      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+      return word.replace(/[a-zA-Z]+/g, (match) => {
+        return match.charAt(0).toUpperCase() + match.slice(1).toLowerCase();
+      });
     })
     .join(' ');
 }
@@ -189,15 +327,16 @@ function normalizeTitleCase(str: string): string {
 /**
  * Sanitizes a meal-planning ingredient description into a practical grocery-search query.
  *
- * Rules:
- * 1. Safe handling for empty/null/undefined -> returns ""
- * 2. Normalizes unicode dashes, fractions, and quotes
- * 3. Applies Indian grocery aliases (e.g. "Besan (Gram Flour)" -> "Besan")
- * 4. Strips meal-planning metadata: "(1.4x serving)", "(approx 150g)", "(optional)"
- * 5. Strips culinary descriptors ("finely chopped", "steamed", "roasted", etc.)
- * 6. Strips leading, dash-separated, and trailing quantities ("1/2 cup rice", "Tomato 150g")
- * 7. Normalizes culinary suffixes: "Turmeric Powder" -> "Turmeric", while keeping "Garam Masala" intact
- * 8. Normalizes whitespace, removes stray punctuation, and produces deterministic title case.
+ * Requirements:
+ * 1. Deterministic & side-effect-free
+ * 2. Safe handling for empty/null/undefined -> returns ""
+ * 3. Normalizes unicode dashes, fractions, and quotes
+ * 4. Applies Indian grocery aliases (e.g. "Besan (Gram Flour)" -> "Besan")
+ * 5. Strips noise parentheticals while preserving essential product variants (e.g. "Milk (Unsweetened Almond)")
+ * 6. Strips culinary descriptors ("finely chopped", "steamed", "roasted", etc.)
+ * 7. Strips leading, dash-separated, and trailing quantities ("1/2 cup rice", "Tomato 150g")
+ * 8. Normalizes culinary suffixes: "Turmeric Powder" -> "Turmeric", while keeping "Garam Masala" intact
+ * 9. Normalizes whitespace, removes stray punctuation, and produces deterministic title case.
  */
 export function sanitizeIngredientForSearch(rawName: string | null | undefined): string {
   if (!rawName || typeof rawName !== 'string') {
@@ -225,13 +364,18 @@ export function sanitizeIngredientForSearch(rawName: string | null | undefined):
     }
   }
 
-  // 3. Remove parenthetical metadata: e.g. "(1.4x serving)", "(approx 150g)", "(2 medium)", "(optional)", "(for garnish)"
-  text = text.replace(/\s*\([^)]*\)\s*/g, ' ');
+  // 3. Remove noise parentheticals while preserving essential product variants (e.g. "(Unsweetened Almond)")
+  text = text.replace(/\s*\(([^)]+)\)\s*/g, (_, inner) => {
+    if (isNoiseParenthetical(inner)) {
+      return ' ';
+    }
+    return ` (${inner.trim()}) `;
+  });
 
   // 4. Remove optional, taste, or garnish phrases
   text = text.replace(/\b(?:optional|for\s+garnish|garnish|as\s+needed|to\s+taste)\b/gi, ' ');
 
-  // 5. Strip culinary preparation descriptors (e.g. "finely chopped", "roasted", "boiled", "diced")
+  // 5. Strip culinary preparation descriptors (e.g. "finely chopped", "roasted", "boiled", "diced", "ताज़ा")
   for (const descriptor of CULINARY_DESCRIPTORS) {
     text = text.replace(descriptor, ' ');
   }
@@ -243,16 +387,20 @@ export function sanitizeIngredientForSearch(rawName: string | null | undefined):
   );
   text = text.replace(dashQuantityRegex, ' ');
 
-  // 7. Remove leading quantities: e.g. "½ cup rice", "¼ tsp turmeric", "1/2 cup rice", "1.5 kg wheat", "2 medium onions"
+  // 7. Remove leading quantities:
+  // Must either be a fraction (e.g. "1/2 cup", "½ cup") OR a number followed by a unit (e.g. "1.5 kg wheat")
+  // Ensures brand names like "100% Atta" or "7 Up" are never corrupted
   const leadingQuantityRegex = new RegExp(
-    `^(?:approx\\.?|approximately)?\\s*${NUM_PATTERN}\\s*${UNITS_PATTERN}?\\s*(?:x\\s*serving)?\\s*(?:of\\s+)?`,
+    `^(?:approx\\.?|approximately)?\\s*(?:${FRACTION_PATTERN}\\s*${UNITS_PATTERN}?|\\d+(?:\\.\\d+)?\\s*${UNITS_PATTERN})\\s*(?:x\\s*serving)?\\s*(?:of\\s+)?`,
     'i'
   );
   text = text.replace(leadingQuantityRegex, ' ');
 
-  // 8. Remove trailing quantities: e.g. "Tomato 150g", "Rice 1 kg", "Milk 250 ml", "Paneer - 500 g", "Rice — 500g"
+  // 8. Remove trailing quantities:
+  // Must be either a dash-separated quantity ("Milk - 250 ml") OR preceded by whitespace with a unit/fraction ("Tomato 150g", "Rice 1 kg", "Rice 1/2 cup")
+  // Guards against stripping trailing product numbers like "Grain #1"
   const trailingQuantityRegex = new RegExp(
-    `(?:\\s*-\\s*)?(?:approx\\.?|approximately)?\\s*${NUM_PATTERN}\\s*${UNITS_PATTERN}?\\s*$`,
+    `(?:\\s*-\\s*(?:approx\\.?|approximately)?\\s*${NUM_PATTERN}\\s*${UNITS_PATTERN}?|\\s+(?:approx\\.?|approximately)?\\s*(?:${FRACTION_PATTERN}\\s*${UNITS_PATTERN}?|\\d+(?:\\.\\d+)?\\s*${UNITS_PATTERN}))\\s*$`,
     'i'
   );
   text = text.replace(trailingQuantityRegex, ' ');
@@ -268,12 +416,16 @@ export function sanitizeIngredientForSearch(rawName: string | null | undefined):
   }
 
   // 10. Clean stray punctuation (leading/trailing commas, dashes, slashes, brackets)
-  text = text
-    .replace(/^[\s,;:\-–—/()]+|[\s,;:\-–—/()]+$/g, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
+  // Preserve closing bracket if opening bracket exists to keep "(Unsweetened Almond)" intact
+  text = text.replace(/^[\s,;:\-–—/]+/, '');
+  if (text.includes('(') && text.trim().endsWith(')')) {
+    text = text.replace(/[\s,;:\-–—/]+$/, '');
+  } else {
+    text = text.replace(/[\s,;:\-–—/()]+$/, '');
+  }
+  text = text.replace(/\s{2,}/g, ' ').trim();
 
-  // 11. Fallback safety: if text became empty, fallback to trimmed normalized input
+  // 11. Fallback safety: if text became empty, fallback to trimmed normalized input if letters exist
   if (!text) {
     const strippedRaw = normalizedRaw.replace(/\s*\([^)]*\)\s*/g, '').trim();
     if (!strippedRaw || !/[a-zA-Z\u0900-\u097F]/.test(strippedRaw)) {
@@ -288,6 +440,7 @@ export function sanitizeIngredientForSearch(rawName: string | null | undefined):
 
 /**
  * Generates quick-commerce deep links for all supported providers.
+ * Strictly enforces that invalid or empty queries produce empty links.
  */
 export function generateQuickCommerceLinks(rawName: string): QuickCommerceLinks {
   const sanitizedName = sanitizeIngredientForSearch(rawName);
@@ -301,31 +454,60 @@ export function generateQuickCommerceLinks(rawName: string): QuickCommerceLinks 
     };
   }
 
+  const blinkitUrl = PROVIDER_CONFIG.blinkit.buildSearchUrl(sanitizedName);
+  const zeptoUrl = PROVIDER_CONFIG.zepto.buildSearchUrl(sanitizedName);
+  const instamartUrl = PROVIDER_CONFIG.instamart.buildSearchUrl(sanitizedName);
+
   return {
     sanitizedName,
-    blinkit: PROVIDER_CONFIG.blinkit.buildSearchUrl(sanitizedName),
-    zepto: PROVIDER_CONFIG.zepto.buildSearchUrl(sanitizedName),
-    instamart: PROVIDER_CONFIG.instamart.buildSearchUrl(sanitizedName),
+    blinkit: isValidProviderUrl(blinkitUrl, 'blinkit') ? blinkitUrl : '',
+    zepto: isValidProviderUrl(zeptoUrl, 'zepto') ? zeptoUrl : '',
+    instamart: isValidProviderUrl(instamartUrl, 'instamart') ? instamartUrl : '',
   };
 }
 
 /**
  * Deduplicates grocery items conservatively by sanitized search term.
- * Preserves quantity strings and combines them where sensible.
+ *
+ * Rules:
+ * - Search identity: normalized searchName
+ * - Quantity: combines quantities if distinct, avoids lossy arithmetic
+ * - Checked state: marked checked only when ALL source entries are checked
  */
-export function deduplicateGroceryItems(items: GrocerySearchItem[]): GrocerySearchItem[] {
+export function deduplicateGroceryItems(
+  items: Array<{
+    name: string;
+    quantity: string;
+    checked?: boolean;
+    id?: string;
+    department?: string;
+    searchName?: string;
+    sanitizedName?: string;
+    rawName?: string;
+  }>
+): GrocerySearchItem[] {
   const map = new Map<string, GrocerySearchItem>();
 
   for (const item of items) {
-    const key = item.sanitizedName.toLowerCase().trim();
+    const searchName = item.searchName || item.sanitizedName || sanitizeIngredientForSearch(item.name);
+    const key = searchName.toLowerCase().trim();
     if (!key) continue;
 
     if (!map.has(key)) {
-      map.set(key, { ...item });
+      map.set(key, {
+        name: searchName || item.name,
+        searchName,
+        sanitizedName: searchName,
+        rawName: item.rawName || item.name,
+        quantity: item.quantity || '',
+        checked: Boolean(item.checked),
+        id: item.id || `item-${key.replace(/\s+/g, '-')}`,
+        department: item.department,
+      });
     } else {
       const existing = map.get(key)!;
-      // If either item is unchecked, keep checked as false (still needed to buy)
-      const checked = existing.checked && item.checked;
+      // Item is checked only when all source entries representing this search identity are checked
+      const checked = existing.checked && Boolean(item.checked);
       let combinedQuantity = existing.quantity;
 
       if (item.quantity && existing.quantity && item.quantity !== existing.quantity) {
@@ -347,16 +529,19 @@ export function deduplicateGroceryItems(items: GrocerySearchItem[]): GrocerySear
 
 /**
  * Formats a unique list of sanitized search queries as newline-delimited text for clipboard.
+ * Contains sanitized search terms only, one per line, no quantities, no URLs, no duplicates.
  */
-export function formatSearchListForClipboard(items: Array<{ sanitizedName: string }>): string {
+export function formatSearchListForClipboard(
+  items: Array<{ searchName?: string; sanitizedName?: string; name?: string }>
+): string {
   const seen = new Set<string>();
   const list: string[] = [];
 
   for (const item of items) {
-    const name = item.sanitizedName.trim();
-    if (name && !seen.has(name.toLowerCase())) {
-      seen.add(name.toLowerCase());
-      list.push(name);
+    const term = (item.searchName || item.sanitizedName || item.name || '').trim();
+    if (term && !seen.has(term.toLowerCase())) {
+      seen.add(term.toLowerCase());
+      list.push(term);
     }
   }
 
@@ -367,12 +552,8 @@ export function formatSearchListForClipboard(items: Array<{ sanitizedName: strin
  * Browser-safe window open with popup-blocker detection and approved domain enforcement.
  * Returns true if window reference was accepted, false if blocked or failed.
  */
-export function safeOpenProviderSearch(url: string): boolean {
-  if (!url) return false;
-
-  // Domain security verification: only approved provider URLs are allowed
-  const isAllowedOrigin = ALLOWED_URL_PREFIXES.some((prefix) => url.startsWith(prefix));
-  if (!isAllowedOrigin) {
+export function safeOpenProviderSearch(url: string, provider?: QuickCommerceProvider): boolean {
+  if (!url || !isValidProviderUrl(url, provider)) {
     console.error('Blocked unsafe or unapproved search URL:', url);
     return false;
   }

@@ -1,11 +1,36 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-24 (Session: Master Prompt 3 — Multi-Admin Activity Audit Dashboard — Track 3: Security, Governance, Auditability & Admin Observability)
+> **Last Updated:** 2026-09-24 (Session: Master Implementation — Multi-Provider Quick-Commerce Export & Deep-Linking Engine)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-24
+**Work Done — Multi-Provider Quick-Commerce Export & Deep-Linking Engine:**
+- **Centralized Provider Utility & Pure Sanitization Engine (`frontend/src/utils/groceryDeepLinks.ts`)**:
+  - Implemented pure, deterministic, side-effect free, strictly typed deep-link search generator for **Blinkit**, **Zepto**, and **Swiggy Instamart**.
+  - Enhanced Section 13 parenthetical handling: strips culinary noise parentheticals (`(2 medium)`, `(approx 150g)`, `(1.4x serving)`, `(optional)`) while preserving essential product variants (`Milk (Unsweetened Almond)`).
+  - Built comprehensive preparation noise stripper: handles both Latin descriptors (`finely chopped`, `steamed`, `roasted`, `boiled`, `diced`, `fresh`, etc.) and Indic descriptors (`ताज़ा`, `ताजा`) without word boundary corruption.
+  - Hardened quantity remover: fraction-aware leading quantity detection that never truncates product numbers/brands (`100% Atta`, `Grain #1`).
+  - Strict provider allowlist & URL validation (`isValidProviderUrl`): restricts origins to `https://blinkit.com`, `https://www.zeptonow.com`, and `https://www.swiggy.com`, blocking `javascript:`, `data:`, `blob:`, `http:`, and arbitrary spoofed hosts.
+  - Clean newline-delimited clipboard exporter (`formatSearchListForClipboard`).
+  - Fully typed contracts matching Master Prompt: `QuickCommerceProvider`, `QuickCommerceLinks`, `ProviderConfig`, `GrocerySearchItem`, `RunnerStatus`, `RunnerState`.
+- **Weekly Meal Planner UI Integration (`frontend/src/components/WeeklyMealPlanner.tsx`)**:
+  - **Per-Item Shopping Popover**: Compact `ShoppingBag` button on every grocery row with floating dark brutalist popover for direct Blinkit, Zepto, and Instamart searches. Uses `e.stopPropagation()` preventing checkbox/row toggle, with Escape/outside-click listeners and focus restoration.
+  - **Batch Header CTA**: Accessible `⚡ Search on Quick-Commerce` button beside markdown copy action with focus return ref.
+  - **Batch Export Modal (`QuickCommerceExportModal`)**: Dark brutalist modal with accessible segmented radio group (`role="radiogroup"`, `role="radio"`, `aria-checked`, arrow key navigation), real-time statistics (grocery rows, unique searches, unpurchased items, checked items), and optional "Include checked items" toggle.
+  - **Sequential Search Runner & Blocker Resilience**: State machine (`idle`, `running`, `paused`, `blocked`, `completed`, `stopped`). 800ms throttle. Detects popup blocker, enters `blocked` state without skipping items, displays truthful warning banner with manual `[ Open Next ]` retry button, and provides Pause, Resume, Stop, and Reset controls.
+  - **Truthful Compliance Microcopy**: Strict search-only deep link communication; never claims items were added to carts or purchased.
+- **Automated Verification & Zero Regressions**:
+  - Comprehensive unit test suite in `frontend/src/utils/groceryDeepLinks.test.ts`: **39/39 passed (100%)** covering Sections 47–53.
+  - Full frontend Vitest suite: **80/80 passed (100%)**.
+  - Full backend pytest suite: **159/159 passed (100%)**.
+  - Production build: `tsc -b && vite build` completed with **0 TypeScript errors (exit code 0)**.
+
+---
+
+## 🗓️ Previous Session Summary (Multi-Admin Activity Audit Dashboard — Track 3)
 **Date:** 2026-09-24
 **Work Done — Multi-Admin Activity Audit Dashboard (Track 3):**
 - **Strict Server-Side Authorization & Actor Attribution**:

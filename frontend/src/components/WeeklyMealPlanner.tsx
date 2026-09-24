@@ -136,6 +136,7 @@ interface QuickCommerceExportModalProps {
   groceryList: GroceryListResponse | null;
   groceryChecked: Record<string, boolean>;
   showToast: (msg: string, type?: 'success' | 'error') => void;
+  onClosedFocusRestore?: () => void;
 }
 
 /**
@@ -148,6 +149,7 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
   groceryList,
   groceryChecked,
   showToast,
+  onClosedFocusRestore,
 }) => {
   const [selectedProvider, setSelectedProvider] = useState<QuickCommerceProvider>('blinkit');
   const [includeChecked, setIncludeChecked] = useState<boolean>(false);
@@ -155,6 +157,7 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
   const [runnerIndex, setRunnerIndex] = useState<number>(0);
   const [openedItemIds, setOpenedItemIds] = useState<Set<string>>(new Set());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const modalCloseButtonRef = useRef<HTMLButtonElement | null>(null);
 
   // Compile and deduplicate items from grocery list
   const allItems: GrocerySearchItem[] = useMemo(() => {
@@ -166,6 +169,8 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
         const sanitized = sanitizeIngredientForSearch(item.name);
         list.push({
           id,
+          name: item.name,
+          searchName: sanitized,
           rawName: item.name,
           sanitizedName: sanitized,
           quantity: `${item.quantity} ${item.unit}`,
@@ -191,15 +196,26 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
     };
   }, []);
 
+  // Focus modal close button on open for keyboard accessibility
+  useEffect(() => {
+    if (isOpen) {
+      setTimeout(() => {
+        modalCloseButtonRef.current?.focus();
+      }, 50);
+    }
+  }, [isOpen]);
+
   const openItemAtIndex = (index: number): boolean => {
     if (index < 0 || index >= exportableItems.length) return false;
     const item = exportableItems[index];
-    if (!item.sanitizedName) return false;
-    const url = PROVIDER_CONFIG[selectedProvider].buildSearchUrl(item.sanitizedName);
+    const searchTerm = item.searchName || item.sanitizedName;
+    if (!searchTerm) return false;
+    const url = PROVIDER_CONFIG[selectedProvider].buildSearchUrl(searchTerm);
     if (!url) return false;
-    const success = safeOpenProviderSearch(url);
+    const success = safeOpenProviderSearch(url, selectedProvider);
     if (success) {
-      setOpenedItemIds((prev) => new Set(prev).add(item.id));
+      const idKey = item.id || `${item.department || ''}-${item.name}`;
+      setOpenedItemIds((prev) => new Set(prev).add(idKey));
     }
     return success;
   };
@@ -231,11 +247,27 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
     }
     if (timerRef.current) clearTimeout(timerRef.current);
 
-    const startIdx = runnerState === 'paused' ? runnerIndex : 0;
+    // If resuming from paused or stopped, determine correct starting index
+    let startIdx = 0;
+    if (runnerState === 'paused' || runnerState === 'stopped') {
+      const currentItem = exportableItems[runnerIndex];
+      const idKey = currentItem?.id || `${currentItem?.department || ''}-${currentItem?.name}`;
+      if (openedItemIds.has(idKey)) {
+        startIdx = runnerIndex + 1;
+      } else {
+        startIdx = runnerIndex;
+      }
+    }
+
+    if (startIdx >= exportableItems.length) {
+      setRunnerState('completed');
+      return;
+    }
+
     setRunnerIndex(startIdx);
     setRunnerState('running');
 
-    // Direct user click triggers first open safely
+    // Direct user click triggers first open safely without browser popup blockage
     const success = openItemAtIndex(startIdx);
     if (!success) {
       setRunnerState('blocked');
@@ -250,18 +282,28 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
     scheduleNextStep(startIdx + 1);
   };
 
+  // Popup-blocker recovery handler: attempts current pending item without skipping
   const handleOpenNextManual = () => {
-    const nextIdx = runnerState === 'blocked' || runnerState === 'paused' ? runnerIndex + 1 : runnerIndex;
-    if (nextIdx >= exportableItems.length) {
+    if (runnerIndex >= exportableItems.length) {
       setRunnerState('completed');
       return;
     }
-    setRunnerIndex(nextIdx);
-    const success = openItemAtIndex(nextIdx);
-    if (success) {
-      if (nextIdx + 1 >= exportableItems.length) {
-        setRunnerState('completed');
-      }
+
+    const success = openItemAtIndex(runnerIndex);
+    if (!success) {
+      // If still blocked, remain blocked and keep current item unchanged
+      setRunnerState('blocked');
+      return;
+    }
+
+    // Successfully opened current pending item!
+    if (runnerIndex + 1 >= exportableItems.length) {
+      setRunnerState('completed');
+    } else {
+      const nextIdx = runnerIndex + 1;
+      setRunnerIndex(nextIdx);
+      setRunnerState('running');
+      scheduleNextStep(nextIdx);
     }
   };
 
@@ -272,8 +314,7 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
 
   const handleStop = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
-    setRunnerState('idle');
-    setRunnerIndex(0);
+    setRunnerState('stopped');
   };
 
   const handleReset = () => {
@@ -302,6 +343,26 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
     if (timerRef.current) clearTimeout(timerRef.current);
     setRunnerState('idle');
     onClose();
+    if (onClosedFocusRestore) {
+      onClosedFocusRestore();
+    }
+  };
+
+  const handleProviderKeyDown = (e: React.KeyboardEvent, currentProv: QuickCommerceProvider) => {
+    const providers: QuickCommerceProvider[] = ['blinkit', 'zepto', 'instamart'];
+    const idx = providers.indexOf(currentProv);
+    let newIdx = idx;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      newIdx = (idx + 1) % providers.length;
+      e.preventDefault();
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      newIdx = (idx - 1 + providers.length) % providers.length;
+      e.preventDefault();
+    }
+    if (newIdx !== idx) {
+      setSelectedProvider(providers[newIdx]);
+      if (runnerState !== 'idle' && runnerState !== 'stopped') handleStop();
+    }
   };
 
   if (!isOpen) return null;
@@ -309,11 +370,15 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
   const currentItem = exportableItems[runnerIndex] || null;
   const currentProviderConfig = PROVIDER_CONFIG[selectedProvider];
 
-  // Calculate raw vs unique count
+  // Calculate raw rows count across all categories
   const rawRowsCount = useMemo(() => {
     if (!groceryList) return 0;
     return groceryList.categories.reduce((acc, cat) => acc + cat.items.length, 0);
   }, [groceryList]);
+
+  const progressPercent = exportableItems.length > 0
+    ? Math.min(100, Math.round((openedItemIds.size / exportableItems.length) * 100))
+    : 0;
 
   return (
     <div
@@ -342,6 +407,7 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
             </p>
           </div>
           <button
+            ref={modalCloseButtonRef}
             type="button"
             onClick={handleModalClose}
             aria-label="Close export modal"
@@ -351,12 +417,16 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
           </button>
         </div>
 
-        {/* Provider Selector */}
+        {/* Provider Selector with accessible radio group and arrow navigation */}
         <div className="p-6 pb-4 border-b border-slate-800/80 bg-slate-950/40">
           <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2 block">
             Select Provider Platform
           </label>
-          <div role="radiogroup" aria-label="Select Provider Platform" className="grid grid-cols-3 gap-2">
+          <div
+            role="radiogroup"
+            aria-label="Select Provider Platform"
+            className="grid grid-cols-3 gap-2"
+          >
             {(['blinkit', 'zepto', 'instamart'] as QuickCommerceProvider[]).map((prov) => {
               const cfg = PROVIDER_CONFIG[prov];
               const isSelected = selectedProvider === prov;
@@ -366,9 +436,10 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
                   type="button"
                   role="radio"
                   aria-checked={isSelected}
+                  onKeyDown={(e) => handleProviderKeyDown(e, prov)}
                   onClick={() => {
                     setSelectedProvider(prov);
-                    if (runnerState !== 'idle') handleStop();
+                    if (runnerState !== 'idle' && runnerState !== 'stopped') handleStop();
                   }}
                   className={`p-3 rounded-2xl border text-xs font-bold transition-all flex flex-col items-center gap-1 active:scale-95 focus-visible:outline-emerald-400 ${
                     isSelected
@@ -386,7 +457,7 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
           </div>
         </div>
 
-        {/* Summary & Filters Bar */}
+        {/* Summary & Filters Bar (Section 26 Statistics) */}
         <div className="px-6 py-3 bg-slate-950/70 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
           <div className="flex flex-wrap items-center gap-2">
             <span className="px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800 font-mono text-gray-300">
@@ -409,13 +480,33 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
               checked={includeChecked}
               onChange={(e) => {
                 setIncludeChecked(e.target.checked);
-                if (runnerState !== 'idle') handleStop();
+                if (runnerState !== 'idle' && runnerState !== 'stopped') handleStop();
               }}
               className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-emerald-500 focus:ring-emerald-400"
             />
             <span className="text-xs">Include checked items</span>
           </label>
         </div>
+
+        {/* Progress Bar UI (Section 31) */}
+        {runnerState !== 'idle' && (
+          <div className="px-6 pt-3 pb-1 bg-slate-950/80 border-b border-slate-800">
+            <div className="flex items-center justify-between text-xs mb-1.5 font-mono">
+              <span className="text-gray-300">
+                Opening <strong className="text-emerald-400">{Math.min(runnerIndex + 1, exportableItems.length)}</strong> of <strong className="text-white">{exportableItems.length}</strong>
+              </span>
+              <span className="text-emerald-400 font-bold">
+                {progressPercent}%
+              </span>
+            </div>
+            <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+              <div
+                className="bg-emerald-500 h-full rounded-full transition-all duration-300"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Items List */}
         <div className="flex-1 overflow-y-auto p-6 divide-y divide-slate-800/60 max-h-64">
@@ -430,16 +521,18 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
             </div>
           ) : (
             exportableItems.map((item, idx) => {
-              const isOpened = openedItemIds.has(item.id);
-              const isCurrent = runnerState !== 'idle' && runnerIndex === idx;
-              const directUrl = PROVIDER_CONFIG[selectedProvider].buildSearchUrl(item.sanitizedName);
+              const idKey = item.id || `${item.department || ''}-${item.name}`;
+              const isOpened = openedItemIds.has(idKey);
+              const isCurrent = (runnerState === 'running' || runnerState === 'blocked') && runnerIndex === idx;
+              const searchTerm = item.searchName || item.sanitizedName || item.name;
+              const directUrl = PROVIDER_CONFIG[selectedProvider].buildSearchUrl(searchTerm);
 
               return (
                 <div
-                  key={item.id}
+                  key={idKey}
                   className={`py-2.5 flex items-center justify-between gap-3 text-xs transition-colors rounded-xl px-2 ${
                     isCurrent
-                      ? 'bg-slate-800/80 border border-emerald-500/40'
+                      ? 'bg-slate-800/80 border border-emerald-500/40 ring-1 ring-emerald-500/30'
                       : item.checked
                       ? 'opacity-60 bg-slate-950/20'
                       : 'hover:bg-slate-950/40'
@@ -465,7 +558,7 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
                             item.checked && !isOpened ? 'line-through text-gray-400' : 'text-white'
                           }`}
                         >
-                          {item.sanitizedName || item.rawName}
+                          {searchTerm}
                         </span>
                         {item.department && (
                           <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-slate-950 text-gray-500 border border-slate-800">
@@ -474,8 +567,8 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
                         )}
                       </div>
                       <p className="text-[10px] text-gray-400 truncate font-mono">
-                        {item.rawName}
-                        {item.quantity ? ` (${item.quantity})` : ''} <span className="text-emerald-400 font-bold">→</span> {item.sanitizedName}
+                        {item.rawName || item.name}
+                        {item.quantity ? ` (${item.quantity})` : ''} <span className="text-emerald-400 font-bold">→</span> {searchTerm}
                       </p>
                     </div>
                   </div>
@@ -490,8 +583,8 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
                         href={directUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        onClick={() => setOpenedItemIds((prev) => new Set(prev).add(item.id))}
-                        aria-label={`Search ${item.sanitizedName} on ${currentProviderConfig.label}`}
+                        onClick={() => setOpenedItemIds((prev) => new Set(prev).add(idKey))}
+                        aria-label={`Search ${searchTerm} on ${currentProviderConfig.label}`}
                         className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-gray-300 hover:text-emerald-400 border border-slate-700 text-[10px] font-bold flex items-center gap-1 transition-all active:scale-95 focus-visible:outline-emerald-400"
                       >
                         Search <ExternalLink className="w-2.5 h-2.5" />
@@ -549,7 +642,7 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
                   {runnerIndex + 1} / {exportableItems.length}
                 </strong>{' '}
                 — Current:{' '}
-                <strong className="text-white">{currentItem.sanitizedName}</strong>
+                <strong className="text-white">{currentItem.searchName || currentItem.sanitizedName}</strong>
               </span>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
@@ -602,10 +695,34 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
           </div>
         )}
 
-        {/* Modal Actions Footer */}
+        {runnerState === 'stopped' && (
+          <div className="p-3 bg-slate-950 border-t border-slate-800 text-xs flex items-center justify-between gap-3">
+            <span className="text-gray-300">
+              Search runner stopped. ({openedItemIds.size} of {exportableItems.length} opened)
+            </span>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={handleStartRunner}
+                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold rounded-xl text-xs transition-all flex items-center gap-1 active:scale-95 focus-visible:outline-emerald-400"
+              >
+                <Play className="w-3 h-3" /> Resume
+              </button>
+              <button
+                type="button"
+                onClick={handleReset}
+                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-gray-200 rounded-xl text-xs font-bold transition-all focus-visible:outline-emerald-400"
+              >
+                <RotateCcw className="w-3 h-3 inline mr-1" /> Reset
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Actions Footer & Section 58 Truthful Expectation Notice */}
         <div className="p-6 border-t border-slate-800 bg-slate-950/90 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p className="text-[11px] text-gray-500 leading-tight">
-            Opens search queries in new browser tabs. This tool does not access accounts, manipulate carts, or place orders.
+          <p className="text-[11px] text-gray-400 leading-tight">
+            Quick-commerce buttons open provider search results for your grocery items. They do not add items to a cart or place an order.
           </p>
 
           <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">
@@ -618,7 +735,7 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
               Copy Search List
             </button>
 
-            {runnerState === 'idle' ? (
+            {runnerState === 'idle' || runnerState === 'stopped' ? (
               <button
                 type="button"
                 onClick={handleStartRunner}
@@ -626,7 +743,7 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
                 className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold rounded-2xl text-xs transition-all active:scale-95 disabled:opacity-50 flex items-center gap-1.5 shadow-lg shadow-emerald-600/20 focus-visible:outline-emerald-400"
               >
                 <Zap className="w-3.5 h-3.5" />
-                Start Sequential Search
+                {runnerState === 'stopped' ? 'Restart Sequential Search' : 'Start Sequential Search'}
               </button>
             ) : runnerState === 'blocked' ? (
               <button
@@ -678,6 +795,7 @@ const WeeklyMealPlanner: React.FC<WeeklyMealPlannerProps> = ({
   const [activePopoverKey, setActivePopoverKey] = useState<string | null>(null);
   const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
   const popoverRef = useRef<HTMLDivElement | null>(null);
+  const exportTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     setActiveSubView(initialSubView);
@@ -930,6 +1048,7 @@ const WeeklyMealPlanner: React.FC<WeeklyMealPlannerProps> = ({
           {activeSubView === 'grocery' && groceryList && (
             <>
               <button
+                ref={exportTriggerRef}
                 type="button"
                 onClick={() => setIsExportModalOpen(true)}
                 aria-label="Search ingredients on Quick-Commerce"
@@ -1321,6 +1440,7 @@ const WeeklyMealPlanner: React.FC<WeeklyMealPlannerProps> = ({
         groceryList={groceryList}
         groceryChecked={groceryChecked}
         showToast={showToast}
+        onClosedFocusRestore={() => exportTriggerRef.current?.focus()}
       />
     </div>
   );
