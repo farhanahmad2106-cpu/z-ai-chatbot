@@ -39,6 +39,25 @@ def _get_system_logs_collection():
     return None
 
 
+def _get_users_collection():
+    for mod_name in ("backend.main", "main", "__main__"):
+        main_module = sys.modules.get(mod_name)
+        if main_module:
+            if hasattr(main_module, "users_collection") and main_module.users_collection is not None:
+                return main_module.users_collection
+            if hasattr(main_module, "db") and main_module.db is not None:
+                return main_module.db["users"]
+    return None
+
+
+from middleware.quota_check import (
+    reserve_scan_quota,
+    release_scan_quota,
+    get_tier_quota,
+    normalize_tier,
+)
+
+
 @router.post("/analyze", response_model=OCRAnalysisResponse, status_code=status.HTTP_200_OK)
 async def analyze_back_of_pack(
     image: UploadFile = File(...),
@@ -80,17 +99,44 @@ async def analyze_back_of_pack(
 
     # Resolve anonymized pseudonymous contributor token without leaking user email or raw UID
     submitted_by = "anon_contributor"
+    auth_uid: Optional[str] = None
     if authorization and isinstance(authorization, str) and authorization.startswith("Bearer "):
         token = authorization.split(" ")[1].strip()
         try:
             decoded = fb_auth.verify_id_token(token)
             raw_uid = str(decoded.get("uid") or decoded.get("sub") or "anon")
+            if raw_uid and raw_uid != "anon":
+                auth_uid = raw_uid
             submitted_by = f"anon_{hashlib.sha256(raw_uid.encode('utf-8')).hexdigest()[:12]}"
         except Exception:
             submitted_by = f"anon_{hashlib.sha256(token.encode('utf-8')).hexdigest()[:12]}"
 
-    # Process via the multi-tier OCR service
-    analysis_result = await extract_and_analyze(image_bytes, image.content_type)
+    # Atomic quota check and reservation for authenticated users
+    quota_reserved = False
+    users_col = _get_users_collection()
+    if auth_uid and users_col is not None:
+        user_doc = await users_col.find_one({"uid": auth_uid})
+        if user_doc:
+            raw_tier = user_doc.get("tier")
+            tier = normalize_tier(raw_tier)
+            limit = get_tier_quota(tier, "monthly_scans")
+
+            quota_granted = await reserve_scan_quota(auth_uid, users_col)
+            if not quota_granted:
+                curr_used = user_doc.get("usage", {}).get("scans_used_this_month", limit)
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=f"Monthly scan quota exceeded ({curr_used}/{limit}). Upgrade your plan to continue scanning."
+                )
+            quota_reserved = True
+
+    try:
+        # Process via the multi-tier OCR service
+        analysis_result = await extract_and_analyze(image_bytes, image.content_type)
+    except Exception:
+        if quota_reserved and auth_uid and users_col is not None:
+            await release_scan_quota(auth_uid, users_col)
+        raise
 
     if not analysis_result.estimated_macros:
         analysis_result.estimated_macros = analysis_result.nutrition_per_100g

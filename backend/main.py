@@ -7,8 +7,10 @@ if os.path.exists(backend_env):
     load_dotenv(backend_env)
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, Query, Depends
+from fastapi import FastAPI, HTTPException, Query, Depends, Header, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 from typing import List, Optional, Literal
 import json
 import base64
@@ -22,7 +24,6 @@ import httpx
 import firebase_admin
 from firebase_admin import credentials, auth as firebase_auth
 from datetime import datetime, timezone, timedelta
-from fastapi import Header, Request
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -33,13 +34,43 @@ from routes.scan import router as scan_router
 from routes.admin import router as admin_router, log_system_event
 from routes.meals import router as meals_router
 from routes.custom_meals import router as custom_meals_router
-from middleware.quota_check import check_scan_quota, get_user_quota_status
+from middleware.quota_check import check_scan_quota, get_user_quota_status, FeatureNotEntitledException
 from services.ai_router import route_scan_by_tier
 from services.ocr_engine import extract_text_from_image
 from models import ParsedIngredients
 
 
-app = FastAPI(title="Z-SeHealth API")
+@asynccontextmanager
+async def lifespan(app_instance: FastAPI):
+    # Startup: ensure state is initialized and fire non-blocking background initialization
+    app_instance.state.mongo_client = mongo_client
+    app_instance.state.db = db
+    app_instance.state.db_init_task = asyncio.create_task(background_db_init())
+    print("Z-SeHealth API started instantly with modern lifespan.")
+    try:
+        yield
+    finally:
+        # Shutdown: clean up background tasks and resources
+        print("Z-SeHealth API shutting down...")
+        init_task = getattr(app_instance.state, "db_init_task", None)
+        if init_task and not init_task.done():
+            init_task.cancel()
+            try:
+                await init_task
+            except (asyncio.CancelledError, Exception):
+                pass
+
+        # Close MongoDB client safely if owned
+        client_to_close = getattr(app_instance.state, "mongo_client", None)
+        if client_to_close and hasattr(client_to_close, "close"):
+            try:
+                client_to_close.close()
+            except Exception as e:
+                print(f"Notice on mongo client close: {e}")
+        print("Z-SeHealth API shutdown complete.")
+
+
+app = FastAPI(title="Z-SeHealth API", lifespan=lifespan)
 
 # --- Register routers ---
 app.include_router(subscriptions_router)
@@ -174,11 +205,15 @@ async def background_db_init():
     except Exception as e:
         print(f"Background DB init warning: {e}")
 
-@app.on_event("startup")
-async def startup_event():
-    # Fire background DB initialization without blocking FastAPI startup
-    asyncio.create_task(background_db_init())
-    print("Z-SeHealth API started instantly.")
+@app.exception_handler(FeatureNotEntitledException)
+async def feature_not_entitled_handler(request: Request, exc: FeatureNotEntitledException):
+    return JSONResponse(
+        status_code=403,
+        content={
+            "error": exc.error_dict,
+            "detail": exc.error_dict
+        }
+    )
 
 # --- HELPER: GET NVIDIA KEYS ---
 def get_nvidia_keys() -> List[str]:

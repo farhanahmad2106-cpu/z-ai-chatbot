@@ -25,113 +25,64 @@ def get_razorpay_plan_ids() -> dict:
 
 
 
-# Tier feature matrix (shown on PricingPage and /api/subscription/plans)
+from middleware.quota_check import (
+    TIER_ENTITLEMENTS,
+    normalize_tier,
+    get_tier_features,
+    get_tier_quota,
+    get_user_quota_status,
+)
+
+# Authoritative Plan Definitions derived directly from TIER_ENTITLEMENTS
 PLANS = [
     {
         "id": "free",
-        "name": "Z-Free",
+        "name": TIER_ENTITLEMENTS["free"]["name"],
         "price": 0,
         "currency": "INR",
-        "scan_limit": 20,
+        "scan_limit": TIER_ENTITLEMENTS["free"]["monthly_scans"],
         "ai_model": "NVIDIA + Gemini Flash",
         "accuracy": "Basic",
         "translation_languages": 5,
-        "features": {
-            "food_search": True,
-            "meal_logging": True,
-            "daily_stats": True,
-            "multi_meal_batch": True,
-            "dietary_filters": False,
-            "smart_meal_planning": False,
-            "advanced_analytics": False,
-            "barcode_scanner": False,
-            "priority_ai": False,
-            "voice_input": False,
-            "premium_badge": False,
-            "email_support": False,
-            "priority_support": False,
-        },
+        "features": TIER_ENTITLEMENTS["free"]["features"],
         "razorpay_plan_id": None,
     },
     {
         "id": "starter",
-        "name": "Z-Starter",
+        "name": TIER_ENTITLEMENTS["starter"]["name"],
         "price": 36600,  # in paise (₹366)
         "currency": "INR",
-        "scan_limit": 80,
+        "scan_limit": TIER_ENTITLEMENTS["starter"]["monthly_scans"],
         "ai_model": "NVIDIA LLaMA + Gemini",
         "accuracy": "Better",
         "translation_languages": 15,
-        "features": {
-            "food_search": True,
-            "meal_logging": True,
-            "daily_stats": True,
-            "multi_meal_batch": True,
-            "dietary_filters": True,
-            "smart_meal_planning": False,
-            "advanced_analytics": False,
-            "barcode_scanner": False,
-            "priority_ai": False,
-            "voice_input": False,
-            "premium_badge": True,
-            "email_support": True,
-            "priority_support": False,
-        },
+        "features": TIER_ENTITLEMENTS["starter"]["features"],
         "razorpay_plan_id": None,
     },
     {
         "id": "pro",
-        "name": "Z-Pro",
+        "name": TIER_ENTITLEMENTS["pro"]["name"],
         "price": 73200,  # in paise (₹732)
         "currency": "INR",
-        "scan_limit": 200,
+        "scan_limit": TIER_ENTITLEMENTS["pro"]["monthly_scans"],
         "ai_model": "NVIDIA Advanced + Gemini Pro",
         "accuracy": "High",
         "translation_languages": 30,
-        "features": {
-            "food_search": True,
-            "meal_logging": True,
-            "daily_stats": True,
-            "multi_meal_batch": True,
-            "dietary_filters": True,
-            "smart_meal_planning": True,
-            "advanced_analytics": True,
-            "barcode_scanner": True,
-            "priority_ai": False,
-            "voice_input": False,
-            "premium_badge": True,
-            "email_support": True,
-            "priority_support": False,
-        },
+        "features": TIER_ENTITLEMENTS["pro"]["features"],
         "razorpay_plan_id": None,
     },
     {
         "id": "elite",
-        "name": "Z-Elite",
+        "name": TIER_ENTITLEMENTS["elite"]["name"],
         "price": 99800,  # in paise (₹998)
         "currency": "INR",
-        "scan_limit": 500,
+        "scan_limit": TIER_ENTITLEMENTS["elite"]["monthly_scans"],  # None (unlimited)
         "ai_model": "Sarvam AI + NVIDIA",
         "accuracy": "Highest (Indian DB)",
         "translation_languages": 50,
-        "features": {
-            "food_search": True,
-            "meal_logging": True,
-            "daily_stats": True,
-            "multi_meal_batch": True,
-            "dietary_filters": True,
-            "smart_meal_planning": True,
-            "advanced_analytics": True,
-            "barcode_scanner": True,
-            "priority_ai": True,
-            "voice_input": True,
-            "premium_badge": True,
-            "email_support": True,
-            "priority_support": True,
-        },
+        "features": TIER_ENTITLEMENTS["elite"]["features"],
         "razorpay_plan_id": None,
     },
-
 ]
 
 TIER_LIMITS = {p["id"]: p["scan_limit"] for p in PLANS}
@@ -142,9 +93,10 @@ router = APIRouter(prefix="/api/subscription", tags=["Subscription"])
 def _get_users_collection():
     """Lazy import to avoid circular dependency with main.py."""
     import sys
-    main_module = sys.modules.get("main") or sys.modules.get("__main__")
-    if main_module and hasattr(main_module, "users_collection"):
-        return main_module.users_collection
+    for mod_name in ("main", "backend.main", "__main__"):
+        main_module = sys.modules.get(mod_name)
+        if main_module and hasattr(main_module, "users_collection") and main_module.users_collection is not None:
+            return main_module.users_collection
     raise RuntimeError("users_collection not available")
 
 
@@ -182,18 +134,25 @@ async def get_subscription_status(uid: str = Depends(_get_current_user_id)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    tier = user.get("tier", "free")
+    tier = normalize_tier(user.get("tier", "free"))
     usage = user.get("usage", {})
     subscription = user.get("subscription", {})
 
-    from middleware.quota_check import get_user_quota_status
     quota = await get_user_quota_status(uid, users_collection)
+    features = get_tier_features(tier)
 
     return {
         "tier": tier,
         "scans_used": quota["scans_used"],
         "scan_limit": quota["scan_limit"],
         "reset_date": quota["reset_date"],
+        "features": features,
+        "limits": {
+            "monthly_scans": quota["scan_limit"]
+        },
+        "usage": {
+            "monthly_scans": quota["scans_used"]
+        },
         "subscription": {
             "plan": subscription.get("plan", "free"),
             "status": subscription.get("status", "active"),

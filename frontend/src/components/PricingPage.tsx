@@ -7,7 +7,7 @@ interface Plan {
   id: string;
   name: string;
   price: number;
-  scan_limit: number;
+  scan_limit: number | null;
   ai_model: string;
   accuracy: string;
   translation_languages: number;
@@ -216,7 +216,7 @@ export default function PricingPage({ onClose }: PricingPageProps) {
               <div className="bg-slate-800/50 rounded-2xl p-4 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-400">Scans / Month</span>
-                  <span className="text-white font-semibold">{plan.scan_limit}</span>
+                  <span className="text-white font-semibold">{plan.scan_limit === null ? 'Unlimited' : plan.scan_limit}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-400">AI Engine</span>

@@ -391,6 +391,7 @@ def test_15_user_ownership_isolation(mock_auth_user):
     mock_users_col = AsyncMock()
     mock_users_col.find_one.return_value = {
         "uid": mock_auth_user,
+        "tier": "pro",
         "health_profile": {},
         "preferences": {},
         "daily_goals": {"calories": 2000}

@@ -133,6 +133,7 @@ def test_5_duplicate_webhook(override_collections):
     
     # Simulate duplicate key error on insert_one
     mock_tx.insert_one.side_effect = [None, pymongo.errors.DuplicateKeyError("Duplicate key")]
+    mock_tx.find_one.return_value = {"_id": "evt_duplicate_123", "status": "completed"}
     
     payload = {
         "event": "subscription.activated",

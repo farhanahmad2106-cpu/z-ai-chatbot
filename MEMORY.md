@@ -1,11 +1,47 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-24 (Session: Master Implementation — Native Browser Dialog Elimination & Accessible Brutalist Modal System)
+> **Last Updated:** 2026-09-24 (Session: Master Implementation — Freemium Tier-Gating Enforcement, Quota Consistency & FastAPI Lifespan Migration)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-24
+**Work Done — Freemium Tier-Gating Enforcement, Quota Consistency & FastAPI Lifespan Migration:**
+- **Authoritative Single Source of Truth for Plan Entitlements (`backend/middleware/quota_check.py`)**:
+  - Implemented `TIER_ENTITLEMENTS` matrix separating boolean feature entitlements (`smart_meal_planning`, `seven_day_revolving_planner`, `barcode_search`, `advanced_barcode_catalog`, `priority_ocr`, etc.) from metered usage quotas (`monthly_scans`).
+  - Baseline matrix: `free` (20 scans, no smart meal planning), `starter` (100 scans, basic meal planning), `pro` (500 scans, full revolving planner), `elite` (unlimited scans represented explicitly as `None`, never arbitrary integers like 999999999).
+  - Normalization & Fail-Closed Security: `normalize_tier(tier)` safely maps missing/empty strings to `free`, while unknown/malformed strings fail closed to `unknown` (0 scans, 0 features). Never trusts client-supplied tier overrides in payloads or query params.
+- **Reusable Feature Gating Dependency & Standardized 403 Response Contract**:
+  - Implemented `require_tier_feature(feature_name)` dependency factory and `require_meal_feature("smart_meal_planning")`.
+  - Created `FeatureNotEntitledException` providing stable machine-readable error responses for `<UpgradeModal />`:
+    `{"error": {"code": "FEATURE_NOT_ENTITLED", "message": "...", "feature": "smart_meal_planning", "current_tier": "free", "required_tiers": ["starter", "pro", "elite"], "upgrade_required": true}}`.
+  - Registered global FastAPI exception handler ensuring both `error` and `detail` root keys are populated for seamless frontend and test compatibility.
+  - Gated `POST /api/meals/weekly-plan`, `POST /api/meals/weekly-plan/swap-day-slot`, and `POST /api/meals/grocery-list` against unentitled tiers.
+- **Metered Barcode Scanner Quota Consistency & Concurrency Protection (`backend/routes/scan.py`, `backend/middleware/quota_check.py`)**:
+  - Implemented atomic quota reservation (`reserve_scan_quota`) and refund (`release_scan_quota`).
+  - Uses atomic MongoDB update query: `usage.scans_used_this_month < limit` with `$inc: 1`, preventing race conditions where simultaneous requests at usage `19/20` could exceed quota.
+  - Quota reservation occurs before OCR processing, and automatically refunds if downstream OCR extraction or database persistence throws an exception. Failed scans never consume quota.
+  - Consolidated `/api/subscription/status` and `routes/subscriptions.py` to derive dynamically from `TIER_ENTITLEMENTS`, exposing `features`, `limits`, and `usage` alongside legacy fields.
+- **FastAPI Lifespan Migration (`backend/main.py`)**:
+  - Eliminated deprecated `@app.on_event("startup")` and migrated to modern `@asynccontextmanager async def lifespan(app: FastAPI): ...`.
+  - Bound resources to `app.state` (`mongo_client`, `db`, `db_init_task`).
+  - Preserved non-blocking background initialization (`background_db_init()`) and auto-seeding of catalog items.
+  - Clean shutdown gracefully cancels in-flight background init tasks and safely closes the MongoDB client.
+- **Zero Coroutine / RuntimeWarning Cleanup**:
+  - Fixed unawaited mock coroutine in `backend/routes/webhooks.py` by verifying `isinstance(existing, dict)` before `.get("status")` and configuring `mock_tx.find_one.return_value` in `tests/test_webhooks.py`.
+  - Cleaned up event loop closure issue in subscription status test using `patch.object`.
+  - Verification: `python -m pytest -W error::RuntimeWarning` executed with **0 RuntimeWarnings and 0 unawaited coroutines**.
+- **Automated Regression Test Suite (`tests/test_tier_entitlements.py`)**:
+  - Added 12 new comprehensive tests covering entitlement matrix, tier normalization, 403 contract, client tier spoofing prevention, quota limits (free 0/20, 19/20, 20/20; pro 499/500, 500/500; elite unlimited), refund on failure, concurrency race conditions, subscription status schema, and lifespan startup/shutdown lifecycle.
+- **Verification Results**:
+  - Full backend pytest suite: **192/192 passed (100%)** across 15 test files with `-W error::RuntimeWarning`.
+  - Frontend vitest suite: **106/106 passed (100%)** across 8 test files.
+  - Production frontend build (`npm --prefix frontend run build`): **0 errors, built in 8.27s**.
+
+---
+
+## 🗓️ Previous Session Summary (Native Browser Dialog Elimination & Accessible Brutalist Modal System)
 **Date:** 2026-09-24
 **Work Done — Native Browser Dialog Elimination & Accessible Brutalist Modal System:**
 - **Zero Native Dialog Invocations (`frontend/src/`)**:

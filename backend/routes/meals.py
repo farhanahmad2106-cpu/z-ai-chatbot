@@ -70,11 +70,44 @@ async def fetch_user_eligible_custom_meals(uid: str) -> List[Dict[str, Any]]:
 
 
 
+from middleware.quota_check import (
+    has_feature,
+    normalize_tier,
+    get_tiers_for_feature,
+    FeatureNotEntitledException,
+    require_tier_feature,
+)
+
+
 async def get_current_user_id(authorization: Optional[str] = Header(None)) -> str:
     main_mod = sys.modules.get("main") or sys.modules.get("backend.main")
     if main_mod and hasattr(main_mod, "get_current_user_id"):
         return await main_mod.get_current_user_id(authorization)
     raise HTTPException(status_code=401, detail="Authentication dependency not ready")
+
+
+def require_meal_feature(feature_name: str = "smart_meal_planning"):
+    """FastAPI dependency verifying current user has the required meal planning tier feature."""
+    async def _dependency(uid: str = Depends(get_current_user_id)) -> Dict[str, Any]:
+        users_col = get_users_collection()
+        user = await users_col.find_one({"uid": uid}) if users_col is not None else None
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        raw_tier = user.get("tier")
+        effective_tier = normalize_tier(raw_tier)
+
+        if not has_feature(effective_tier, feature_name):
+            req_tiers = get_tiers_for_feature(feature_name)
+            raise FeatureNotEntitledException(
+                feature=feature_name,
+                current_tier=raw_tier if raw_tier else "free",
+                required_tiers=req_tiers,
+                message="Smart meal planning is not available on your current subscription plan."
+            )
+        return user
+    return _dependency
+
 
 router = APIRouter(prefix="/api/meals", tags=["meals"])
 
@@ -137,12 +170,10 @@ async def swap(request: SwapMealRequest, uid: str = Depends(get_current_user_id)
 @router.post("/weekly-plan", response_model=WeeklyPlanResponse)
 async def get_or_create_weekly_plan(
     request: WeeklyPlanRequest,
-    uid: str = Depends(get_current_user_id)
+    user: dict = Depends(require_meal_feature("smart_meal_planning"))
 ):
+    uid = user.get("uid")
     users_col = get_users_collection()
-    user = await users_col.find_one({"uid": uid}) if users_col else None
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
 
     health_profile = user.get("health_profile", {})
     preferences = user.get("preferences", {})
@@ -213,12 +244,10 @@ async def get_or_create_weekly_plan(
 @router.post("/weekly-plan/swap-day-slot", response_model=WeeklyPlanResponse)
 async def swap_slot_in_weekly_plan(
     request: SwapDaySlotRequest,
-    uid: str = Depends(get_current_user_id)
+    user: dict = Depends(require_meal_feature("smart_meal_planning"))
 ):
+    uid = user.get("uid")
     users_col = get_users_collection()
-    user = await users_col.find_one({"uid": uid}) if users_col is not None else None
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
 
     health_profile = user.get("health_profile", {})
     preferences = user.get("preferences", {})
@@ -272,7 +301,8 @@ async def swap_slot_in_weekly_plan(
 # --- SMART GROCERY LIST ENDPOINT ---
 
 @router.post("/grocery-list", response_model=GroceryListResponse)
-async def get_grocery_list(uid: str = Depends(get_current_user_id)):
+async def get_grocery_list(user: dict = Depends(require_meal_feature("smart_meal_planning"))):
+    uid = user.get("uid")
     weekly_plans_col = get_weekly_plans_collection()
     if weekly_plans_col is None:
         raise HTTPException(status_code=500, detail="Database connection not available")

@@ -27,12 +27,7 @@ def get_tier_plan_map() -> dict:
 router = APIRouter(prefix="/api/webhooks", tags=["Webhooks"])
 
 
-TIER_SCAN_LIMITS = {
-    "free": 20,
-    "starter": 80,
-    "pro": 200,
-    "elite": 500,
-}
+from middleware.quota_check import TIER_SCAN_LIMITS, get_tier_quota
 
 
 def _verify_razorpay_signature(body: bytes, signature: str) -> bool:
@@ -177,13 +172,7 @@ async def razorpay_webhook(request: Request):
         if not existing:
             claim_acquired = False
         else:
-            existing_status = None
-            if isinstance(existing, dict):
-                existing_status = existing.get("status")
-            elif hasattr(existing, "get"):
-                val = existing.get("status")
-                # Check if it's a real string or a Mock object
-                existing_status = val if isinstance(val, str) else None
+            existing_status = existing.get("status") if isinstance(existing, dict) else None
 
             if existing_status == "completed" or (existing_status is None and not isinstance(existing, dict)):
                 # Already completed
@@ -247,7 +236,7 @@ async def razorpay_webhook(request: Request):
 
         if event == "payment.captured":
             tier_to_set = notes.get("tier") or "pro"
-            quota_to_set = int(notes.get("scan_quota")) if notes.get("scan_quota") else TIER_SCAN_LIMITS.get(tier_to_set, 200)
+            quota_to_set = int(notes.get("scan_quota")) if notes.get("scan_quota") else get_tier_quota(tier_to_set, "monthly_scans")
 
             # Security: User matching must NEVER rely on client-provided email
             user_filter = None
@@ -280,7 +269,7 @@ async def razorpay_webhook(request: Request):
                 raise RuntimeError(f"Payment {payment_id} missing trusted user identifier (user_id or subscription_id)")
 
         elif event == "subscription.activated":
-            scan_limit = TIER_SCAN_LIMITS.get(tier, 20)
+            scan_limit = get_tier_quota(tier, "monthly_scans")
             sub_res = await users_collection.update_one(
                 {"subscription.razorpay_subscription_id": subscription_id},
                 {"$set": {
@@ -298,7 +287,7 @@ async def razorpay_webhook(request: Request):
             print(f"[OK] Subscription activated: tier={tier}, sub_id={subscription_id}")
 
         elif event == "subscription.charged":
-            scan_limit = TIER_SCAN_LIMITS.get(tier, 20)
+            scan_limit = get_tier_quota(tier, "monthly_scans")
             sub_res = await users_collection.update_one(
                 {"subscription.razorpay_subscription_id": subscription_id},
                 {"$set": {
