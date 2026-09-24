@@ -613,3 +613,253 @@ def test_audit_immutability(super_admin_auth):
     res_delete = client.delete("/api/admin/audit-logs/evt_001", headers=super_admin_auth)
     assert res_delete.status_code in [404, 405]
 
+
+# --- EXTENDED SECURITY & GOVERNANCE TESTS (Sections 43-55) ---
+
+def test_audit_logs_export_unauthenticated():
+    """CSV export route must be protected; unauthenticated request returns 401."""
+    res = client.get("/api/admin/audit-logs/export")
+    assert res.status_code == 401
+
+
+def test_audit_logs_normal_user_forbidden(mock_collections):
+    """Non-admin authenticated user receives 403 Forbidden on audit list."""
+    mock_admins = mock_collections["admins"]
+    mock_admins.find_one.return_value = None  # User is not an admin
+    with patch("routes.admin.firebase_auth.verify_id_token", return_value={"uid": "norm_uid", "email": "regular_user@example.com"}), \
+         patch("backend.routes.admin.firebase_auth.verify_id_token", return_value={"uid": "norm_uid", "email": "regular_user@example.com"}):
+        res = client.get("/api/admin/audit-logs", headers={"Authorization": "Bearer regular_user_token"})
+        assert res.status_code == 403
+
+
+def test_failed_food_approval_does_not_log_audit(super_admin_auth, mock_collections):
+    """Failed administrative mutation (e.g. food 404) must not generate a false audit event."""
+    mock_foods = mock_collections["foods"]
+    mock_audit = mock_collections["audit"]
+    mock_foods.find_one.return_value = None  # Food not found
+    mock_audit.insert_one = AsyncMock()
+
+    res = client.post("/api/admin/foods/507f1f77bcf86cd799439099/approve", headers=super_admin_auth)
+    assert res.status_code == 404
+    mock_audit.insert_one.assert_not_called()
+
+
+def test_failed_user_ban_does_not_log_audit(super_admin_auth, mock_collections):
+    """Failed ban toggle (e.g. user 404) must not generate a false audit event."""
+    mock_users = mock_collections["users"]
+    mock_audit = mock_collections["audit"]
+    mock_users.find_one.return_value = None  # User not found
+    mock_audit.insert_one = AsyncMock()
+
+    res = client.post("/api/admin/users/nonexistent_user_99/toggle-ban", headers=super_admin_auth)
+    assert res.status_code == 404
+    mock_audit.insert_one.assert_not_called()
+
+
+def test_failed_refund_does_not_log_audit(super_admin_auth, mock_collections):
+    """Failed refund (e.g. transaction 404) must not generate a false audit event."""
+    mock_tx = mock_collections["transactions"]
+    mock_audit = mock_collections["audit"]
+    mock_tx.find_one.return_value = None  # Transaction not found
+    mock_audit.insert_one = AsyncMock()
+
+    res = client.post("/api/admin/subscriptions/refund", json={
+        "payment_id": "pay_nonexistent_123",
+        "reason": "Test non-existent transaction"
+    }, headers=super_admin_auth)
+    assert res.status_code == 404
+    mock_audit.insert_one.assert_not_called()
+
+
+def test_deeply_nested_sensitive_redaction_tuples_and_lists():
+    """Verify recursive redaction strips secrets across lists, tuples, and nested dictionaries."""
+    from backend.routes.admin import _sanitize_audit_details
+    raw_details = {
+        "safe": "public_info",
+        "nested_dict": {
+            "AUTHORIZATION": "Bearer secret_bearer_token",
+            "cookie": "session_cookie_12345",
+            "client_secret": "sec_009988",
+            "private_key": "-----BEGIN PRIVATE KEY-----",
+            "inner_list": [
+                {"password": "nested_pw", "label": "keep_this"},
+                {"session": "active_sess_id"}
+            ]
+        },
+        "tuple_items": (
+            {"AccessToken": "xyz_token", "allowed": True},
+        )
+    }
+    sanitized = _sanitize_audit_details(raw_details)
+    assert sanitized["safe"] == "public_info"
+    assert "AUTHORIZATION" not in sanitized["nested_dict"]
+    assert "cookie" not in sanitized["nested_dict"]
+    assert "client_secret" not in sanitized["nested_dict"]
+    assert "private_key" not in sanitized["nested_dict"]
+    assert "password" not in sanitized["nested_dict"]["inner_list"][0]
+    assert sanitized["nested_dict"]["inner_list"][0]["label"] == "keep_this"
+    assert "session" not in sanitized["nested_dict"]["inner_list"][1]
+    assert "AccessToken" not in sanitized["tuple_items"][0]
+    assert sanitized["tuple_items"][0]["allowed"] is True
+
+
+def test_refund_monetary_paise_integer_defense(super_admin_auth, mock_collections):
+    """Refund amounts in audit records must strictly preserve integer paise without float imprecision."""
+    mock_tx = mock_collections["transactions"]
+    mock_users = mock_collections["users"]
+    mock_audit = mock_collections["audit"]
+
+    mock_tx.find_one.return_value = {
+        "_id": "mock_tx_paise_id",
+        "payment_id": "pay_paise_49900",
+        "user_id": "user_paise_123",
+        "amount": 49900,  # 49900 paise = 499 INR
+        "currency": "INR",
+        "status": "captured",
+        "user_email": "paise@example.com"
+    }
+    mock_tx.update_one = AsyncMock(return_value=MagicMock(matched_count=1, modified_count=1))
+    mock_users.find_one.return_value = {"_id": "user_paise_123", "email": "paise@example.com"}
+    mock_users.update_one = AsyncMock()
+    mock_audit.insert_one = AsyncMock()
+
+    with patch("routes.admin.razorpay.Client") as mock_rzp_1, \
+         patch("backend.routes.admin.razorpay.Client") as mock_rzp_2:
+        mock_instance = MagicMock()
+        mock_instance.payment.refund.return_value = {"id": "rfnd_paise_999", "status": "processed", "amount": 49900}
+        mock_rzp_1.return_value = mock_instance
+        mock_rzp_2.return_value = mock_instance
+
+        res = client.post("/api/admin/subscriptions/refund", json={
+            "payment_id": "pay_paise_49900",
+            "amount": 49900,
+            "reason": "Integer paise precision audit check"
+        }, headers=super_admin_auth)
+
+        assert res.status_code == 200
+        assert mock_audit.insert_one.called
+        audit_payload = mock_audit.insert_one.call_args[0][0]
+        details = audit_payload["details"]
+        assert isinstance(details["amount_paise"], int)
+        assert details["amount_paise"] == 49900
+        assert details["currency"] == "INR"
+
+
+def test_search_empty_and_whitespace_only():
+    """Empty or whitespace-only search terms must return None, omitting unnecessary $or clauses."""
+    from backend.routes.admin import _build_safe_regex_query
+    assert _build_safe_regex_query("", ["field1", "field2"]) is None
+    assert _build_safe_regex_query("   ", ["field1", "field2"]) is None
+    assert _build_safe_regex_query(None, ["field1"]) is None
+
+
+def test_deterministic_ordering_with_duplicate_timestamps(super_admin_auth, mock_collections):
+    """Audit queries must apply deterministic compound sorting (timestamp DESC, event_id DESC)."""
+    mock_audit = mock_collections["audit"]
+    mock_audit.count_documents = AsyncMock(return_value=2)
+    mock_cursor = MagicMock()
+    mock_cursor.sort.return_value = mock_cursor
+    mock_cursor.skip.return_value = mock_cursor
+    mock_cursor.limit.return_value = AsyncCursorMock([
+        {
+            "event_id": "audit_b",
+            "action": "FOOD_APPROVED",
+            "admin_email": "admin@test.com",
+            "target_resource_id": "food_1",
+            "target_resource_type": "food",
+            "timestamp": "2026-09-24T12:00:00Z"
+        },
+        {
+            "event_id": "audit_a",
+            "action": "FOOD_APPROVED",
+            "admin_email": "admin@test.com",
+            "target_resource_id": "food_2",
+            "target_resource_type": "food",
+            "timestamp": "2026-09-24T12:00:00Z"
+        }
+    ])
+    mock_audit.find = MagicMock(return_value=mock_cursor)
+
+    res = client.get("/api/admin/audit-logs", headers=super_admin_auth)
+    assert res.status_code == 200
+    mock_cursor.sort.assert_called_with([("timestamp", -1), ("event_id", -1)])
+
+
+def test_csv_formula_injection_all_prefix_neutralization():
+    """Spreadsheet formula prefixes (=, +, -, @, \\t, \\r) must be prefixed with single quote."""
+    from backend.routes.admin import _sanitize_csv_cell
+    assert _sanitize_csv_cell("=1+1") == "'=1+1"
+    assert _sanitize_csv_cell("+cmd|'/C calc'!A0") == "'+cmd|'/C calc'!A0"
+    assert _sanitize_csv_cell("-2+3*4") == "'-2+3*4"
+    assert _sanitize_csv_cell("@SUM(A1:A10)") == "'@SUM(A1:A10)"
+    assert _sanitize_csv_cell("\tTABBED") == "'\tTABBED"
+    assert _sanitize_csv_cell("\rRETURN") == "'\rRETURN"
+    assert _sanitize_csv_cell("Regular Text") == "Regular Text"
+    assert _sanitize_csv_cell(12345) == "12345"
+
+
+def test_request_id_and_ip_address_propagation(super_admin_auth, mock_collections):
+    """Request correlation ID and forwarded client IP must be extracted from request context."""
+    food_oid = "507f1f77bcf86cd799439011"
+    mock_foods = mock_collections["foods"]
+    mock_audit = mock_collections["audit"]
+
+    mock_foods.find_one.return_value = {
+        "_id": food_oid,
+        "name": "Correlation Test Food",
+        "verification_status": "pending"
+    }
+    mock_foods.update_one = AsyncMock(return_value=MagicMock(matched_count=1, modified_count=1))
+    mock_audit.insert_one = AsyncMock()
+
+    headers = dict(super_admin_auth)
+    headers["X-Request-Id"] = "req_custom_correlation_id_888"
+    headers["X-Forwarded-For"] = "198.51.100.42, 10.0.0.1"
+
+    res = client.post(f"/api/admin/foods/{food_oid}/approve", headers=headers)
+    assert res.status_code == 200
+    assert mock_audit.insert_one.called
+    audit_args = mock_audit.insert_one.call_args[0][0]
+    assert audit_args["request_id"] == "req_custom_correlation_id_888"
+    assert audit_args["ip_address"] == "198.51.100.42"
+
+
+def test_cross_admin_governance_visibility(super_admin_auth, mock_collections):
+    """Super Admin query must NOT be restricted to current admin's email, enabling cross-admin audit visibility."""
+    mock_audit = mock_collections["audit"]
+    mock_audit.count_documents = AsyncMock(return_value=0)
+    mock_audit.find = MagicMock(return_value=AsyncCursorMock([]))
+
+    # Query without explicit admin_email filter
+    res = client.get("/api/admin/audit-logs", headers=super_admin_auth)
+    assert res.status_code == 200
+
+    query_filter = mock_audit.count_documents.call_args[0][0]
+    # Verify no accidental 'admin_email': 'farhanahmad2106@gmail.com' was added
+    assert "admin_email" not in query_filter
+    assert "$or" not in query_filter
+
+
+def test_audit_event_tamper_evident_hash(super_admin_auth, mock_collections):
+    """Audit events must compute a deterministic SHA-256 event_hash for tamper evidence."""
+    food_oid = "507f1f77bcf86cd799439011"
+    mock_foods = mock_collections["foods"]
+    mock_audit = mock_collections["audit"]
+
+    mock_foods.find_one.return_value = {
+        "_id": food_oid,
+        "name": "Tamper Evidence Check Food",
+        "verification_status": "pending"
+    }
+    mock_foods.update_one = AsyncMock(return_value=MagicMock(matched_count=1, modified_count=1))
+    mock_audit.insert_one = AsyncMock()
+
+    res = client.post(f"/api/admin/foods/{food_oid}/approve", headers=super_admin_auth)
+    assert res.status_code == 200
+    assert mock_audit.insert_one.called
+    audit_args = mock_audit.insert_one.call_args[0][0]
+    assert "event_hash" in audit_args
+    assert audit_args["event_hash"] is not None
+    assert len(audit_args["event_hash"]) == 64  # SHA-256 hex digest length
+
+

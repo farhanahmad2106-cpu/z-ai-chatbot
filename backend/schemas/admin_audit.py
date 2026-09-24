@@ -40,6 +40,7 @@ class AdminAuditEvent(BaseModel):
     ip_address: Optional[str] = Field(default=None, description="IP address of the administrator if available")
     request_id: Optional[str] = Field(default=None, description="Correlation request ID")
     timestamp: datetime = Field(description="Timezone-aware UTC timestamp of the audit event")
+    event_hash: Optional[str] = Field(default=None, description="Cryptographic SHA-256 hash of immutable event payload for tamper evidence")
 
 
 class AdminAuditListResponse(BaseModel):

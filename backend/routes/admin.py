@@ -141,18 +141,20 @@ def _get_audit_logs_collection():
 SENSITIVE_AUDIT_KEYS = {
     "password", "password_hash", "token", "jwt", "access_token", "refresh_token",
     "api_key", "secret", "razorpay_secret", "key_secret", "webhook_secret",
-    "cvv", "card_number", "credentials"
+    "cvv", "card_number", "credentials", "authorization", "cookie", "session",
+    "client_secret", "private_key"
 }
 
 def _sanitize_audit_details(data: Any) -> Any:
     if isinstance(data, dict):
         cleaned = {}
         for k, v in data.items():
-            if any(sens in k.lower() for sens in SENSITIVE_AUDIT_KEYS):
+            k_lower = str(k).lower()
+            if any(sens in k_lower for sens in SENSITIVE_AUDIT_KEYS):
                 continue
             cleaned[k] = _sanitize_audit_details(v)
         return cleaned
-    elif isinstance(data, list):
+    elif isinstance(data, (list, tuple)):
         return [_sanitize_audit_details(item) for item in data]
     return data
 
@@ -170,7 +172,9 @@ async def log_admin_audit_event(
     """
     Constructs and persists an immutable audit event in admin_audit_logs.
     Derives admin identity, stable ID, and IP address strictly from authenticated backend context.
+    Computes a deterministic SHA-256 event_hash for tamper evidence.
     """
+    import hashlib
     actor_dict = actor or admin or {}
     actor_email = (actor_dict.get("email") or "").strip().lower()
     admin_email = actor_email
@@ -189,8 +193,25 @@ async def log_admin_audit_event(
     if not request_id:
         request_id = f"req_{uuid4().hex[:12]}"
 
+    event_id = f"audit_{uuid4().hex}"
+    ts_now = datetime.now(timezone.utc)
+    sanitized_details = _sanitize_audit_details(details or {})
+
+    # Compute deterministic SHA-256 canonical event hash for tamper evidence
+    canonical_repr = json.dumps({
+        "action": action,
+        "actor_email": actor_email,
+        "actor_id": derived_actor_id,
+        "details": sanitized_details,
+        "event_id": event_id,
+        "target_resource_id": str(target_resource_id),
+        "target_resource_type": target_resource_type,
+        "timestamp": ts_now.isoformat(),
+    }, sort_keys=True, separators=(",", ":"))
+    event_hash = hashlib.sha256(canonical_repr.encode("utf-8")).hexdigest()
+
     event = AdminAuditEvent(
-        event_id=f"audit_{uuid4().hex}",
+        event_id=event_id,
         schema_version=1,
         action=action,
         actor_id=derived_actor_id,
@@ -198,10 +219,11 @@ async def log_admin_audit_event(
         admin_email=admin_email,
         target_resource_id=str(target_resource_id),
         target_resource_type=target_resource_type,
-        details=_sanitize_audit_details(details or {}),
+        details=sanitized_details,
         ip_address=ip_address,
         request_id=request_id,
-        timestamp=datetime.now(timezone.utc),
+        timestamp=ts_now,
+        event_hash=event_hash,
     )
 
     try:
@@ -1396,6 +1418,7 @@ async def list_admin_audit_logs(
     limit: int = Query(50, ge=1, le=100),
     action: Optional[str] = Query(None),
     admin_email: Optional[str] = Query(None),
+    target_resource_type: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     admin: Dict[str, Any] = Depends(require_permission("canManageAdmins")),
 ):
@@ -1408,6 +1431,9 @@ async def list_admin_audit_logs(
 
     if action and action.upper() != "ALL":
         query["action"] = action.upper()
+
+    if target_resource_type and target_resource_type.lower() != "all":
+        query["target_resource_type"] = target_resource_type.lower()
 
     if admin_email and admin_email.strip():
         clean_email = admin_email.strip().lower()
@@ -1436,6 +1462,7 @@ async def list_admin_audit_logs(
                 ip_address=doc.get("ip_address"),
                 request_id=doc.get("request_id"),
                 timestamp=doc["timestamp"] if isinstance(doc["timestamp"], datetime) else datetime.fromisoformat(str(doc["timestamp"])),
+                event_hash=doc.get("event_hash"),
             )
         )
 
@@ -1454,6 +1481,7 @@ async def list_admin_audit_logs(
 async def export_admin_audit_logs_csv(
     action: Optional[str] = Query(None),
     admin_email: Optional[str] = Query(None),
+    target_resource_type: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     admin: Dict[str, Any] = Depends(require_permission("canManageAdmins")),
 ):
@@ -1468,6 +1496,9 @@ async def export_admin_audit_logs_csv(
 
     if action and action.upper() != "ALL":
         query["action"] = action.upper()
+
+    if target_resource_type and target_resource_type.lower() != "all":
+        query["target_resource_type"] = target_resource_type.lower()
 
     if admin_email and admin_email.strip():
         clean_email = admin_email.strip().lower()
@@ -1499,6 +1530,7 @@ async def export_admin_audit_logs_csv(
             "details",
             "request_id",
             "actor_id",
+            "event_hash",
         ])
         yield header_buf.getvalue()
 
@@ -1520,6 +1552,7 @@ async def export_admin_audit_logs_csv(
                 _sanitize_csv_cell(details_json),
                 _sanitize_csv_cell(doc.get("request_id", "") or ""),
                 _sanitize_csv_cell(doc.get("actor_id", "") or ""),
+                _sanitize_csv_cell(doc.get("event_hash", "") or ""),
             ])
             yield row_buf.getvalue()
 

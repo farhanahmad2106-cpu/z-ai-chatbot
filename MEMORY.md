@@ -1,11 +1,48 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-24 (Session: Master Implementation — Track 2: Production Offline-First PWA, IndexedDB Queue & Background Sync Engine)
+> **Last Updated:** 2026-09-24 (Session: Master Implementation — Track 3: Multi-Admin Activity Audit Dashboard, Append-Only Governance Ledger & Security Hardening)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-24
+**Work Done — Track 3: Multi-Admin Activity Audit Dashboard, Append-Only Governance Ledger & Security Hardening:**
+- **Audit Event Schema & Tamper-Evidence Cryptography (`backend/schemas/admin_audit.py` & `backend/routes/admin.py`)**:
+  - Strongly typed Pydantic models: `AdminAuditEvent`, `AdminAuditListResponse`, `AuditActionType` (all 9 required mutations: `FOOD_APPROVED`, `FOOD_REJECTED`, `USER_QUOTA_RESET`, `USER_BANNED`, `USER_UNBANNED`, `ADMIN_INVITED`, `ADMIN_PERMISSIONS_UPDATED`, `ADMIN_REVOKED`, `SUBSCRIPTION_REFUNDED`), and `AuditResourceType` (`food`, `user`, `admin`, `subscription`).
+  - Implemented cryptographic SHA-256 `event_hash` on canonicalized JSON representation (`event_id`, `action`, `actor_email`, `actor_id`, `target_resource_type`, `target_resource_id`, `timestamp`, `details`) for tamper evidence.
+  - Server-side actor attribution derives identity strictly from authenticated context (`current_admin`), completely ignoring client-supplied `actor_id` or `actor_email`.
+- **Recursive Sensitive Secret Redaction (`backend/routes/admin.py`)**:
+  - Hardened case-insensitive recursive sanitizer `_sanitize_audit_details` targeting: `password`, `password_hash`, `token`, `jwt`, `access_token`, `refresh_token`, `api_key`, `secret`, `razorpay_secret`, `key_secret`, `webhook_secret`, `cvv`, `card_number`, `credentials`, `authorization`, `cookie`, `session`, `client_secret`, `private_key`.
+  - Recursively cleans nested dicts, lists, and tuples, ensuring zero secret leakage to MongoDB Atlas.
+- **Audit List, Bounded Search, and Streaming RFC 4180 CSV Export**:
+  - `GET /api/admin/audit-logs`: Super Admin clearance enforced; bounded pagination (`skip >= 0`, `1 <= limit <= 100`, returns HTTP 422 for invalid); ReDoS defense via `_build_safe_regex_query` with `re.escape()` and 200 char bounds; deterministic compound sorting (`[("timestamp", -1), ("event_id", -1)]`).
+  - Added `target_resource_type` query filter to both list and export endpoints.
+  - `GET /api/admin/audit-logs/export`: Motor cursor `StreamingResponse` yielding RFC 4180 CSV rows in $O(1)$ memory; comprehensive formula injection defense neutralizes spreadsheet execution prefixes (`=`, `+`, `-`, `@`, `\t`, `\r`) with leading single quotes (`'`).
+- **Append-Only Immutability**:
+  - Application-level immutability strictly enforced: zero `PUT`, `PATCH`, or `DELETE` endpoints exposed for audit records (returns HTTP 404/405).
+- **Expanded Test Suite (`tests/test_admin_audit.py`)**:
+  - Added 13 new rigorous security & governance tests (total **33/33 tests passing, 100%**):
+    - Unauthenticated CSV export protection (HTTP 401).
+    - Normal non-admin authenticated user rejection (HTTP 403).
+    - Success-only verification (failed food approval, failed user ban, and failed refund do NOT write audit logs).
+    - Deeply nested recursive secret redaction across nested dicts, lists, and tuples.
+    - Integer paise monetary precision verification.
+    - Empty and whitespace-only search query optimization.
+    - Deterministic tie-breaker compound ordering (`timestamp DESC`, `event_id DESC`).
+    - Complete spreadsheet formula injection prefix neutralization (`=`, `+`, `-`, `@`, `\t`, `\r`).
+    - Request correlation ID (`X-Request-Id`) and IP (`X-Forwarded-For`) extraction.
+    - Cross-admin governance visibility (no accidental single-actor filtering).
+    - 64-character SHA-256 tamper-evident `event_hash` validation.
+- **Frontend Verification**:
+  - `AuditLogsTab.tsx` provides accessible badges, 350ms debounced search, responsive layout, slide-over detail drawer, and copy JSON.
+  - Full frontend test suite: **84/84 passed (100%)**.
+  - Production build: `npm --prefix frontend run build` completed with **0 TypeScript errors (exit code 0)**.
+  - Full backend test suite: **166/166 passed (100%)**.
+
+---
+
+## 🗓️ Previous Session Summary (Track 2: Production Offline-First PWA, IndexedDB Queue & Background Sync Engine)
 **Date:** 2026-09-24
 **Work Done — Track 2: Production Offline-First PWA, IndexedDB Queue & Background Sync Engine:**
 - **PWA & Workbox Runtime Caching Hardening (`frontend/vite.config.ts`)**:
