@@ -1,11 +1,44 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-24 (Session: Master Implementation — Track 3: Multi-Admin Activity Audit Dashboard, Append-Only Governance Ledger & Security Hardening)
+> **Last Updated:** 2026-09-24 (Session: Master Implementation — Z-SeHealth Scan Pipeline Integration & Crowdsourced Food Moderation Remediation)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-24
+**Work Done — Z-SeHealth Scan Pipeline Integration & Crowdsourced Food Moderation Remediation:**
+- **Eliminated Legacy Scan Dispatch & Aligned Frontend (`frontend/src/components/Scan.tsx`)**:
+  - Deprecated and removed legacy dispatch calling `/api/scan` and `/api/scan/ingredients`.
+  - Re-routed primary image analysis to canonical `POST /api/scan/analyze` via multipart `FormData` (`image: Blob/File`, optional `barcode: string`).
+  - Implemented `compressImageToBlob` ensuring valid JPEG binary conversion from camera/canvas/files before transmission with explicit null handling.
+  - Attached valid Firebase Bearer authorization headers (`Authorization: Bearer <token>`).
+  - Added UI badge indicating verification status (`✓ Verified Item` vs `⏳ Pending Moderation`) and integrated `IngredientReviewModal` for user ingredient/additive corrections.
+- **Backend Schema & Ingestion Pipeline Hardening (`backend/schemas/scan.py`, `backend/routes/scan.py`)**:
+  - `backend/schemas/scan.py`: Added default factories and UI-compatible fields (`name`, `safety_score`, `warnings`, `ingredients`, `additives`, `allergens`, `barcode`) to `OCRAnalysisResponse`.
+  - `backend/routes/scan.py`:
+    - Strict image validation: content-type checking (`image/jpeg`, `image/png`, `image/webp`, `image/heic`, `image/heif`), empty upload rejection (HTTP 400), and 5MB payload limit (HTTP 413).
+    - String barcode normalization preserving leading zeroes and whitespace trimming.
+    - Idempotent food lookup & duplicate prevention: searches existing food catalog by exact barcode or normalized regex name before inserting. If found, returns existing record without creating duplicates.
+    - OCR failure semantics: empty OCR results do not create bogus moderation records.
+    - Server-controlled attribution & moderation contract: `submitted_by` derived deterministically via `anon_<sha256[:12]>` or `anon_contributor`; sets `is_verified: False`, `status: "pending_review"`, `requires_moderation: True`, and server UTC `created_at`.
+    - ObjectId string serialization: ensures `food_id = str(inserted_id)` preventing JSON serialization failures.
+    - Failure safety: database persistence failures raise HTTP 500, never falsely returning unpersisted IDs.
+- **Seamless Moderation Queue Alignment (`frontend/src/components/admin/tabs/FoodModerationTab.tsx`, `backend/routes/admin.py`)**:
+  - Verified `/api/admin/foods/pending` query matches `{ $or: [{ is_verified: False }, { status: "pending_review" }, ...] }`. Newly scanned crowdsourced records seamlessly populate the admin moderation queue.
+- **Automated Regression Test Suite (`tests/test_scan_remediation.py`, `frontend/src/tests/scanRemediation.test.ts`)**:
+  - Backend `tests/test_scan_remediation.py`: 8 comprehensive tests (Tests 1–8) covering unknown food persistence, duplicate prevention, barcode leading zeroes, authentication identity, invalid image handling, empty OCR failure semantics, MongoDB write failure 500, and ObjectId string serialization.
+  - Frontend `frontend/src/tests/scanRemediation.test.ts`: 10 vitest tests verifying canonical endpoint dispatch, barcode format, legacy endpoint absence, response normalization, and HTTP error handling (400, 401, 413, 422, 503).
+- **Test & Build Verification Results**:
+  - `tests/test_p0_reliability.py`: **18/18 passed (100%)**
+  - `tests/test_scan_remediation.py`: **8/8 passed (100%)**
+  - Full backend test suite: **180/180 passed (100%)** in 16.02s
+  - Full frontend vitest suite: **94/94 passed (100%)** across 7 test files
+  - Production frontend build (`npm --prefix frontend run build` -> `tsc -b && vite build`): **0 errors, built in 8.51s**
+
+---
+
+## 🗓️ Previous Session Summary (Track 3: Multi-Admin Activity Audit Dashboard, Append-Only Governance Ledger & Security Hardening)
 **Date:** 2026-09-24
 **Work Done — Track 3: Multi-Admin Activity Audit Dashboard, Append-Only Governance Ledger & Security Hardening:**
 - **Audit Event Schema & Tamper-Evidence Cryptography (`backend/schemas/admin_audit.py` & `backend/routes/admin.py`)**:

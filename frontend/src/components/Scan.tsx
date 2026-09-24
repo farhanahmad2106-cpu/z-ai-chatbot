@@ -3,11 +3,12 @@ import { parseScannedIngredients } from '../utils/ingredientParser';
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { BrowserMultiFormatReader, BarcodeFormat, DecodeHintType } from '@zxing/library';
 
-import { SlidersHorizontal, X, Globe, Search as MiniSearch, Loader2, AlertTriangle, Camera } from 'lucide-react';
+import { SlidersHorizontal, X, Globe, Search as MiniSearch, Loader2, AlertTriangle, Camera, Edit2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
 import { useToast } from '../context/ToastContext';
 import { API_BASE } from '../config';
+import IngredientReviewModal from './IngredientReviewModal';
 
 const ALL_INDIAN_LANGUAGES = [
   'Hindi', 'Bengali', 'Marathi', 'Telugu', 'Tamil', 'Gujarati', 'Urdu', 'Kannada', 'Odia', 'Punjabi', 
@@ -50,6 +51,7 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
   const [scanMode, setScanMode] = useState<'barcode' | 'food' | 'ingredients'>('barcode');
   const [barcodeQuery, setBarcodeQuery] = useState<string | null>(null);
   const [barcodeNotFound, setBarcodeNotFound] = useState(false);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const zxingRef = useRef<any>(null);
   const scanCooldownRef = useRef<boolean>(false);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
@@ -344,12 +346,22 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
     fileInputRef.current?.click();
   };
 
-  // Client-side Image Compression Helper to prevent payload size bloat and Failed to fetch errors
-  const compressImageForAnalysis = (base64Data: string, maxDimension = 1024, quality = 0.82): Promise<string> => {
+  // Client-side Image Compression Helper to generate a clean binary JPEG Blob
+  const compressImageToBlob = async (imageSource: string, maxDimension = 1280, quality = 0.85): Promise<Blob> => {
+    let sourceBlob: Blob;
+    if (imageSource.startsWith('data:') || imageSource.startsWith('blob:') || imageSource.startsWith('http')) {
+      const res = await fetch(imageSource);
+      sourceBlob = await res.blob();
+    } else {
+      throw new Error("Invalid image format provided for scan");
+    }
+
     return new Promise((resolve) => {
       const img = new Image();
+      const objectUrl = URL.createObjectURL(sourceBlob);
       img.crossOrigin = "anonymous";
       img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
         let width = img.width;
         let height = img.height;
 
@@ -367,19 +379,33 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', quality));
-        } else {
-          resolve(base64Data);
+        if (!ctx) {
+          resolve(sourceBlob);
+          return;
         }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (b) => {
+            if (b) {
+              resolve(b);
+            } else {
+              resolve(sourceBlob);
+            }
+          },
+          'image/jpeg',
+          quality
+        );
       };
-      img.onerror = () => resolve(base64Data);
-      img.src = base64Data;
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve(sourceBlob);
+      };
+      img.src = objectUrl;
     });
   };
 
-  // 5. Send the optimized base64 image string to FastAPI backend
+  // 5. Send the optimized binary image Blob to canonical FastAPI endpoint
   const analyzeImage = async () => {
     if (!image) return;
 
@@ -399,12 +425,20 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
     setActiveModal(null);
     
     try {
-      // Compress and resize image before sending over HTTP
-      const optimizedImage = await compressImageForAnalysis(image);
+      // Compress and convert image to binary JPEG Blob
+      const imageBlob = await compressImageToBlob(image);
+      if (!imageBlob || imageBlob.size === 0) {
+        throw new Error("Unable to process image data. Please capture or upload a new photo.");
+      }
 
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
+      // Build multipart FormData for canonical /api/scan/analyze contract
+      const formData = new FormData();
+      formData.append("image", imageBlob, "capture.jpg");
+      if (barcodeQuery && barcodeQuery.trim()) {
+        formData.append("barcode", barcodeQuery.trim());
+      }
+
+      const headers: Record<string, string> = {};
 
       if (currentUser) {
         try {
@@ -415,11 +449,11 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
         }
       }
 
-      const endpoint = scanMode === 'ingredients' ? '/api/scan/ingredients' : '/api/scan';
-      const response = await fetch(`${API_BASE}${endpoint}`, {
+      // Canonical endpoint: POST /api/scan/analyze
+      const response = await fetch(`${API_BASE}/api/scan/analyze`, {
         method: "POST",
         headers: headers,
-        body: JSON.stringify({ image: optimizedImage, barcode: barcodeQuery }),
+        body: formData,
       });
 
       if (!response.ok) {
@@ -429,9 +463,18 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
 
       const data = await response.json();
 
-      // Check if AI found valid ingredients (only applies to normal scan mode)
-      if (scanMode === 'food' && data.has_ingredients === false) {
+      // Normalize fields for UI display
+      data.name = data.name || data.product_name || "Scanned Product";
+      data.product_name = data.name;
+      if (!data.ingredients || data.ingredients.length === 0) {
+        data.ingredients = data.parsed_ingredients || [];
+      }
+
+      // Check if AI found valid ingredients
+      if (data.has_ingredients === false) {
         setScanError(data.error_message || "No ingredients list detected. Please retake the image showing the label clearly.");
+      } else if ((!data.parsed_ingredients || data.parsed_ingredients.length === 0) && (!data.ingredients || data.ingredients.length === 0)) {
+        setScanError("No ingredients list detected. Please retake the image showing the label clearly.");
       } else {
         setAnalysisResult(data);
       }
@@ -732,7 +775,7 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
       {/* Your existing {analysisResult && (
       ...)} container goes directly below here */}
 
-      {analysisResult && scanMode === 'food' && (
+      {analysisResult && (scanMode === 'food' || scanMode === 'ingredients') && (
         <div className="mt-8 bg-slate-900 border border-slate-800 rounded-3xl p-8 font-manrope">
           {/* Allergen Warning Banner for Scanned Label */}
           {(() => {
@@ -765,17 +808,39 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
           })()}
 
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-            <h3 className="text-2xl font-outfit font-bold text-white">{analysisResult.name || "Scanned Product"}</h3>
-            <div className="flex items-center gap-3 self-end sm:self-auto">
-              <span className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap ${
-                analysisResult.safety_score >= 80 ? "bg-emerald-500/20 text-emerald-400" : "bg-amber-500/20 text-amber-400"
+            <div>
+              <h3 className="text-2xl font-outfit font-bold text-white">{analysisResult.name || "Scanned Product"}</h3>
+              {analysisResult.brand && (
+                <p className="text-xs text-emerald-400 font-semibold mt-0.5">{analysisResult.brand}</p>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2.5 self-end sm:self-auto">
+              <span className={`px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap ${
+                analysisResult.is_verified 
+                  ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" 
+                  : "bg-amber-500/20 text-amber-400 border border-amber-500/30"
               }`}>
-                Score: {analysisResult.safety_score}
+                {analysisResult.is_verified ? "✓ Verified Item" : "⏳ Pending Moderation"}
+              </span>
+
+              <span className={`px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap ${
+                (analysisResult.safety_score ?? 75) >= 80 ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+              }`}>
+                Score: {analysisResult.safety_score ?? 75}
               </span>
               
               <button
+                onClick={() => setIsReviewModalOpen(true)}
+                className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-xs font-bold rounded-xl border border-slate-700 transition flex items-center gap-1.5 text-white shadow-md active:scale-95 cursor-pointer"
+                title="Review and adjust ingredients"
+              >
+                <Edit2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Review / Edit</span>
+              </button>
+
+              <button
                 onClick={() => setActiveModal('main')}
-                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-bold rounded-xl border border-slate-700 transition flex items-center gap-1.5 text-white shadow-md active:scale-95"
+                className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-xs font-bold rounded-xl border border-slate-700 transition flex items-center gap-1.5 text-white shadow-md active:scale-95 cursor-pointer"
               >
                 <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-400" />
                 <span>Filter</span>
@@ -1071,6 +1136,45 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
             )}
           </div>
         </div>
+      )}
+
+      {/* Ingredient Review Modal Integration */}
+      {analysisResult && (
+        <IngredientReviewModal
+          isOpen={isReviewModalOpen}
+          onClose={() => setIsReviewModalOpen(false)}
+          onConfirm={(updatedData) => {
+            setAnalysisResult((prev: any) => ({
+              ...prev,
+              ...updatedData,
+              name: updatedData.product_name || prev?.name,
+              product_name: updatedData.product_name || prev?.product_name,
+              ingredients: updatedData.parsed_ingredients || prev?.ingredients,
+              parsed_ingredients: updatedData.parsed_ingredients || prev?.parsed_ingredients,
+              flagged_allergens: updatedData.flagged_allergens || prev?.flagged_allergens,
+              allergens: updatedData.flagged_allergens || prev?.allergens,
+              detected_ins_additives: updatedData.detected_ins_additives || prev?.detected_ins_additives,
+              nutrition_per_100g: updatedData.nutrition_per_100g || prev?.nutrition_per_100g,
+              estimated_macros: updatedData.nutrition_per_100g || prev?.estimated_macros,
+              requires_user_review: false,
+            }));
+            setIsReviewModalOpen(false);
+          }}
+          initialData={{
+            product_name: analysisResult.product_name || analysisResult.name || "Scanned Product",
+            raw_ocr_text: analysisResult.raw_ocr_text || "",
+            parsed_ingredients: Array.isArray(analysisResult.parsed_ingredients) && analysisResult.parsed_ingredients.length > 0
+              ? analysisResult.parsed_ingredients
+              : Array.isArray(analysisResult.ingredients)
+              ? analysisResult.ingredients.map((i: any) => typeof i === 'string' ? i : i.name || "")
+              : [],
+            detected_ins_additives: analysisResult.detected_ins_additives || [],
+            flagged_allergens: analysisResult.flagged_allergens || analysisResult.allergens || [],
+            nutrition_per_100g: analysisResult.nutrition_per_100g || analysisResult.estimated_macros || {},
+            requires_user_review: analysisResult.requires_user_review ?? true,
+          }}
+          isUncataloged={!analysisResult.is_verified}
+        />
       )}
     </div>
   );
