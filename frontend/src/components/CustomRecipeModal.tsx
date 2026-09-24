@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
 import { createCustomMeal, getUserCustomMeals, deleteCustomMeal } from "../services/customMeals";
 import { CustomMealResponse, IngredientItemInput } from "../types/customMeal";
+import { ConfirmModal } from "./ui/ConfirmModal";
 
 interface CustomRecipeModalProps {
   isOpen: boolean;
@@ -26,7 +28,10 @@ export const CustomRecipeModal: React.FC<CustomRecipeModalProps> = ({
   onRecipeSaved,
 }) => {
   const { currentUser } = useAuth();
+  const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<"create" | "my_recipes">("create");
+  const [recipeToDelete, setRecipeToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [isDeletingRecipe, setIsDeletingRecipe] = useState(false);
 
   // Form State
   const [name, setName] = useState("");
@@ -138,14 +143,19 @@ export const CustomRecipeModal: React.FC<CustomRecipeModalProps> = ({
     }
   };
 
-  const handleDeleteRecipe = async (mealId: string) => {
-    if (!currentUser) return;
+  const handleConfirmDelete = async () => {
+    if (!recipeToDelete || !currentUser) return;
+    setIsDeletingRecipe(true);
     try {
       const token = await currentUser.getIdToken();
-      await deleteCustomMeal(token, mealId);
-      setMyRecipes((prev) => prev.filter((r) => r.id !== mealId));
+      await deleteCustomMeal(token, recipeToDelete.id);
+      setMyRecipes((prev) => prev.filter((r) => r.id !== recipeToDelete.id));
+      showToast(`Recipe "${recipeToDelete.name}" deleted.`, "success");
+      setRecipeToDelete(null);
     } catch (err: any) {
-      alert("Failed to delete recipe: " + err.message);
+      showToast("Failed to delete recipe: " + (err.message || "An unexpected error occurred"), "error");
+    } finally {
+      setIsDeletingRecipe(false);
     }
   };
 
@@ -658,8 +668,8 @@ export const CustomRecipeModal: React.FC<CustomRecipeModalProps> = ({
                       </div>
 
                       <button
-                        onClick={() => handleDeleteRecipe(meal.id)}
-                        className="px-3 py-1.5 text-xs text-rose-400 hover:bg-rose-500/10 border border-rose-500/20 rounded-lg transition"
+                        onClick={() => setRecipeToDelete({ id: meal.id, name: meal.name })}
+                        className="px-3 py-1.5 text-xs text-rose-400 hover:bg-rose-500/10 border border-rose-500/20 rounded-lg transition cursor-pointer"
                       >
                         Delete
                       </button>
@@ -671,6 +681,20 @@ export const CustomRecipeModal: React.FC<CustomRecipeModalProps> = ({
           )}
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={Boolean(recipeToDelete)}
+        title="Delete Custom Recipe"
+        message={`Are you sure you want to delete "${recipeToDelete?.name}"? This will permanently remove it from your saved recipes.`}
+        confirmLabel="Delete Recipe"
+        cancelLabel="Cancel"
+        variant="danger"
+        isLoading={isDeletingRecipe}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => {
+          if (!isDeletingRecipe) setRecipeToDelete(null);
+        }}
+      />
     </div>
   );
 };

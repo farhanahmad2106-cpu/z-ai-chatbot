@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useAdminAuth } from '../../../context/AdminAuthContext';
 import { API_BASE } from '../../../config';
+import { ConfirmModal } from '../../ui/ConfirmModal';
 
 interface UserRecord {
   id: string;
@@ -55,6 +56,9 @@ export default function UserManagementTab() {
   const [refundAmount, setRefundAmount] = useState<string>('');
   const [refundReason, setRefundReason] = useState<string>('');
 
+  // Reset Quota Modal
+  const [resetQuotaTarget, setResetQuotaTarget] = useState<UserRecord | null>(null);
+
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     setNotice(null);
@@ -86,11 +90,14 @@ export default function UserManagementTab() {
     fetchUsers();
   }, [fetchUsers]);
 
-  const handleResetQuota = async (user: UserRecord) => {
+  const handleResetQuota = (user: UserRecord) => {
     if (!permissions.canManageUsers) return;
-    if (!window.confirm(`Reset monthly scan quota for ${user.email || user.name} back to 0?`)) {
-      return;
-    }
+    setResetQuotaTarget(user);
+  };
+
+  const handleConfirmResetQuota = async () => {
+    if (!resetQuotaTarget || !permissions.canManageUsers) return;
+    const user = resetQuotaTarget;
     setActionLoadingId(user.id);
     setNotice(null);
     try {
@@ -106,6 +113,7 @@ export default function UserManagementTab() {
       setUsers((prev) =>
         prev.map((u) => (u.id === user.id ? { ...u, scans_used: 0 } : u))
       );
+      setResetQuotaTarget(null);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Reset failed';
       setNotice({ text: msg, type: 'error' });
@@ -631,6 +639,23 @@ export default function UserManagementTab() {
           </div>
         </div>
       )}
+
+      {/* Reset Quota Confirmation Modal */}
+      <ConfirmModal
+        isOpen={Boolean(resetQuotaTarget)}
+        title="Reset Monthly Scan Quota"
+        message={`Reset monthly scan quota for ${resetQuotaTarget?.email || resetQuotaTarget?.name || 'this user'} back to 0? This will immediately restore their monthly scan allowance.`}
+        confirmLabel="Reset Quota"
+        cancelLabel="Cancel"
+        variant="warning"
+        isLoading={actionLoadingId === resetQuotaTarget?.id}
+        onConfirm={handleConfirmResetQuota}
+        onCancel={() => {
+          if (actionLoadingId !== resetQuotaTarget?.id) {
+            setResetQuotaTarget(null);
+          }
+        }}
+      />
     </div>
   );
 }

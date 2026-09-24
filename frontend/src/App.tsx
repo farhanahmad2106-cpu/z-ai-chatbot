@@ -20,6 +20,7 @@ import Footer from './components/Footer';
 import LegalViewer from './components/legal/LegalViewer';
 import MealPlanner from './components/MealPlanner';
 import { syncQueuedMealsToServer, getQueuedMealCount } from './utils/offlineSync';
+import { ConfirmModal } from './components/ui/ConfirmModal';
 
 export type AppTab = 'dashboard' | 'search' | 'scan' | 'profile' | 'settings' | 'pricing' | 'admin' | 'privacy' | 'terms' | 'refund' | 'cookies' | 'planner';
 
@@ -38,6 +39,7 @@ function App() {
   });
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [scanImageData, setScanImageData] = useState<string | null>(null);
   const hasInternalNavRef = useRef(false);
 
@@ -268,11 +270,7 @@ function App() {
                     streak={streak}
                     isAdmin={isAdmin}
                     onNavigate={(tab) => navigateToTab(tab)}
-                    onLogout={() => {
-                      if (window.confirm("Are you sure you want to log out?")) {
-                        logout();
-                      }
-                    }}
+                    onLogout={() => setShowLogoutConfirm(true)}
                     onOpenHelp={() => setIsHelpModalOpen(true)}
                   />
                 </div>
@@ -372,11 +370,7 @@ function App() {
                     streak={streak}
                     isAdmin={isAdmin}
                     onNavigate={(tab) => navigateToTab(tab)}
-                    onLogout={() => {
-                      if (window.confirm("Are you sure you want to log out?")) {
-                        logout();
-                      }
-                    }}
+                    onLogout={() => setShowLogoutConfirm(true)}
                     onOpenHelp={() => setIsHelpModalOpen(true)}
                   />
                 </div>
@@ -472,6 +466,21 @@ function App() {
       {activeTab !== 'admin' && (
         <Footer onNavigate={(doc) => navigateToTab(doc)} />
       )}
+
+      {/* Sign Out Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showLogoutConfirm}
+        title="Sign Out"
+        message="Are you sure you want to sign out of your Z-SeHealth account?"
+        confirmLabel="Sign Out"
+        cancelLabel="Cancel"
+        variant="primary"
+        onConfirm={() => {
+          setShowLogoutConfirm(false);
+          logout();
+        }}
+        onCancel={() => setShowLogoutConfirm(false)}
+      />
     </div>
   );
 }

@@ -1,11 +1,41 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-24 (Session: Master Implementation — Z-SeHealth Scan Pipeline Integration & Crowdsourced Food Moderation Remediation)
+> **Last Updated:** 2026-09-24 (Session: Master Implementation — Native Browser Dialog Elimination & Accessible Brutalist Modal System)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-24
+**Work Done — Native Browser Dialog Elimination & Accessible Brutalist Modal System:**
+- **Zero Native Dialog Invocations (`frontend/src/`)**:
+  - Global audit performed across the entire `frontend/src/` tree for `alert()`, `confirm()`, `prompt()`, `window.*`, and `globalThis.*`.
+  - Replaced all 7 native dialog calls with either application-level toasts or accessible confirmation modals.
+  - Verification: 0 native alert/confirm dialog calls remain in `frontend/src/` (remaining string occurrences in `groceryDeepLinks.test.ts` are XSS security URL test fixtures).
+- **Accessible Brutalist Confirmation Modal System (`frontend/src/components/ui/ConfirmModal.tsx`)**:
+  - Strongly-typed, accessible dialog component matching Z-SeHealth dark brutalist design system (`bg-slate-900 border border-slate-800 rounded-3xl`).
+  - Accessibility & Semantics: `role="dialog"`, `aria-modal="true"`, paired `aria-labelledby` and `aria-describedby` with React `useId()`.
+  - Keyboard & Focus: Escape key dismissal (disabled during async mutation loading), Tab and Shift+Tab focus trapping within modal interactive elements, focus capture and safe restoration upon close.
+  - Overlay & Scroll: Backdrop dismissibility (disabled when loading), click propagation containment on modal panel, and non-destructive `document.body.style.overflow` scroll locking with cleanup.
+  - Three distinct variants: `danger` (`bg-rose-500` / `AlertTriangle`), `warning` (`bg-amber-500` / `AlertCircle`), and `primary` (`bg-emerald-500` / `Info`).
+  - Double-submit protection: disables all controls and displays inline loader during async operations.
+- **Component-Specific Refactoring**:
+  - `frontend/src/components/Dashboard.tsx`: Replaced native `alert()` on camera access failure with `showToast("Could not access camera. Please check device permissions.", "error")`.
+  - `frontend/src/components/CustomRecipeModal.tsx`: Replaced native `alert()` on recipe deletion failure with `showToast(..., "error")` and integrated `ConfirmModal` for destructive recipe deletion.
+  - `frontend/src/components/admin/tabs/UserManagementTab.tsx`: Replaced `window.confirm()` for user scan quota reset with `ConfirmModal` (`variant="warning"`).
+  - `frontend/src/components/admin/tabs/AdminTeamTab.tsx`: Replaced `window.confirm()` on administrator revocation with `ConfirmModal` (`variant="danger"`).
+  - `frontend/src/components/admin/AdminDashboard.tsx`: Replaced `window.confirm()` on admin logout with `ConfirmModal` (`variant="primary"`).
+  - `frontend/src/App.tsx`: Replaced two duplicate `window.confirm()` sign-out dialogs with a single, unified `ConfirmModal` (`variant="primary"`).
+- **Targeted Test Suite (`frontend/src/tests/confirmModal.test.ts`)**:
+  - 12 comprehensive unit tests covering props defaults, variants, Escape handling, backdrop dismissal policies, loading double-submit prevention, scroll locking, and ARIA attribute generation.
+- **Verification Results**:
+  - Full frontend vitest suite: **106/106 passed (100%)** across 8 test files.
+  - Production frontend build (`npm --prefix frontend run build`): **0 errors, built in 8.35s** (TypeScript compile `tsc -b` and Vite PWA build clean).
+  - Backend regression tests: **26/26 passed (100%)** (`test_p0_reliability.py` + `test_scan_remediation.py`).
+
+---
+
+## 🗓️ Previous Session Summary (Scan Pipeline Integration & Crowdsourced Food Moderation Remediation)
 **Date:** 2026-09-24
 **Work Done — Z-SeHealth Scan Pipeline Integration & Crowdsourced Food Moderation Remediation:**
 - **Eliminated Legacy Scan Dispatch & Aligned Frontend (`frontend/src/components/Scan.tsx`)**:

@@ -21,6 +21,7 @@ import AdminTeamTab from './tabs/AdminTeamTab';
 import SystemLogsTab from './tabs/SystemLogsTab';
 import AdminOtaManager from './tabs/AdminOtaManager';
 import AuditLogsTab from './tabs/AuditLogsTab';
+import { ConfirmModal } from '../ui/ConfirmModal';
 
 interface AdminDashboardProps {
   onExit: () => void;
@@ -32,6 +33,7 @@ export default function AdminDashboard({ onExit }: AdminDashboardProps) {
   const { adminUser, isSuperAdmin, permissions } = useAdminAuth();
   const { logout } = useAuth();
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState<boolean>(false);
 
   const navItems = [
     {
@@ -129,11 +131,7 @@ export default function AdminDashboard({ onExit }: AdminDashboardProps) {
 
             {/* Logout */}
             <button
-              onClick={() => {
-                if (window.confirm('Log out from administrative session?')) {
-                  logout();
-                }
-              }}
+              onClick={() => setShowLogoutConfirm(true)}
               className="p-2 bg-slate-950 hover:bg-rose-500/10 border border-slate-800 hover:border-rose-500/30 text-slate-400 hover:text-rose-400 rounded-2xl transition-all cursor-pointer"
               title="End Admin Session"
             >
@@ -181,6 +179,20 @@ export default function AdminDashboard({ onExit }: AdminDashboardProps) {
         {activeTab === 'logs' && <SystemLogsTab />}
         {activeTab === 'ota' && <AdminOtaManager />}
       </div>
+
+      <ConfirmModal
+        isOpen={showLogoutConfirm}
+        title="End Admin Session"
+        message="Are you sure you want to log out from your administrative session?"
+        confirmLabel="Log Out"
+        cancelLabel="Cancel"
+        variant="primary"
+        onConfirm={() => {
+          setShowLogoutConfirm(false);
+          logout();
+        }}
+        onCancel={() => setShowLogoutConfirm(false)}
+      />
     </div>
   );
 }

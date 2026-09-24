@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useAdminAuth, AdminUser, AdminPermissions } from '../../../context/AdminAuthContext';
 import { API_BASE } from '../../../config';
+import { ConfirmModal } from '../../ui/ConfirmModal';
 
 export default function AdminTeamTab() {
   const { isSuperAdmin, getAdminAuthHeader } = useAdminAuth();
@@ -18,6 +19,9 @@ export default function AdminTeamTab() {
   const [loading, setLoading] = useState<boolean>(true);
   const [actionLoading, setActionLoading] = useState<boolean>(false);
   const [notice, setNotice] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  // Revoke Admin Modal State
+  const [adminToRevoke, setAdminToRevoke] = useState<AdminUser | null>(null);
 
   // Invite Modal State
   const [inviteModalOpen, setInviteModalOpen] = useState<boolean>(false);
@@ -157,12 +161,14 @@ export default function AdminTeamTab() {
     }
   };
 
-  const handleDeleteAdmin = async (admin: AdminUser) => {
+  const handleDeleteAdmin = (admin: AdminUser) => {
     if (admin.is_super_admin) return;
-    if (!window.confirm(`Permanently revoke and delete admin account for ${admin.email}?`)) {
-      return;
-    }
+    setAdminToRevoke(admin);
+  };
 
+  const handleConfirmDeleteAdmin = async () => {
+    if (!adminToRevoke || adminToRevoke.is_super_admin) return;
+    const admin = adminToRevoke;
     setActionLoading(true);
     setNotice(null);
     try {
@@ -179,6 +185,7 @@ export default function AdminTeamTab() {
 
       setTeam((prev) => prev.filter((a) => a.id !== admin.id));
       setNotice({ text: `Administrator ${admin.email} deleted successfully.`, type: 'success' });
+      setAdminToRevoke(null);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Deletion failed';
       setNotice({ text: msg, type: 'error' });
@@ -600,6 +607,21 @@ export default function AdminTeamTab() {
           </div>
         </div>
       )}
+
+      {/* Revoke Admin Confirmation Modal */}
+      <ConfirmModal
+        isOpen={Boolean(adminToRevoke)}
+        title="Revoke Administrator"
+        message={`Permanently revoke and delete administrative privileges for ${adminToRevoke?.email}? This action is immediate and cannot be undone.`}
+        confirmLabel="Revoke Admin"
+        cancelLabel="Cancel"
+        variant="danger"
+        isLoading={actionLoading}
+        onConfirm={handleConfirmDeleteAdmin}
+        onCancel={() => {
+          if (!actionLoading) setAdminToRevoke(null);
+        }}
+      />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useUserStats } from '../context/UserStatsContext';
 import { useUserProfile } from '../context/UserProfileContext';
+import { useToast } from '../context/ToastContext';
 import { Camera, Utensils } from 'lucide-react';
 import SubscriptionBadge from './SubscriptionBadge';
 import UpgradeModal from './UpgradeModal';
@@ -16,6 +17,7 @@ interface DashboardProps {
 export default function Dashboard({ onNavigateToScan, onGoToPricing }: DashboardProps) {
   const { stats, dailyGoals, streak, loadingStats, showUpgradeModal, setShowUpgradeModal } = useUserStats();
   const { preferences } = useUserProfile();
+  const { showToast } = useToast();
   
   const [showRecipeModal, setShowRecipeModal] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -36,7 +38,7 @@ export default function Dashboard({ onNavigateToScan, onGoToPricing }: Dashboard
       }
     } catch (err) {
       console.error("Error accessing camera: ", err);
-      alert("Could not access camera. Please check permissions.");
+      showToast("Could not access camera. Please check device permissions.", "error");
       setIsCameraActive(false);
     }
   };
