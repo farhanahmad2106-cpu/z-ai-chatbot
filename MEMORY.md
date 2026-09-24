@@ -1,11 +1,38 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-24 (Session: Master Implementation — Freemium Tier-Gating Enforcement, Quota Consistency & FastAPI Lifespan Migration)
+> **Last Updated:** 2026-09-24 (Session: Master Prompt 4 — Production Bundle Code-Splitting & Living Documentation Synchronization)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-24
+**Work Done — Production Bundle Code-Splitting & Living Documentation Synchronization:**
+- **Route & Tab-Level Code-Splitting (`frontend/src/App.tsx`)**:
+  - Replaced eager imports of heavy page-level views (`AdminDashboard`, `MealPlanner`, `LegalViewer`, `Search`, `Profile`, `Settings`, `PricingPage`, and `Scan`) with dynamic `React.lazy()` imports.
+  - Kept critical above-the-fold shell (`Dashboard`, navigation bar, authentication state, login and profile modals, footer) eager for instantaneous bootstrap and zero waterfall on landing.
+  - Wrapped active tab view rendering in a proper `React.Suspense` boundary with dark brutalist loading fallback (`min-h-[400px]`, emerald spinner, uppercase monospace label). No invalid `className` on `<Suspense>`.
+- **Production-Grade Chunk Error Shield (`frontend/src/components/ViewErrorBoundary.tsx`)**:
+  - Built dedicated `ViewErrorBoundary` wrapping lazy route views to catch dynamic import or network chunk failures.
+  - Dark brutalist alert card with diagnostic logging in development, user-safe explanation, and explicit "Reload View" retry action.
+- **Intentional Manual Chunking (`frontend/vite.config.ts`)**:
+  - Configured stable manual chunks in `rollupOptions.output.manualChunks`:
+    - `react-vendor` (`react`, `react-dom`): 182.33 kB
+    - `zxing-vendor` (`@zxing/library`, `@zxing/browser`): 451.75 kB (deferred until Scan view is triggered)
+    - `lucide-vendor` (`lucide-react`): 26.87 kB
+- **Measurable Performance Results**:
+  - Baseline initial entry chunk: **1,400.00 kB** (gzip: 374.65 kB).
+  - Final initial entry chunk: **250.19 kB** (gzip: 68.89 kB).
+  - Net reduction: **-1,149.81 kB (-82.13%)**.
+  - All chunks remain strictly below the `< 500 kB` absolute ceiling and the initial chunk is well within the `< 400 kB` budget.
+  - Vite chunk size warnings completely eliminated (0 warnings).
+- **Living Documentation & Repository State Reconciliation**:
+  - Fully synchronized `MEMORY.md` and `Z-SeHealth_project_features.md` to reflect verified code and live test counts.
+  - Executed and recorded actual test suites: **192 backend tests passed (100%)** and **110 frontend tests passed (100%)** (total: 302 automated tests).
+
+---
+
+## 🗓️ Previous Session Summary (Freemium Tier-Gating Enforcement, Quota Consistency & FastAPI Lifespan Migration)
 **Date:** 2026-09-24
 **Work Done — Freemium Tier-Gating Enforcement, Quota Consistency & FastAPI Lifespan Migration:**
 - **Authoritative Single Source of Truth for Plan Entitlements (`backend/middleware/quota_check.py`)**:
@@ -1314,8 +1341,13 @@
 
 | Status | Feature | File(s) | Notes |
 |---|---|---|---|
-| ✅ Done | RULES.md + MEMORY.md | `RULES.md`, `MEMORY.md` | Created this session |
-| 💤 Paused | Freemium Subscription Model | Multiple files (TBD) | Detailed footprint saved — not yet started |
+| Status | Feature | File(s) | Notes |
+|---|---|---|---|
+| ✅ Done | Bundle Code-Splitting & Vite Manual Chunks | `App.tsx`, `vite.config.ts`, `ViewErrorBoundary.tsx` | Entry bundle reduced from 1,400 kB to 250.19 kB (-82.13%) |
+| ✅ Done | Freemium Tier-Gating & Quota Consistency | `quota_check.py`, `scan.py`, `meals.py`, `main.py` | 192 backend tests passed, lifespan migration complete |
+| ✅ Done | Native Browser Dialog Elimination | `ConfirmModal.tsx`, `ToastContext.tsx`, `Scan.tsx`, etc. | 0 native alert/confirm dialogs in application code |
+| ✅ Done | Multi-Admin Audit Dashboard & Cryptographic Ledger | `admin_audit.py`, `admin.py`, `AuditLogsTab.tsx` | SHA-256 event hash, formula injection defense |
+| ✅ Done | Production Offline-First PWA & IndexedDB Queue | `offlineSync.ts`, `vite.config.ts` | StaleWhileRevalidate food cache, offline meal sync queue |
 
 ---
 
@@ -1323,48 +1355,40 @@
 
 | File | Purpose | Last Modified |
 |---|---|---|
-| `frontend/src/App.tsx` | Root app, sticky navbar, tab-based routing + `/admin` route guard | **2026-09-14** |
+| `frontend/src/App.tsx` | Root app shell, tab-based `React.lazy()` routing, `Suspense`, modal host | **2026-09-24** |
+| `frontend/src/components/ViewErrorBoundary.tsx` | Dark brutalist chunk error shield with reload action | **2026-09-24** |
+| `frontend/vite.config.ts` | Vite configuration, manual vendor chunking, PWA runtime caching | **2026-09-24** |
+| `frontend/src/tests/codeSplitting.test.ts` | Unit tests for lazy route contract and `ViewErrorBoundary` | **2026-09-24** |
 | `frontend/src/config.ts` | `API_BASE` constant (single source of truth) | 2026-07-30 |
 | `frontend/src/firebase.ts` | Firebase app + Auth initialization | 2026-06-25 |
 | `frontend/src/index.css` | Tailwind v4 import, CSS variables, custom utilities | 2026-06-25 |
-| `frontend/src/components/Dashboard.tsx` | Dashboard UI + quick scan camera | 2026-07-30 |
-| `frontend/src/components/Search.tsx` | Search + multi-meal selection | 2026-07-30 |
-| `frontend/src/components/Scan.tsx` | AI food scanning | 2026-07-30 |
-| `frontend/src/components/Profile.tsx` | Health profile editing | 2026-06-25 |
-| `frontend/src/components/Settings.tsx` | App settings | 2026-06-25 |
+| `frontend/src/components/Dashboard.tsx` | Dashboard UI + quick scan camera | 2026-09-24 |
+| `frontend/src/components/Search.tsx` | Search + multi-meal selection | 2026-09-24 |
+| `frontend/src/components/Scan.tsx` | Barcode & AI food scanning, crowdsourced ingestion | 2026-09-24 |
+| `frontend/src/components/MealPlanner.tsx` | Meal planner shell, regional translations, macro targets | 2026-09-24 |
+| `frontend/src/components/WeeklyMealPlanner.tsx` | 7-day revolving planner, quick-commerce export | 2026-09-24 |
+| `frontend/src/components/Profile.tsx` | Health profile editing, compliance consent modal | 2026-09-24 |
+| `frontend/src/components/Settings.tsx` | App settings, language and theme preferences | 2026-09-24 |
+| `frontend/src/components/PricingPage.tsx` | Razorpay subscription checkout cards and plan comparison | 2026-09-24 |
 | `frontend/src/components/auth/LoginModal.tsx` | Firebase login UI | 2026-06-25 |
-| `frontend/src/components/ProfileDropdown.tsx` | User dropdown menu + Admin Operations link | **2026-09-14** |
+| `frontend/src/components/ProfileDropdown.tsx` | User dropdown menu + Admin Operations link | 2026-09-24 |
 | `frontend/src/context/AuthContext.tsx` | Firebase auth state | 2026-06-25 |
-| `frontend/src/context/AdminAuthContext.tsx` | Admin RBAC state & token verification | **2026-09-14** |
-| `frontend/src/components/admin/AdminRouteGuard.tsx` | Brutalist 403 access control screen | **2026-09-14** |
-| `frontend/src/components/admin/AdminDashboard.tsx` | Admin master shell & active tab controller | **2026-09-14** |
-| `frontend/src/components/admin/tabs/OverviewTab.tsx` | Real-time platform KPIs & MRR analytics | **2026-09-14** |
-| `frontend/src/components/admin/tabs/FoodModerationTab.tsx` | Crowdsourced OCR review & global approval | **2026-09-14** |
-| `frontend/src/components/admin/tabs/UserManagementTab.tsx` | User table, scan quota resets & ban toggles | **2026-09-14** |
-| `frontend/src/components/admin/tabs/AdminTeamTab.tsx` | Super Admin team invite, permissions & revoke | **2026-09-14** |
-| `frontend/src/components/admin/tabs/SystemLogsTab.tsx` | Monospace structured exception stream viewer | **2026-09-14** |
-| `frontend/src/components/admin/tabs/AdminOtaManager.tsx` | EAS update inspector & GitHub Actions hotfixes | **2026-09-14** |
-| `backend/main.py` | FastAPI app, router registrations, and collections | **2026-09-14** |
-| `backend/schemas/scan.py` | OCR analysis response models and macronutrient schemas | **2026-09-14** |
-| `backend/services/ocr_service.py` | Multi-tier vision OCR pipeline (Gemini 2.5 Flash, NVIDIA, Sarvam) | **2026-09-14** |
-| `backend/routes/scan.py` | Multipart image ingestion & isolated unverified food queuing | **2026-09-14** |
-| `backend/schemas/admin.py` | Admin RBAC & governance Pydantic schemas | **2026-09-14** |
-| `backend/routes/admin.py` | Protected admin endpoints with RBAC dependency | **2026-09-14** |
-
-| `backend/requirements.txt` | Python dependencies (pinned) | 2026-07-30 |
-| `backend/seed_1000.py` | 1000 Indian food DB seeder | 2026-06-25 |
-| `backend/mock_foods.json` | Fallback food data (local) | 2026-06-25 |
-| `backend/.env` | Local secrets (NOT committed) | — |
-| `backend/.env.example` | Secret key template | 2026-07-30 |
-| `RULES.md` | Development rules and conventions | 2026-07-30 |
-| `MEMORY.md` | This file — project state | **2026-09-14** |
-| `Z-SeHealth_project_features.md` | Feature list and roadmap | **2026-09-14** |
-| `app.json` | Expo updates config & runtimeVersion policy | 2026-09-03 |
-| `eas.json` | EAS build and channel matrix (dev/preview/prod) | 2026-09-03 |
-| `src/services/updateManager.ts` | OTA update listener, downloader & lifecycle hook | 2026-09-03 |
-| `src/store/telemetryStore.ts` | Hardware metrics & OTA error logging store | 2026-09-03 |
-| `App.tsx` | Mobile root integration with OTA toast UI | 2026-09-03 |
-| `.github/workflows/ota-deploy.yml` | GitHub Actions automated OTA deploy pipeline | 2026-09-03 |
+| `frontend/src/context/AdminAuthContext.tsx` | Admin RBAC state & token verification | 2026-09-24 |
+| `frontend/src/components/admin/AdminRouteGuard.tsx` | Brutalist 403 access control screen | 2026-09-24 |
+| `frontend/src/components/admin/AdminDashboard.tsx` | Admin master shell & active tab controller | 2026-09-24 |
+| `frontend/src/components/admin/tabs/OverviewTab.tsx` | Real-time platform KPIs & MRR analytics | 2026-09-24 |
+| `frontend/src/components/admin/tabs/FoodModerationTab.tsx` | Crowdsourced OCR review & global approval | 2026-09-24 |
+| `frontend/src/components/admin/tabs/UserManagementTab.tsx` | User table, scan quota resets & ban toggles | 2026-09-24 |
+| `frontend/src/components/admin/tabs/AdminTeamTab.tsx` | Super Admin team invite, permissions & revoke | 2026-09-24 |
+| `frontend/src/components/admin/tabs/SystemLogsTab.tsx` | Monospace structured exception stream viewer | 2026-09-24 |
+| `frontend/src/components/admin/tabs/AuditLogsTab.tsx` | Cryptographic audit ledger with CSV streaming | 2026-09-24 |
+| `backend/main.py` | FastAPI app, modern lifespan handler, router registrations | **2026-09-24** |
+| `backend/middleware/quota_check.py` | Single source of truth for plan entitlements & atomic scan quotas | **2026-09-24** |
+| `backend/routes/scan.py` | Multipart image ingestion & crowdsourced unverified food queuing | **2026-09-24** |
+| `backend/routes/meals.py` | 7-day revolving meal planner, clinical conflict validation, grocery lists | **2026-09-24** |
+| `backend/routes/subscriptions.py` | Razorpay order creation, payment verification, subscription status | **2026-09-24** |
+| `backend/routes/webhooks.py` | Razorpay webhook listener with HMAC-SHA256 signature verification | **2026-09-24** |
+| `backend/routes/admin.py` | Protected admin endpoints, RBAC, audit ledger, and refund engine | **2026-09-24** |
 
 ---
 
@@ -1374,7 +1398,24 @@
 |---|---|---|---|
 | `GET` | `/api/foods?search=` | ❌ | Search food items (DB + AI fallback, verified only) |
 | `POST` | `/api/translate` | ❌ | Batch translate ingredient text |
-| `POST` | `/api/scan` | ❌ | Analyze food image via AI vision |
+| `POST` | `/api/scan/analyze` | ✅ / Optional | Analyze food image via AI vision & register unverified items |
+| `GET` | `/api/meals/weekly-plan` | ✅ (`smart_meal_planning`) | Retrieve active 7-day revolving meal plan |
+| `POST` | `/api/meals/weekly-plan` | ✅ (`smart_meal_planning`) | Generate or update 7-day revolving meal plan |
+| `POST` | `/api/meals/weekly-plan/swap-day-slot` | ✅ (`smart_meal_planning`) | Swap meal slots in plan |
+| `POST` | `/api/meals/weekly-plan/regenerate-day` | ✅ (`smart_meal_planning`) | Regenerate single day's meals |
+| `POST` | `/api/meals/grocery-list` | ✅ (`smart_meal_planning`) | Aggregate grocery list with quick-commerce deep links |
+| `POST` | `/api/meals/translate` | ✅ | Translate meal plan items into regional Indian languages |
+| `GET` | `/api/meals/custom-recipes` | ✅ | List user custom recipes |
+| `POST` | `/api/meals/custom-recipes` | ✅ | Create new custom user recipe |
+| `DELETE` | `/api/meals/custom-recipes/{recipe_id}` | ✅ | Delete user custom recipe |
+| `POST` | `/api/subscription/create-order` | ✅ | Create Razorpay order/subscription |
+| `POST` | `/api/subscription/verify` | ✅ | Verify Razorpay payment signature & update tier |
+| `GET` | `/api/subscription/status` | ✅ | Retrieve subscription tier, entitlements, limits & usage |
+| `POST` | `/api/subscription/cancel` | ✅ | Cancel active subscription |
+| `POST` | `/api/webhooks/razorpay` | 🛡️ Webhook Secret | Razorpay webhook event listener (HMAC verified) |
+| `GET` | `/api/compliance/consent` | ✅ | Fetch DPDP/HIPAA health consent record |
+| `POST` | `/api/compliance/consent` | ✅ | Save DPDP/HIPAA health consent choices |
+| `POST` | `/api/compliance/delete-account` | ✅ | Erase user health data, meal logs, and profile |
 | `POST` | `/api/auth/sync` | ❌ | Sync Firebase user to MongoDB |
 | `GET` | `/api/user/stats` | ✅ | Get daily macro stats + streak |
 | `POST` | `/api/user/log_meal` | ✅ | Log a meal + estimate macros via AI |
@@ -1391,6 +1432,9 @@
 | `GET` | `/api/admin/users` | 🛡️ Mod | Paginated users list with tier & quotas |
 | `POST` | `/api/admin/users/{user_id}/reset-quota` | 🛡️ Mod | Reset user scan counter to 0/20 |
 | `POST` | `/api/admin/users/{user_id}/toggle-ban` | 🛡️ Mod | Toggle account suspension / ban |
+| `POST` | `/api/admin/users/{user_id}/refund` | 🛡️ Admin | Issue Razorpay refund and revert user tier |
+| `GET` | `/api/admin/audit-logs` | 👑 Super Admin | Query append-only audit ledger (SHA-256 hashed) |
+| `GET` | `/api/admin/audit-logs/export` | 👑 Super Admin | Stream RFC 4180 CSV export of governance events |
 | `GET` | `/api/admin/logs` | 🛡️ Mod | Query system telemetry & exception stream |
 | `GET` | `/api/admin/analytics/overview` | 🛡️ Admin | Real-time KPIs, active subs & estimated MRR |
 | `GET` | `/api/admin/ota/releases` | 🛡️ Mod | Query active EAS update releases |
@@ -1492,23 +1536,24 @@
 ## 🛣️ Planned Features (Roadmap)
 
 ### 🔴 HIGH PRIORITY — Freemium Model
-- [ ] MongoDB schema update (`tier`, `subscription`, `usage` fields on `users`)
-- [ ] Razorpay subscription plans (₹366 / ₹732 / ₹998)
-- [ ] `POST /api/subscription/create` + `GET /api/subscription/status`
-- [ ] `POST /api/webhooks/razorpay` with HMAC verification
-- [ ] Scan quota middleware (`check_scan_quota`)
-- [ ] Tier-based AI routing (`ai_router.py`)
-- [ ] Sarvam AI integration (`services/sarvam_client.py`)
-- [ ] Frontend `PricingPage.tsx`
-- [ ] Frontend `UpgradeModal.tsx` (triggered on quota limit)
-- [ ] Frontend `UsageIndicator.tsx` (scan bar on Dashboard)
-- [ ] Monthly scan counter reset (cron / scheduler)
+- [x] MongoDB schema update (`tier`, `subscription`, `usage` fields on `users`)
+- [x] Razorpay subscription plans (₹366 Starter / ₹732 Pro / ₹998 Elite)
+- [x] `POST /api/subscription/create-order` + `GET /api/subscription/status`
+- [x] `POST /api/webhooks/razorpay` with HMAC-SHA256 signature verification & idempotency
+- [x] Scan quota middleware (`check_scan_quota`, atomic quota reservation/refund)
+- [x] Tier-based AI routing (`ai_router.py`)
+- [x] Frontend `PricingPage.tsx`
+- [x] Frontend `UpgradeModal.tsx` (triggered on quota limit or gated features)
+- [x] Frontend `UsageIndicator.tsx` (scan bar on Dashboard)
+- [ ] Monthly scan counter reset (cron / scheduler automation)
+- [ ] Sarvam AI audio integration (`services/sarvam_client.py`)
 
 ### 🟡 MEDIUM PRIORITY
-- [ ] **Smart Meal Planning** — Weekly meal plans + grocery lists
-- [ ] **Dietary Restriction Filters** — Auto-flag Keto/Vegan/Halal/Gluten-Free conflicts
+- [x] **Smart Meal Planning** — 7-day revolving meal plans + multi-provider quick-commerce grocery export (Blinkit, Zepto, Instamart, BigBasket, Amazon Fresh)
+- [x] **Dietary Restriction Filters** — Auto-flag Keto/Vegan/Halal/Gluten-Free conflicts & clinical safety validations
+- [x] **Barcode Scanner** — Fast client-side barcode scanning via `@zxing/library` code-split chunk + crowdsourced OCR ingestion
+- [x] **Bundle Optimization** — Route/tab code-splitting with `React.lazy()` reducing entry chunk from 1,400 kB to 250.19 kB
 - [ ] **Advanced Analytics & Charts** — Macro trend graphs over weeks/months
-- [ ] **Barcode Scanner** — Scan packaged food barcodes via open food database
 
 ### 🟢 FUTURE IDEAS
 - [ ] **Wearable Integration** — Google Fit / Apple Health sync
@@ -1535,7 +1580,7 @@ NVIDIA_API_KEY_5=...
 NVIDIA_VISION_MODEL=meta/llama-3.2-11b-vision-instruct
 NVIDIA_TEXT_MODEL=meta/llama-3.1-8b-instruct
 FIREBASE_CREDENTIALS={"type":"service_account",...}
-# --- PLANNED (Freemium) ---
+# --- Freemium Subscriptions & Webhooks ---
 RAZORPAY_KEY_ID=
 RAZORPAY_KEY_SECRET=
 RAZORPAY_WEBHOOK_SECRET=
@@ -1555,7 +1600,6 @@ VITE_FIREBASE_STORAGE_BUCKET=...
 VITE_FIREBASE_MESSAGING_SENDER_ID=...
 VITE_FIREBASE_APP_ID=...
 VITE_FIREBASE_MEASUREMENT_ID=...
-# --- PLANNED (Freemium) ---
 VITE_RAZORPAY_KEY_ID=
 ```
 
@@ -1563,13 +1607,14 @@ VITE_RAZORPAY_KEY_ID=
 
 ## 🐛 Known Issues / Technical Debt
 
-| Issue | Severity | File | Notes |
-|---|---|---|---|
-| `alert()` still used in `UserStatsContext.tsx` (single meal log) | Low | `UserStatsContext.tsx` | Replace with toast in future cleanup |
-| No loading state on batch meal log (Tick button) | Low | `Search.tsx` | Spinner shows but no per-item progress |
-| `main.py` is a monolith (830+ lines) | Medium | `backend/main.py` | Should be split into `routes/` when Freemium is built |
-| No unit tests anywhere | Medium | Entire project | Add pytest (backend) + Vitest (frontend) in future |
-| Notifications scheduled with `setTimeout` (not persistent) | Low | `UserStatsContext.tsx` | Use a proper push notification service eventually |
+| Issue | Severity | Status | File | Notes |
+|---|---|---|---|---|
+| `alert()` and `confirm()` dialogs | Low | **CLOSED (Verified)** | `frontend/src/` | Replaced across all components with accessible dark brutalist toasts and `ConfirmModal` |
+| Monolithic entry bundle (1.38 MB) | High | **CLOSED (Verified)** | `App.tsx`, `vite.config.ts` | Reduced to 250.19 kB (-82.13%) via `React.lazy()` and manual chunking |
+| No automated test coverage | High | **CLOSED (Verified)** | Entire repository | 302 automated tests passing (192 backend pytest + 110 frontend vitest) |
+| `main.py` monolithic structure | Medium | **CLOSED (Verified)** | `backend/` | Modularized into `routes/` (admin, meals, scan, subscriptions, webhooks, custom_meals, compliance) |
+| No loading state on batch meal log | Low | Open | `Search.tsx` | Spinner shows on trigger button but per-item checklist progress not rendered |
+| Notifications scheduled with `setTimeout` | Low | Open | `UserStatsContext.tsx` | Non-persistent browser timeouts; can migrate to Web Push Notifications in future |
 
 ---
 

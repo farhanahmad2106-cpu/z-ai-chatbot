@@ -1,26 +1,29 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { User, Flame, ShieldAlert } from 'lucide-react';
 import Dashboard from './components/Dashboard';
-import Search from './components/Search';
-import Scan from './components/Scan';
-import Profile from './components/Profile';
-import Settings from './components/Settings';
-import PricingPage from './components/PricingPage';
-import PaymentStatus from './components/PaymentStatus';
 import LoginModal from './components/auth/LoginModal';
 import ProfileDropdown from './components/ProfileDropdown';
 import HelpModal from './components/HelpModal';
-import AdminDashboard from './components/admin/AdminDashboard';
 import AdminRouteGuard from './components/admin/AdminRouteGuard';
+import PaymentStatus from './components/PaymentStatus';
+import Footer from './components/Footer';
+import { ConfirmModal } from './components/ui/ConfirmModal';
+import ViewErrorBoundary from './components/ViewErrorBoundary';
 import { useAuth } from './context/AuthContext';
 import { useAdminAuth } from './context/AdminAuthContext';
 import { useUserStats } from './context/UserStatsContext';
 import { useUserProfile } from './context/UserProfileContext';
-import Footer from './components/Footer';
-import LegalViewer from './components/legal/LegalViewer';
-import MealPlanner from './components/MealPlanner';
 import { syncQueuedMealsToServer, getQueuedMealCount } from './utils/offlineSync';
-import { ConfirmModal } from './components/ui/ConfirmModal';
+
+// Lazy-loaded route and tab views
+const Search = lazy(() => import('./components/Search'));
+const Scan = lazy(() => import('./components/Scan'));
+const MealPlanner = lazy(() => import('./components/MealPlanner'));
+const Profile = lazy(() => import('./components/Profile'));
+const Settings = lazy(() => import('./components/Settings'));
+const PricingPage = lazy(() => import('./components/PricingPage'));
+const AdminDashboard = lazy(() => import('./components/admin/AdminDashboard'));
+const LegalViewer = lazy(() => import('./components/legal/LegalViewer'));
 
 export type AppTab = 'dashboard' | 'search' | 'scan' | 'profile' | 'settings' | 'pricing' | 'admin' | 'privacy' | 'terms' | 'refund' | 'cookies' | 'planner';
 
@@ -427,39 +430,54 @@ function App() {
 
       {/* Render the Active Tab Page */}
       <main className="py-8 px-4">
-        {activeTab === 'dashboard' && (
-          <Dashboard
-            onNavigateToScan={(imgData) => {
-              setScanImageData(imgData);
-              navigateToTab('scan');
-            }}
-            onGoToPricing={() => navigateToTab('pricing')}
-          />
-        )}
-        {activeTab === 'search' && <Search onNavigateToDashboard={() => navigateToTab('dashboard')} />}
-        {activeTab === 'scan' && (
-          <Scan
-            onNavigateToSearch={() => navigateToTab('search')}
-            initialImage={scanImageData}
-            onClearInitialImage={() => setScanImageData(null)}
-          />
-        )}
-        {activeTab === 'planner' && <MealPlanner />}
-        {activeTab === 'profile' && <Profile onBack={() => navigateToTab('dashboard')} onGoToPricing={() => navigateToTab('pricing')} />}
-        {activeTab === 'settings' && <Settings onBack={() => navigateToTab('dashboard')} />}
-        {activeTab === 'pricing' && <PricingPage onClose={() => navigateToTab('dashboard')} />}
-        {activeTab === 'admin' && (
-          <AdminRouteGuard onExit={() => navigateToTab('dashboard')}>
-            <AdminDashboard onExit={() => navigateToTab('dashboard')} />
-          </AdminRouteGuard>
-        )}
-        {(activeTab === 'privacy' || activeTab === 'terms' || activeTab === 'refund' || activeTab === 'cookies') && (
-          <LegalViewer 
-            activeDoc={activeTab} 
-            onNavigate={(doc) => navigateToTab(doc)} 
-            onBackToApp={handleBackToApp} 
-          />
-        )}
+        <ViewErrorBoundary viewName={activeTab} onReset={() => setActiveTab('dashboard')}>
+          <Suspense
+            fallback={
+              <div className="min-h-[400px] flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-200">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mb-3">
+                  <div className="w-5 h-5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+                </div>
+                <span className="font-mono text-xs uppercase tracking-widest text-emerald-400 font-bold">
+                  Loading view...
+                </span>
+              </div>
+            }
+          >
+            {activeTab === 'dashboard' && (
+              <Dashboard
+                onNavigateToScan={(imgData) => {
+                  setScanImageData(imgData);
+                  navigateToTab('scan');
+                }}
+                onGoToPricing={() => navigateToTab('pricing')}
+              />
+            )}
+            {activeTab === 'search' && <Search onNavigateToDashboard={() => navigateToTab('dashboard')} />}
+            {activeTab === 'scan' && (
+              <Scan
+                onNavigateToSearch={() => navigateToTab('search')}
+                initialImage={scanImageData}
+                onClearInitialImage={() => setScanImageData(null)}
+              />
+            )}
+            {activeTab === 'planner' && <MealPlanner />}
+            {activeTab === 'profile' && <Profile onBack={() => navigateToTab('dashboard')} onGoToPricing={() => navigateToTab('pricing')} />}
+            {activeTab === 'settings' && <Settings onBack={() => navigateToTab('dashboard')} />}
+            {activeTab === 'pricing' && <PricingPage onClose={() => navigateToTab('dashboard')} />}
+            {activeTab === 'admin' && (
+              <AdminRouteGuard onExit={() => navigateToTab('dashboard')}>
+                <AdminDashboard onExit={() => navigateToTab('dashboard')} />
+              </AdminRouteGuard>
+            )}
+            {(activeTab === 'privacy' || activeTab === 'terms' || activeTab === 'refund' || activeTab === 'cookies') && (
+              <LegalViewer 
+                activeDoc={activeTab} 
+                onNavigate={(doc) => navigateToTab(doc)} 
+                onBackToApp={handleBackToApp} 
+              />
+            )}
+          </Suspense>
+        </ViewErrorBoundary>
       </main>
 
       {/* Shared Footer (hidden on admin dashboard for space) */}

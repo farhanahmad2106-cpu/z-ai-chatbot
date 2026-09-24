@@ -19,7 +19,6 @@ function legalDocsPlugin() {
 // https://vite.dev/config/
 export default defineConfig({
   esbuild: {
-    // @ts-ignore
     keepNames: true
   },
   build: {
@@ -27,6 +26,25 @@ export default defineConfig({
       // @ts-ignore - Rolldown specific option to disable plugin timings warning
       checks: {
         pluginTimings: false
+      },
+      output: {
+        manualChunks(id) {
+          const normalized = id.replace(/\\/g, '/');
+          if (normalized.includes('/node_modules/')) {
+            if (normalized.includes('/@zxing/')) {
+              return 'zxing-vendor';
+            }
+            if (
+              normalized.includes('/react/') ||
+              normalized.includes('/react-dom/')
+            ) {
+              return 'react-vendor';
+            }
+            if (normalized.includes('/lucide-react/')) {
+              return 'lucide-vendor';
+            }
+          }
+        }
       }
     }
   },
