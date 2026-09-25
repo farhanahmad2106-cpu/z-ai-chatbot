@@ -1,13 +1,43 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-25 (Session: Production Bundle Code-Splitting, Chunk Error Recovery & Living Documentation Synchronization)
+> **Last Updated:** 2026-09-25 (Session: Native Browser Dialog Elimination, Accessible Confirm Modal & UI Accessibility Hardening)
 
 ---
 
 ## 🗓️ Last Session Summary
 **Date:** 2026-09-25
-**Work Done — Production Bundle Code-Splitting, Chunk Error Recovery & Living Documentation Synchronization:**
+**Work Done — Native Browser Dialog Elimination, Accessible Confirm Modal & UI Accessibility Hardening:**
+- **Zero Production Native Dialog Verification & Guard (`frontend/src/`)**:
+  - Confirmed 0 occurrences of `alert()`, `confirm()`, `prompt()`, `window.*`, and `globalThis.*` across all production frontend source files (verified via `git grep` and automated regression tests).
+  - Enhanced automated regression test suite (`frontend/src/tests/nativeDialogRegression.test.ts`) to also detect bracket notation invocations (`window["alert"|"confirm"|"prompt"]` and `globalThis[...]`).
+- **Production-Grade Accessible ConfirmModal (`frontend/src/components/ui/ConfirmModal.tsx`)**:
+  - Implemented internal async confirmation state machine (`isSubmitting`, `isBusy = isLoading || isSubmitting`): automatically handles asynchronous promises returned by `onConfirm`, disables action buttons, Escape dismissal, and backdrop click during mutation, displays inline spinner, and prevents duplicate submissions without swallowing rejected promises.
+  - Hardened focus trapping: gracefully handles edge cases with 0 or 1 focusable control, cycles Tab / Shift+Tab within dialog, and safely restores focus to trigger element only when connected and enabled, falling back safely to `document.body.focus()`.
+  - Body scroll lock: captures `originalOverflow` upon open and cleanly restores exact previous value upon unmount/close.
+  - Semantic accessibility: `role="dialog"`, `aria-modal="true"`, dynamic `aria-labelledby` and `aria-describedby` with React `useId()`, `motion-reduce:animate-none` reduced motion respect, and distinct dark-brutalist variants (`danger`, `warning`, `primary`).
+- **Comprehensive Confirmation Workflows Migration**:
+  - `CustomRecipeModal.tsx`: Destructive recipe deletion guarded behind `variant="danger"` modal with exact microcopy: `"Are you sure you want to delete this recipe? This will remove it from your personal Smart Meal Planner pool."`.
+  - `UserManagementTab.tsx`: Scan quota reset guarded behind `variant="warning"` modal with exact microcopy: `"Reset monthly scan usage to 0 for this user? This will be recorded in the admin audit ledger."`.
+  - `AdminTeamTab.tsx`: Administrator privilege revocation guarded behind `variant="danger"` modal: `title="Revoke Administrator Privileges"`, `message="Are you sure you want to permanently revoke admin access for this account?"`.
+  - `AdminDashboard.tsx`: Administrative logout guarded behind `variant="primary"` modal: `title="Sign Out"`, `message="Are you sure you want to sign out of the administrative session?"`.
+  - `App.tsx`: Unified desktop and mobile sign-out confirmation guarded behind `variant="primary"` modal: `title="Sign Out"`, `message="Are you sure you want to sign out of your Z-SeHealth session?"`.
+  - `Settings.tsx`: Refactored custom Delete Account modal into canonical `<ConfirmModal variant="danger" />` with focus trapping and accessible dialog semantics.
+  - `Dashboard.tsx`: Non-blocking camera denial notification uses existing `ToastContext` (`showToast(..., "error")`).
+  - `ViewErrorBoundary.tsx`: Fixed unmounted component `setState` warnings in lazy chunk error boundary unit tests.
+- **Automated Regression Test Suite (`frontend/src/tests/confirmModal.test.ts`)**:
+  - Added Section 23 targeted workflow tests covering Recipe deletion, Admin quota reset, Admin team revocation, and Application sign-out.
+  - Added test coverage for bracket notation detection in `nativeDialogRegression.test.ts`.
+- **Automated Verification Matrix**:
+  - Frontend Vitest suite (`npm --prefix frontend test -- --run`): **132/132 passed (100%)** across 10 test files.
+  - Backend pytest suite (`python -m pytest -W error::RuntimeWarning`): **192/192 passed (100%)** across 15 test files.
+  - Total automated regression tests: **324/324 passed (100%)**.
+  - Production build (`npm --prefix frontend run build`): Clean (exit code 0, 9.85s, PWA generated, 0 TypeScript errors).
+
+---
+
+## 🗓️ Previous Session Summary (Production Bundle Code-Splitting, Chunk Error Recovery & Living Documentation Synchronization)
+**Date:** 2026-09-25
 - **Route/View-Level Dynamic Code-Splitting (`frontend/src/App.tsx`)**:
   - Genuinely deferred 8 heavy non-critical views via `React.lazy()` and dynamic `import()`: `Search`, `Scan`, `MealPlanner`, `Profile`, `Settings`, `PricingPage`, `AdminDashboard`, and `LegalViewer`.
   - Preserved eager critical shell (`Dashboard`, navigation bar, auth state, login/profile modals, footer).

@@ -30,6 +30,14 @@ export class ViewErrorBoundary extends Component<Props, State> {
     };
   }
 
+  public componentDidMount() {
+    (this as any)._isMounted = true;
+  }
+
+  public componentWillUnmount() {
+    (this as any)._isMounted = false;
+  }
+
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     if (import.meta.env.DEV) {
       console.error('[ViewErrorBoundary] Failed to load view chunk:', error, errorInfo);
@@ -43,7 +51,9 @@ export class ViewErrorBoundary extends Component<Props, State> {
         : null;
       if (priorAttempt === '1') {
         this.state = { ...this.state, isRepeatedFailure: true };
-        this.setState({ isRepeatedFailure: true });
+        if ((this as any)._isMounted) {
+          this.setState({ isRepeatedFailure: true });
+        }
       }
     } catch {
       // In private browsing or restricted environments, gracefully ignore sessionStorage errors
@@ -54,7 +64,9 @@ export class ViewErrorBoundary extends Component<Props, State> {
     // If the active view changed while in error state, reset error to allow normal view rendering
     if (prevProps.viewName !== this.props.viewName && this.state.hasError) {
       this.state = { hasError: false, error: null, isRepeatedFailure: false };
-      this.setState({ hasError: false, error: null, isRepeatedFailure: false });
+      if ((this as any)._isMounted) {
+        this.setState({ hasError: false, error: null, isRepeatedFailure: false });
+      }
     }
   }
 
@@ -72,7 +84,9 @@ export class ViewErrorBoundary extends Component<Props, State> {
           // ignore
         }
         this.state = { hasError: false, error: null, isRepeatedFailure: false };
-        this.setState({ hasError: false, error: null, isRepeatedFailure: false });
+        if ((this as any)._isMounted) {
+          this.setState({ hasError: false, error: null, isRepeatedFailure: false });
+        }
         this.props.onReset();
       } else if (typeof window !== 'undefined') {
         try {
@@ -98,7 +112,9 @@ export class ViewErrorBoundary extends Component<Props, State> {
 
     // Clear state
     this.state = { hasError: false, error: null, isRepeatedFailure: false };
-    this.setState({ hasError: false, error: null, isRepeatedFailure: false });
+    if ((this as any)._isMounted) {
+      this.setState({ hasError: false, error: null, isRepeatedFailure: false });
+    }
 
     // Trigger controlled reload
     if (typeof window !== 'undefined') {
@@ -116,7 +132,9 @@ export class ViewErrorBoundary extends Component<Props, State> {
       // ignore
     }
     this.state = { hasError: false, error: null, isRepeatedFailure: false };
-    this.setState({ hasError: false, error: null, isRepeatedFailure: false });
+    if ((this as any)._isMounted) {
+      this.setState({ hasError: false, error: null, isRepeatedFailure: false });
+    }
     if (this.props.onReset) {
       this.props.onReset();
     }

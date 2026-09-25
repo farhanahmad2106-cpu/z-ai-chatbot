@@ -105,4 +105,33 @@ describe('Production Native Dialog Elimination Regression Guard (Section 26)', (
       `Detected native bare dialog calls in production code:\n${JSON.stringify(violations, null, 2)}`
     ).toEqual([]);
   });
+
+  it('verifies ZERO bracket notation calls (window/globalThis["alert"|"confirm"|"prompt"]) in production frontend/src', () => {
+    const entries = getProductionEntries();
+    const violations: { file: string; line: number; content: string }[] = [];
+    const regex = /(?:window|globalThis)\[['"](alert|confirm|prompt)['"]\]/;
+
+    for (const [filePath, content] of entries) {
+      if (typeof content !== 'string') continue;
+      const lines = content.split('\n');
+      lines.forEach((line: string, index: number) => {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) {
+          return;
+        }
+        if (regex.test(line)) {
+          violations.push({
+            file: filePath,
+            line: index + 1,
+            content: trimmed,
+          });
+        }
+      });
+    }
+
+    expect(
+      violations,
+      `Detected bracket-notation native dialog calls in production code:\n${JSON.stringify(violations, null, 2)}`
+    ).toEqual([]);
+  });
 });

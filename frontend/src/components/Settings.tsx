@@ -11,13 +11,13 @@ import {
   User, 
   ArrowLeft,
   X,
-  AlertTriangle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
 import { useToast } from '../context/ToastContext';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../firebase';
+import { ConfirmModal } from './ui/ConfirmModal';
 
 interface SettingsProps {
   onBack?: () => void;
@@ -354,33 +354,16 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
       )}
 
       {/* --- Delete Account Confirmation Modal --- */}
-      {isDeleteModalOpen && (
-        <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="bg-slate-900 border border-red-900/40 rounded-3xl p-6 max-w-md w-full shadow-2xl relative text-center">
-            <div className="w-12 h-12 rounded-full bg-red-500/10 text-red-500 border border-red-500/20 flex items-center justify-center mx-auto mb-4">
-              <AlertTriangle className="w-6 h-6" />
-            </div>
-            
-            <h3 className="text-xl font-bold text-white mb-2">Delete Account?</h3>
-            <p className="text-sm text-gray-400 mb-6">Are you sure you want to delete your account? This action cannot be undone and your health data will be removed.</p>
-
-            <div className="flex gap-3">
-              <button 
-                onClick={handleDeleteAccount}
-                className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl text-sm transition-all cursor-pointer shadow-lg shadow-red-950/40"
-              >
-                Yes, Delete My Account
-              </button>
-              <button 
-                onClick={() => setIsDeleteModalOpen(false)}
-                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm font-semibold cursor-pointer"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmModal
+        isOpen={isDeleteModalOpen}
+        title="Delete Account"
+        message="Are you sure you want to delete your account? This action cannot be undone and your health data will be removed."
+        confirmLabel="Yes, Delete My Account"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={handleDeleteAccount}
+        onCancel={() => setIsDeleteModalOpen(false)}
+      />
     </div>
   );
 };

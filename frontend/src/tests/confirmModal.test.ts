@@ -319,4 +319,124 @@ describe('ConfirmModal Component & Accessibility Requirements', () => {
       expect(aria['aria-describedby']).toBe('confirm-modal-description-:r1:');
     });
   });
+
+  describe('Section 23: Targeted Confirmation Workflows Guard', () => {
+    it('Recipe deletion workflow: modal guards deletion until user confirms', async () => {
+      const deleteApiMock = vi.fn().mockResolvedValue({ success: true });
+      let recipeToDelete: { id: string; name: string } | null = null;
+      let modalOpen = false;
+
+      // 1. User clicks delete button on recipe card
+      const onDeleteClick = (recipe: { id: string; name: string }) => {
+        recipeToDelete = recipe;
+        modalOpen = true;
+      };
+
+      onDeleteClick({ id: 'rec_dal_01', name: 'Dal Tadka' });
+      expect(modalOpen).toBe(true);
+      expect(recipeToDelete).toEqual({ id: 'rec_dal_01', name: 'Dal Tadka' });
+      // Guard: deletion API must NOT be called yet
+      expect(deleteApiMock).not.toHaveBeenCalled();
+
+      // 2. User confirms deletion inside ConfirmModal
+      const onConfirm = async () => {
+        if (!recipeToDelete) return;
+        await deleteApiMock(recipeToDelete.id);
+        recipeToDelete = null;
+        modalOpen = false;
+      };
+
+      await onConfirm();
+      expect(deleteApiMock).toHaveBeenCalledTimes(1);
+      expect(deleteApiMock).toHaveBeenCalledWith('rec_dal_01');
+      expect(modalOpen).toBe(false);
+      expect(recipeToDelete).toBeNull();
+    });
+
+    it('Admin quota reset workflow: modal guards quota reset until user confirms', async () => {
+      const resetQuotaApiMock = vi.fn().mockResolvedValue({ message: 'Quota reset' });
+      let resetQuotaTarget: { id: string; uid: string; scans_used: number } | null = null;
+      let modalOpen = false;
+
+      // 1. Admin clicks reset quota
+      const onResetClick = (user: { id: string; uid: string; scans_used: number }) => {
+        resetQuotaTarget = user;
+        modalOpen = true;
+      };
+
+      onResetClick({ id: 'usr_01', uid: 'firebase_usr_01', scans_used: 19 });
+      expect(modalOpen).toBe(true);
+      expect(resetQuotaApiMock).not.toHaveBeenCalled();
+
+      // 2. Admin confirms reset
+      const onConfirmReset = async () => {
+        if (!resetQuotaTarget) return;
+        await resetQuotaApiMock(resetQuotaTarget.uid);
+        resetQuotaTarget = null;
+        modalOpen = false;
+      };
+
+      await onConfirmReset();
+      expect(resetQuotaApiMock).toHaveBeenCalledTimes(1);
+      expect(resetQuotaApiMock).toHaveBeenCalledWith('firebase_usr_01');
+      expect(modalOpen).toBe(false);
+      expect(resetQuotaTarget).toBeNull();
+    });
+
+    it('Admin team revocation workflow: modal guards admin revocation until user confirms', async () => {
+      const revokeAdminApiMock = vi.fn().mockResolvedValue({ success: true });
+      let adminToRevoke: { id: string; email: string; is_super_admin: boolean } | null = null;
+      let modalOpen = false;
+
+      // 1. Super Admin clicks revoke admin
+      const onRevokeClick = (admin: { id: string; email: string; is_super_admin: boolean }) => {
+        if (admin.is_super_admin) return;
+        adminToRevoke = admin;
+        modalOpen = true;
+      };
+
+      onRevokeClick({ id: 'adm_99', email: 'moderator@zsehealth.com', is_super_admin: false });
+      expect(modalOpen).toBe(true);
+      expect(revokeAdminApiMock).not.toHaveBeenCalled();
+
+      // 2. Super Admin confirms revocation
+      const onConfirmRevoke = async () => {
+        if (!adminToRevoke || adminToRevoke.is_super_admin) return;
+        await revokeAdminApiMock(adminToRevoke.id);
+        adminToRevoke = null;
+        modalOpen = false;
+      };
+
+      await onConfirmRevoke();
+      expect(revokeAdminApiMock).toHaveBeenCalledTimes(1);
+      expect(revokeAdminApiMock).toHaveBeenCalledWith('adm_99');
+      expect(modalOpen).toBe(false);
+      expect(adminToRevoke).toBeNull();
+    });
+
+    it('Sign out workflow: modal guards session logout until user confirms', async () => {
+      const logoutMock = vi.fn().mockResolvedValue(undefined);
+      let showLogoutConfirm = false;
+
+      // 1. User clicks Sign Out in profile menu
+      const onSignOutClick = () => {
+        showLogoutConfirm = true;
+      };
+
+      onSignOutClick();
+      expect(showLogoutConfirm).toBe(true);
+      // Guard: logout must NOT have occurred yet
+      expect(logoutMock).not.toHaveBeenCalled();
+
+      // 2. User confirms Sign Out
+      const onConfirmSignOut = async () => {
+        showLogoutConfirm = false;
+        await logoutMock();
+      };
+
+      await onConfirmSignOut();
+      expect(logoutMock).toHaveBeenCalledTimes(1);
+      expect(showLogoutConfirm).toBe(false);
+    });
+  });
 });

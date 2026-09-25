@@ -29,6 +29,17 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   const dialogRef = useRef<HTMLDivElement>(null);
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
   const previousActiveElementRef = useRef<HTMLElement | null>(null);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const isBusy = isLoading || isSubmitting;
 
   const baseId = useId();
   const titleId = `confirm-modal-title-${baseId}`;
@@ -60,14 +71,16 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
     return () => {
       clearTimeout(timer);
       document.body.style.overflow = originalOverflow;
-      // Restore focus to previous active element if still connected, or safe fallback
+      // Restore focus to previous active element if still connected and enabled, or safe fallback
       try {
+        const prev = previousActiveElementRef.current;
         if (
-          previousActiveElementRef.current &&
-          typeof previousActiveElementRef.current.focus === 'function' &&
-          document.contains(previousActiveElementRef.current)
+          prev &&
+          typeof prev.focus === 'function' &&
+          document.contains(prev) &&
+          !prev.hasAttribute('disabled')
         ) {
-          previousActiveElementRef.current.focus();
+          prev.focus();
         } else if (document.body && typeof document.body.focus === 'function') {
           document.body.focus();
         }
@@ -83,7 +96,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (!isLoading) {
+        if (!isBusy) {
           e.preventDefault();
           onCancel();
         }
@@ -95,10 +108,19 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
           'button:not([disabled]), [href]:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
         );
         const focusableArray = Array.from(focusables);
-        if (focusableArray.length === 0) return;
+        if (focusableArray.length === 0) {
+          e.preventDefault();
+          return;
+        }
 
         const firstElement = focusableArray[0];
         const lastElement = focusableArray[focusableArray.length - 1];
+
+        if (focusableArray.length === 1) {
+          e.preventDefault();
+          firstElement.focus();
+          return;
+        }
 
         if (e.shiftKey) {
           if (document.activeElement === firstElement || !dialogRef.current.contains(document.activeElement)) {
@@ -116,13 +138,28 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, isLoading, onCancel]);
+  }, [isOpen, isBusy, onCancel]);
 
   if (!isOpen) return null;
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget && closeOnBackdropClick && !isLoading) {
+    if (e.target === e.currentTarget && closeOnBackdropClick && !isBusy) {
       onCancel();
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (isBusy) return;
+    try {
+      const result = onConfirm();
+      if (result && typeof (result as Promise<void>).then === 'function') {
+        setIsSubmitting(true);
+        await result;
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -174,7 +211,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
         <button
           type="button"
           onClick={onCancel}
-          disabled={isLoading}
+          disabled={isBusy}
           className="absolute top-5 right-5 p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
           aria-label="Close dialog"
         >
@@ -204,18 +241,18 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
             ref={cancelButtonRef}
             type="button"
             onClick={onCancel}
-            disabled={isLoading}
+            disabled={isBusy}
             className="px-4 py-2.5 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white transition-all text-xs font-bold uppercase tracking-wider disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer active:scale-95"
           >
             {cancelLabel}
           </button>
           <button
             type="button"
-            onClick={onConfirm}
-            disabled={isLoading}
+            onClick={handleConfirm}
+            disabled={isBusy}
             className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer active:scale-95 flex items-center gap-2 ${confirmBtn}`}
           >
-            {isLoading && <Loader2 className="w-4 h-4 animate-spin shrink-0" />}
+            {isBusy && <Loader2 className="w-4 h-4 animate-spin shrink-0" />}
             <span>{confirmLabel}</span>
           </button>
         </div>
