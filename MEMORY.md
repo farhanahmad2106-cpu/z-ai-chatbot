@@ -32,11 +32,14 @@
   - Total CSS emitted: `index-[hash].css`: **128.71 kB** (18.29 kB gzip).
   - Compiler / Rollup warnings: **0 warnings, 0 chunk-size warnings, 0 errors**.
   - PWA / Service Worker: Clean Workbox precache manifest with 30 entries (1844.71 KiB), `sw.js` and `workbox-*.js` generated.
+- **Vercel Build Environment & TypeScript Fix (`frontend/vite.config.ts`)**:
+  - Removed obsolete/unsupported `esbuild.keepNames` property from `vite.config.ts` which triggered TypeScript compilation error `TS2769: Object literal may only specify known properties, and 'keepNames' does not exist in type 'ESBuildOptions'` during Vercel's `tsc -b` phase.
+  - Eliminated the Rollup/Oxc warning `Both esbuild and oxc options were set. oxc options will be used and esbuild options will be ignored`.
 - **Automated Verification Matrix**:
-  - Frontend Vitest suite (`npm --prefix frontend test -- --run`): **136/136 passed (100%)** across 10 test files (added comprehensive Scenario A, E, F, G tests in `codeSplitting.test.ts`).
+  - Frontend Vitest suite (`npm --prefix frontend test -- --run`): **136/136 passed (100%)** across 10 test files.
   - Backend Pytest suite (`python -m pytest -W error::RuntimeWarning`): **200/200 passed (100%)** across 15 test files in 16.74s (0 RuntimeWarnings, 0 unawaited coroutines).
   - Total automated regression tests: **336/336 passed (100%)**.
-  - Production build (`npm --prefix frontend run build`): Clean (exit code 0, 10.11s, 0 TypeScript errors).
+  - Production build (`npm --prefix frontend run build`): Clean (exit code 0, 10.37s, 0 TypeScript errors, 0 warnings).
 
 ---
 
