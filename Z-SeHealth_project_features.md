@@ -58,13 +58,13 @@
 
 ### H. Production Bundle Optimization & Safe Code-Splitting
 - **Route/Tab-Level `React.lazy()`**: Heavy feature views (`AdminDashboard`, `MealPlanner`, `LegalViewer`, `Search`, `Profile`, `Settings`, `PricingPage`, and `Scan`) are dynamically imported on demand.
-- **Dark Brutalist Suspense Boundary**: Active view rendering is protected by `<Suspense>` with an emerald monospace loading spinner.
-- **View-Level Error Shield (`ViewErrorBoundary.tsx`)**: Catches dynamic chunk load errors or network disruptions. Features `sessionStorage` retry loop defense against infinite reloads, accessible semantics (`role="alert"`, `aria-live="assertive"`), dual recovery controls ("Force Reload" and "Dashboard" navigation), and automatic error clearing upon tab changes.
+- **Dark Brutalist Suspense Boundary**: Active view rendering is protected by `<Suspense>` with accessible attributes (`role="status"`, `aria-live="polite"`, `aria-label="Loading view"`) and an emerald monospace loading spinner.
+- **View-Level Error Shield (`ViewErrorBoundary.tsx`)**: Catches dynamic chunk load errors or network disruptions. Features `sessionStorage` and in-memory retry loop defense against infinite reloads, accessible semantics (`role="alert"`, `aria-live="assertive"`), dual recovery controls ("Force Reload" and "Dashboard" navigation), and automatic error clearing upon tab changes (`componentDidUpdate`).
 - **Vite Manual Vendor Chunking**:
   - `react-vendor.js`: 182.33 kB (React 19, React-DOM)
   - `zxing-vendor.js`: 451.75 kB (@zxing barcode library — deferred until Scan tab is opened)
   - `lucide-vendor.js`: 27.09 kB (Lucide icons)
-- **Initial Entry Bundle Size**: Reduced from **1,400.00 kB** down to **251.43 kB** (**-82.04% reduction**), with **0 Vite chunk size warnings**.
+- **Initial Entry Bundle Size**: Reduced from **1,400.00 kB** down to **251.82 kB** (**-82.01% reduction**, 68.91 kB gzip), with **0 Vite chunk size warnings**.
 
 ---
 
@@ -75,10 +75,10 @@ All test counts reflect executed test runs verified in the repository:
 | Test Suite | Framework | Files | Tests Executed | Passed | Failed | Status |
 |---|---|---|---|---|---|---|
 | **Backend Pytest Suite** | `pytest 9.1.1` + `pytest-asyncio` | 15 files | 200 | **200** | 0 | **PASS (100%)** |
-| **Frontend Vitest Suite** | `vitest 5.0.1` | 10 files | 132 | **132** | 0 | **PASS (100%)** |
+| **Frontend Vitest Suite** | `vitest 5.0.1` | 10 files | 136 | **136** | 0 | **PASS (100%)** |
 | **TypeScript Typecheck** | `tsc -b` | Project | — | Clean | 0 errors | **PASS** |
-| **Production Vite Build** | `vite build` | Production | — | Built in 9.85s | 0 warnings | **PASS** |
-| **Total Automated Tests** | Combined | 25 files | 332 | **332** | 0 | **PASS (100%)** |
+| **Production Vite Build** | `vite build` | Production | — | Built in 10.11s | 0 warnings | **PASS** |
+| **Total Automated Tests** | Combined | 25 files | 336 | **336** | 0 | **PASS (100%)** |
 
 ---
 

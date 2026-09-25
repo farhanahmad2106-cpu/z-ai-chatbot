@@ -212,6 +212,107 @@ describe('ViewErrorBoundary & Lazy Code-Splitting Architecture', () => {
     expect(confirmSpy).not.toHaveBeenCalled();
   });
 
+  it('Scenario A: first failure handleRetry records session marker and reloads window', () => {
+    const reloadSpy = vi.fn();
+    (globalThis as any).window.location = { reload: reloadSpy };
+
+    const boundary = new ViewErrorBoundary({
+      children: 'Normal View Content',
+      viewName: 'planner',
+    });
+
+    boundary.state = {
+      hasError: true,
+      error: new Error('Failed to load chunk'),
+      isRepeatedFailure: false,
+    };
+
+    (boundary as any).handleRetry();
+
+    expect(mockStorage.getItem('z_chunk_retry_planner')).toBe('1');
+    expect(reloadSpy).toHaveBeenCalledTimes(1);
+    expect(boundary.state.hasError).toBe(false);
+  });
+
+  it('Scenario E: force reload on repeated failure clears session marker and reloads window', () => {
+    const reloadSpy = vi.fn();
+    (globalThis as any).window.location = { reload: reloadSpy };
+
+    const boundary = new ViewErrorBoundary({
+      children: 'Normal View Content',
+      viewName: 'planner',
+    });
+
+    mockStorage.setItem('z_chunk_retry_planner', '1');
+    boundary.state = {
+      hasError: true,
+      error: new Error('Persistent failure'),
+      isRepeatedFailure: true,
+    };
+
+    (boundary as any).handleRetry();
+
+    expect(mockStorage.getItem('z_chunk_retry_planner')).toBeNull();
+    expect(reloadSpy).toHaveBeenCalledTimes(1);
+    expect(boundary.state.hasError).toBe(false);
+  });
+
+  it('Scenario F: degrades safely to in-memory store when sessionStorage throws', () => {
+    const throwingStorage = {
+      getItem: vi.fn(() => { throw new Error('SecurityError: Access Denied'); }),
+      setItem: vi.fn(() => { throw new Error('QuotaExceededError'); }),
+      removeItem: vi.fn(() => { throw new Error('SecurityError'); }),
+    };
+    (globalThis as any).sessionStorage = throwingStorage;
+
+    const boundary = new ViewErrorBoundary({
+      children: 'Normal View Content',
+      viewName: 'search',
+    });
+
+    // Should not throw
+    expect(() => {
+      boundary.componentDidCatch(new Error('Chunk failure'), { componentStack: '' });
+    }).not.toThrow();
+
+    // Render should succeed with fallback UI
+    boundary.state = {
+      hasError: true,
+      error: new Error('Chunk failure'),
+      isRepeatedFailure: false,
+    };
+    const rendered = boundary.render() as any;
+    expect(rendered).toBeDefined();
+    expect(rendered.props.role).toBe('alert');
+  });
+
+  it('Scenario G: accessibility semantics are fully satisfied', () => {
+    const boundary = new ViewErrorBoundary({
+      children: 'Normal View Content',
+      viewName: 'settings',
+      onReset: vi.fn(),
+    });
+
+    boundary.state = {
+      hasError: true,
+      error: new Error('Chunk load failed'),
+      isRepeatedFailure: true,
+    };
+
+    const rendered = boundary.render() as any;
+    expect(rendered.props.role).toBe('alert');
+    expect(rendered.props['aria-live']).toBe('assertive');
+
+    const card = rendered.props.children;
+    const buttonContainer = card.props.children[card.props.children.length - 1];
+    const [forceReloadBtn, dashboardBtn] = buttonContainer.props.children;
+
+    expect(forceReloadBtn.props.type).toBe('button');
+    expect(forceReloadBtn.props.children[1]).toBe('Force Reload');
+    expect(dashboardBtn.props.type).toBe('button');
+    expect(dashboardBtn.props.children[1]).toBe('Dashboard');
+  });
+
   it('defines all 12 expected application tab views with proper routing alignment', () => {
     const supportedTabs = [
       'dashboard',

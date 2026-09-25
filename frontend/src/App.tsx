@@ -433,9 +433,14 @@ function App() {
         <ViewErrorBoundary viewName={activeTab} onReset={() => setActiveTab('dashboard')}>
           <Suspense
             fallback={
-              <div className="min-h-[400px] flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-200">
+              <div 
+                className="min-h-[400px] flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-200"
+                role="status"
+                aria-live="polite"
+                aria-label="Loading view"
+              >
                 <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mb-3">
-                  <div className="w-5 h-5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+                  <div className="w-5 h-5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" aria-hidden="true" />
                 </div>
                 <span className="font-mono text-xs uppercase tracking-widest text-emerald-400 font-bold">
                   Loading view...

@@ -3,6 +3,42 @@ import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
 
 const CHUNK_RETRY_KEY_PREFIX = 'z_chunk_retry_';
 
+const inMemoryRetryStore = new Set<string>();
+
+function hasRetryMarker(viewKey: string): boolean {
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      return sessionStorage.getItem(CHUNK_RETRY_KEY_PREFIX + viewKey) === '1';
+    }
+  } catch {
+    // In private browsing or restricted environments, gracefully fall back to memory
+  }
+  return inMemoryRetryStore.has(viewKey);
+}
+
+function setRetryMarker(viewKey: string): void {
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem(CHUNK_RETRY_KEY_PREFIX + viewKey, '1');
+      return;
+    }
+  } catch {
+    // In private browsing or restricted environments, gracefully fall back to memory
+  }
+  inMemoryRetryStore.add(viewKey);
+}
+
+function clearRetryMarker(viewKey: string): void {
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem(CHUNK_RETRY_KEY_PREFIX + viewKey);
+    }
+  } catch {
+    // ignore
+  }
+  inMemoryRetryStore.delete(viewKey);
+}
+
 interface Props {
   children: ReactNode;
   viewName?: string;
@@ -45,18 +81,11 @@ export class ViewErrorBoundary extends Component<Props, State> {
 
     // Check if a retry was already attempted for this view during this session
     const viewKey = this.props.viewName || 'unknown';
-    try {
-      const priorAttempt = typeof sessionStorage !== 'undefined' 
-        ? sessionStorage.getItem(CHUNK_RETRY_KEY_PREFIX + viewKey) 
-        : null;
-      if (priorAttempt === '1') {
-        this.state = { ...this.state, isRepeatedFailure: true };
-        if ((this as any)._isMounted) {
-          this.setState({ isRepeatedFailure: true });
-        }
+    if (hasRetryMarker(viewKey)) {
+      this.state = { ...this.state, isRepeatedFailure: true };
+      if ((this as any)._isMounted) {
+        this.setState({ isRepeatedFailure: true });
       }
-    } catch {
-      // In private browsing or restricted environments, gracefully ignore sessionStorage errors
     }
   }
 
@@ -73,42 +102,21 @@ export class ViewErrorBoundary extends Component<Props, State> {
   private handleRetry = () => {
     const viewKey = this.props.viewName || 'unknown';
 
-    // If this is already a repeated failure, avoid infinite reload loops
+    // If this is already a repeated failure, clear marker and force reload window
     if (this.state.isRepeatedFailure) {
-      if (this.props.onReset) {
-        try {
-          if (typeof sessionStorage !== 'undefined') {
-            sessionStorage.removeItem(CHUNK_RETRY_KEY_PREFIX + viewKey);
-          }
-        } catch {
-          // ignore
-        }
-        this.state = { hasError: false, error: null, isRepeatedFailure: false };
-        if ((this as any)._isMounted) {
-          this.setState({ hasError: false, error: null, isRepeatedFailure: false });
-        }
-        this.props.onReset();
-      } else if (typeof window !== 'undefined') {
-        try {
-          if (typeof sessionStorage !== 'undefined') {
-            sessionStorage.removeItem(CHUNK_RETRY_KEY_PREFIX + viewKey);
-          }
-        } catch {
-          // ignore
-        }
+      clearRetryMarker(viewKey);
+      this.state = { hasError: false, error: null, isRepeatedFailure: false };
+      if ((this as any)._isMounted) {
+        this.setState({ hasError: false, error: null, isRepeatedFailure: false });
+      }
+      if (typeof window !== 'undefined') {
         window.location.reload();
       }
       return;
     }
 
     // First failure: mark attempt to prevent continuous automatic loops
-    try {
-      if (typeof sessionStorage !== 'undefined') {
-        sessionStorage.setItem(CHUNK_RETRY_KEY_PREFIX + viewKey, '1');
-      }
-    } catch {
-      // ignore
-    }
+    setRetryMarker(viewKey);
 
     // Clear state
     this.state = { hasError: false, error: null, isRepeatedFailure: false };
@@ -124,13 +132,7 @@ export class ViewErrorBoundary extends Component<Props, State> {
 
   private handleGoHome = () => {
     const viewKey = this.props.viewName || 'unknown';
-    try {
-      if (typeof sessionStorage !== 'undefined') {
-        sessionStorage.removeItem(CHUNK_RETRY_KEY_PREFIX + viewKey);
-      }
-    } catch {
-      // ignore
-    }
+    clearRetryMarker(viewKey);
     this.state = { hasError: false, error: null, isRepeatedFailure: false };
     if ((this as any)._isMounted) {
       this.setState({ hasError: false, error: null, isRepeatedFailure: false });
@@ -143,14 +145,7 @@ export class ViewErrorBoundary extends Component<Props, State> {
   public render() {
     if (this.state.hasError) {
       const viewKey = this.props.viewName || 'unknown';
-      let isRepeated = this.state.isRepeatedFailure;
-      try {
-        if (!isRepeated && typeof sessionStorage !== 'undefined' && sessionStorage.getItem(CHUNK_RETRY_KEY_PREFIX + viewKey) === '1') {
-          isRepeated = true;
-        }
-      } catch {
-        // ignore
-      }
+      const isRepeated = this.state.isRepeatedFailure || hasRetryMarker(viewKey);
 
       return (
         <div 

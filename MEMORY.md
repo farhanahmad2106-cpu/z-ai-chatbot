@@ -1,11 +1,46 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-25 (Session: Freemium Tier-Gating Enforcement, Atomic Quota Consistency & FastAPI Lifespan Migration)
+> **Last Updated:** 2026-09-25 (Session: Production Bundle Code-Splitting, Chunk Error Recovery & Living Documentation Synchronization)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-25
+**Work Done — Production Bundle Code-Splitting, Chunk Error Recovery & Living Documentation Synchronization:**
+- **Route/View-Level Dynamic Code-Splitting & Eager Critical Shell (`frontend/src/App.tsx`)**:
+  - Genuinely deferred 8 heavy non-critical views via `React.lazy()` and dynamic `import()`: `Search`, `Scan`, `MealPlanner`, `Profile`, `Settings`, `PricingPage`, `AdminDashboard`, and `LegalViewer`.
+  - Preserved eager critical shell (`Dashboard`, navigation bar, auth state, login/profile modals, footer) for instantaneous bootstrap and zero waterfall on landing.
+  - Hardened `<Suspense>` fallback boundary with complete accessible semantics: `role="status"`, `aria-live="polite"`, `aria-label="Loading view"`, dark-brutalist loading state (`min-h-[400px]`, emerald spinner with `aria-hidden="true"`, uppercase monospace label) with zero layout shifts or white screens.
+- **Production-Grade Chunk Error Shield & Infinite Reload Defense (`frontend/src/components/ViewErrorBoundary.tsx`)**:
+  - Built-in session-scoped retry marker (`z_chunk_retry_${viewKey}`) with graceful fallback to an in-memory `Set` if `sessionStorage` throws (`SecurityError` in private browsing or `QuotaExceededError`).
+  - First failure: User clicks "Reload View" to record retry marker and perform a controlled page reload.
+  - Second / Repeated failure: Detects existing attempt, displays "Unable to load section" / "Persistent Load Error" without automatic reload loops.
+  - Dual recovery actions: Primary "Force Reload" clears marker and executes browser navigation reload; secondary "Dashboard" clears marker, resets boundary state, and navigates back to functional dashboard shell via `onReset`.
+  - View-change automatic recovery: `componentDidUpdate` detects when `viewName` changes and automatically resets error state, preventing chunk failure propagation across tabs.
+- **Rollup Manual Vendor Chunking & Dependency Isolation (`frontend/vite.config.ts`)**:
+  - `react-vendor` (`react`, `react-dom`): 182.33 kB (57.44 kB gzip)
+  - `zxing-vendor` (`@zxing/library`, `@zxing/browser`): 451.75 kB (119.25 kB gzip) — strictly deferred until Scan view is requested!
+  - `lucide-vendor` (`lucide-react`): 27.09 kB (9.67 kB gzip)
+  - Markdown/legal rendering (`react-markdown`, `remark-gfm`): cleanly isolated inside `LegalViewer` chunk (165.08 kB raw / 49.51 kB gzip).
+- **Actual Measured Production Bundle Metrics (`frontend/dist/assets/`)**:
+  - Baseline primary entry chunk (before code splitting): **~1,400.00 kB**.
+  - Current primary entry chunk (`index-[hash].js`): **251.82 kB raw/minified** (68.91 kB gzip).
+  - Net primary entry reduction: **-1,148.18 kB (-82.01%)**, strictly under the `< 400 kB` threshold and hitting the ~68 kB gzipped target.
+  - Largest async vendor chunk: `zxing-vendor` (451.75 kB raw / 119.25 kB gzip).
+  - Largest lazy view chunk: `LegalViewer` (165.08 kB raw / 49.51 kB gzip) and `AdminDashboard` (106.92 kB raw / 20.22 kB gzip).
+  - Total CSS emitted: `index-[hash].css`: **128.71 kB** (18.29 kB gzip).
+  - Compiler / Rollup warnings: **0 warnings, 0 chunk-size warnings, 0 errors**.
+  - PWA / Service Worker: Clean Workbox precache manifest with 30 entries (1844.71 KiB), `sw.js` and `workbox-*.js` generated.
+- **Automated Verification Matrix**:
+  - Frontend Vitest suite (`npm --prefix frontend test -- --run`): **136/136 passed (100%)** across 10 test files (added comprehensive Scenario A, E, F, G tests in `codeSplitting.test.ts`).
+  - Backend Pytest suite (`python -m pytest -W error::RuntimeWarning`): **200/200 passed (100%)** across 15 test files in 16.74s (0 RuntimeWarnings, 0 unawaited coroutines).
+  - Total automated regression tests: **336/336 passed (100%)**.
+  - Production build (`npm --prefix frontend run build`): Clean (exit code 0, 10.11s, 0 TypeScript errors).
+
+---
+
+## 🗓️ Previous Session Summary (Freemium Tier-Gating Enforcement, Atomic Quota Consistency & FastAPI Lifespan Migration)
 **Date:** 2026-09-25
 **Work Done — Freemium Tier-Gating Enforcement, Atomic Quota Consistency & FastAPI Lifespan Migration:**
 - **Authoritative Plan Entitlements & Server-Side Feature Gating (`backend/middleware/quota_check.py`, `backend/routes/meals.py`)**:
