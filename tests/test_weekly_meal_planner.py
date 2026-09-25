@@ -407,3 +407,56 @@ def test_15_user_ownership_isolation(mock_auth_user):
         # User A requests grocery list but only User B has a plan
         resp = client.post("/api/meals/grocery-list")
         assert resp.status_code == 404
+
+
+# ============================================================================
+# TEST 16 — SMART MEAL PLANNING TIER ENTITLEMENT GATING (Section 25)
+# ============================================================================
+def test_16_tier_entitlement_gating_weekly_plan():
+    """Verify tier gating: Free/Unknown -> 403 FEATURE_NOT_ENTITLED, Starter/Pro/Elite -> 200."""
+    tiers_expected = {
+        "free": 403,
+        "starter": 200,
+        "pro": 200,
+        "elite": 200,
+        "unknown_custom_tier": 403,
+    }
+
+    mock_uid = "entitlement_test_uid"
+    app.dependency_overrides[routes.meals.get_current_user_id] = lambda: mock_uid
+
+    try:
+        for tier_name, expected_status in tiers_expected.items():
+            mock_users_col = AsyncMock()
+            mock_users_col.find_one.return_value = {
+                "uid": mock_uid,
+                "tier": tier_name,
+                "health_profile": {},
+                "preferences": {},
+                "daily_goals": {"calories": 2000}
+            }
+            mock_plans_col = AsyncMock()
+            mock_plans_col.find_one.return_value = None
+
+            with patch("routes.meals.get_users_collection", return_value=mock_users_col), \
+                 patch("routes.meals.get_weekly_plans_collection", return_value=mock_plans_col):
+
+                resp = client.post(
+                    "/api/meals/weekly-plan",
+                    json={"target_calories": 2000, "force_regenerate": True}
+                )
+
+                assert resp.status_code == expected_status, f"Tier '{tier_name}' expected {expected_status}, got {resp.status_code}: {resp.text}"
+
+                if expected_status == 403:
+                    body = resp.json()
+                    err = body.get("error", body.get("detail", {}))
+                    assert err.get("code") == "FEATURE_NOT_ENTITLED"
+                    assert err.get("feature") == "smart_meal_planning"
+                    assert err.get("upgrade_required") is True
+                else:
+                    body = resp.json()
+                    assert len(body.get("days", [])) == 7
+    finally:
+        app.dependency_overrides.clear()
+

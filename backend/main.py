@@ -34,7 +34,7 @@ from routes.scan import router as scan_router
 from routes.admin import router as admin_router, log_system_event
 from routes.meals import router as meals_router
 from routes.custom_meals import router as custom_meals_router
-from middleware.quota_check import check_scan_quota, get_user_quota_status, FeatureNotEntitledException
+from middleware.quota_check import check_scan_quota, get_user_quota_status, FeatureNotEntitledException, QuotaExceededException
 from services.ai_router import route_scan_by_tier
 from services.ocr_engine import extract_text_from_image
 from models import ParsedIngredients
@@ -209,6 +209,16 @@ async def background_db_init():
 async def feature_not_entitled_handler(request: Request, exc: FeatureNotEntitledException):
     return JSONResponse(
         status_code=403,
+        content={
+            "error": exc.error_dict,
+            "detail": exc.error_dict
+        }
+    )
+
+@app.exception_handler(QuotaExceededException)
+async def quota_exceeded_handler(request: Request, exc: QuotaExceededException):
+    return JSONResponse(
+        status_code=429,
         content={
             "error": exc.error_dict,
             "detail": exc.error_dict

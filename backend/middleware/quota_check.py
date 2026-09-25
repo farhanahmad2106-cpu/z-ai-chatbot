@@ -25,6 +25,7 @@ from typing import Optional, Dict, Any, List
 TIER_ENTITLEMENTS: Dict[str, Dict[str, Any]] = {
     "free": {
         "name": "Z-Free",
+        "monthly_scan_limit": 20,
         "monthly_scans": 20,
         "features": {
             "smart_meal_planning": False,
@@ -48,6 +49,7 @@ TIER_ENTITLEMENTS: Dict[str, Dict[str, Any]] = {
     },
     "starter": {
         "name": "Z-Starter",
+        "monthly_scan_limit": 100,
         "monthly_scans": 100,
         "features": {
             "smart_meal_planning": True,
@@ -71,6 +73,7 @@ TIER_ENTITLEMENTS: Dict[str, Dict[str, Any]] = {
     },
     "pro": {
         "name": "Z-Pro",
+        "monthly_scan_limit": 500,
         "monthly_scans": 500,
         "features": {
             "smart_meal_planning": True,
@@ -94,7 +97,8 @@ TIER_ENTITLEMENTS: Dict[str, Dict[str, Any]] = {
     },
     "elite": {
         "name": "Z-Elite",
-        "monthly_scans": None,  # Explicitly unlimited (never arbitrary integer like 999999999)
+        "monthly_scan_limit": None,  # Explicitly unlimited (never arbitrary integer like 999999999)
+        "monthly_scans": None,
         "features": {
             "smart_meal_planning": True,
             "seven_day_revolving_planner": True,
@@ -119,7 +123,7 @@ TIER_ENTITLEMENTS: Dict[str, Dict[str, Any]] = {
 
 # Backward compatible dictionary of scan limits
 TIER_SCAN_LIMITS: Dict[str, Optional[int]] = {
-    tier: data["monthly_scans"] for tier, data in TIER_ENTITLEMENTS.items()
+    tier: data.get("monthly_scan_limit", data.get("monthly_scans")) for tier, data in TIER_ENTITLEMENTS.items()
 }
 
 
@@ -158,7 +162,17 @@ def get_tier_quota(tier: Optional[str], quota_name: str = "monthly_scans") -> Op
     norm_tier = normalize_tier(tier)
     if norm_tier == "unknown":
         return 0
-    return TIER_ENTITLEMENTS.get(norm_tier, {}).get(quota_name, 20)
+    t_info = TIER_ENTITLEMENTS.get(norm_tier, {})
+    if quota_name in t_info:
+        return t_info[quota_name]
+    if quota_name in ("monthly_scans", "monthly_scan_limit"):
+        return t_info.get("monthly_scan_limit", t_info.get("monthly_scans", 20))
+    return t_info.get(quota_name, 20)
+
+
+def get_current_period() -> str:
+    """Returns the current calendar billing period as YYYY-MM."""
+    return datetime.now(timezone.utc).strftime("%Y-%m")
 
 
 def get_tiers_for_feature(feature_name: str) -> List[str]:
@@ -209,6 +223,36 @@ class FeatureNotEntitledException(HTTPException):
         
         super().__init__(
             status_code=403,
+            detail=self.error_dict
+        )
+
+
+# -----------------------------------------------------------------------------
+# STANDARDIZED 429 EXCEPTION FOR SCAN QUOTA EXHAUSTION
+# -----------------------------------------------------------------------------
+class QuotaExceededException(HTTPException):
+    """
+    Standardized machine-readable HTTP 429 for monthly scan quota exhaustion.
+    """
+    def __init__(
+        self,
+        current_tier: str,
+        limit: int,
+        current_used: int,
+        feature: str = "scan",
+        message: Optional[str] = None
+    ):
+        msg = message or f"Monthly scan quota exceeded ({current_used}/{limit}). Upgrade your plan to continue scanning."
+        self.error_dict = {
+            "code": "QUOTA_EXCEEDED",
+            "message": msg,
+            "feature": feature,
+            "current_tier": current_tier,
+            "monthly_limit": limit,
+            "upgrade_required": True
+        }
+        super().__init__(
+            status_code=429,
             detail=self.error_dict
         )
 
@@ -287,7 +331,7 @@ def require_tier_feature(feature_name: str):
 async def reserve_scan_quota(uid: str, users_collection) -> bool:
     """
     Atomically checks and reserves 1 scan slot if user has remaining quota.
-    - Applies Option B monthly reset if reset_date has passed.
+    - Applies monthly reset if reset_date has passed or scan_period has rolled over.
     - For elite tier (limit is None), always succeeds (unlimited).
     - Uses atomic MongoDB update query: usage.scans_used_this_month < limit.
     - Prevents race conditions where two simultaneous requests could exceed quota.
@@ -305,26 +349,46 @@ async def reserve_scan_quota(uid: str, users_collection) -> bool:
     usage = user.get("usage", {})
     scans_used = usage.get("scans_used_this_month", 0)
     reset_date_str = usage.get("reset_date", "")
-    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today_dt = datetime.now(timezone.utc)
+    today_str = today_dt.strftime("%Y-%m-%d")
+    current_period = today_dt.strftime("%Y-%m")
+    stored_period = usage.get("scan_period", "")
+    new_reset_date = get_next_reset_date()
 
-    # Option B: Reset counter if reset_date has passed
-    if reset_date_str and reset_date_str <= today_str:
+    # Monthly rollover: reset if scan_period rolled over or reset_date passed
+    needs_reset = (stored_period and stored_period != current_period) or (reset_date_str and reset_date_str <= today_str)
+
+    if needs_reset:
         scans_used = 0
-        new_reset_date = get_next_reset_date()
         await users_collection.update_one(
-            {"uid": uid},
+            {
+                "uid": uid,
+                "$or": [
+                    {"usage.scan_period": {"$ne": current_period}},
+                    {"usage.reset_date": {"$lte": today_str}},
+                    {"usage.scan_period": {"$exists": False}},
+                ]
+            },
             {"$set": {
                 "usage.scans_used_this_month": 0,
+                "usage.scan_period": current_period,
                 "usage.reset_date": new_reset_date,
                 "usage.scan_limit": limit,
             }}
         )
 
-    # Elite tier: Explicitly unlimited (None)
+    # Elite tier: Explicitly unlimited (None) - no numeric comparison with None
     if limit is None:
         await users_collection.update_one(
             {"uid": uid},
-            {"$inc": {"usage.scans_used_this_month": 1}}
+            {
+                "$inc": {"usage.scans_used_this_month": 1},
+                "$set": {
+                    "usage.scan_period": current_period,
+                    "usage.reset_date": usage.get("reset_date") or new_reset_date,
+                    "usage.scan_limit": None,
+                }
+            }
         )
         return True
 
@@ -338,18 +402,22 @@ async def reserve_scan_quota(uid: str, users_collection) -> bool:
             ]
         },
         {
-            "$inc": {"usage.scans_used_this_month": 1}
+            "$inc": {"usage.scans_used_this_month": 1},
+            "$set": {
+                "usage.scan_period": current_period,
+                "usage.reset_date": usage.get("reset_date") or new_reset_date,
+                "usage.scan_limit": limit,
+            }
         }
     )
 
     matched = getattr(update_res, "matched_count", 0)
     if matched == 0:
-        # Check if actually exceeded or mock unconfigured
+        # Check fresh state
         user_fresh = await users_collection.find_one({"uid": uid})
         curr_used = user_fresh.get("usage", {}).get("scans_used_this_month", scans_used) if user_fresh else scans_used
         if curr_used >= limit:
             return False
-        # If mock returned 0 but usage is valid, check scans_used
         if scans_used >= limit:
             return False
 
@@ -357,7 +425,10 @@ async def reserve_scan_quota(uid: str, users_collection) -> bool:
 
 
 async def release_scan_quota(uid: str, users_collection) -> None:
-    """Atomically releases a previously reserved scan slot upon operation failure."""
+    """
+    Atomically releases a previously reserved scan slot upon operation failure.
+    Guarded so usage.scans_used_this_month cannot decrement below zero.
+    """
     await users_collection.update_one(
         {"uid": uid, "usage.scans_used_this_month": {"$gt": 0}},
         {"$inc": {"usage.scans_used_this_month": -1}}
@@ -367,7 +438,7 @@ async def release_scan_quota(uid: str, users_collection) -> None:
 async def check_scan_quota(uid: str, users_collection) -> None:
     """
     Checks and atomically consumes 1 scan quota slot.
-    Raises HTTP 429 if quota exceeded.
+    Raises QuotaExceededException (HTTP 429) if quota exceeded.
     Preserves backward compatibility with legacy route callers.
     """
     user = await users_collection.find_one({"uid": uid})
@@ -382,9 +453,10 @@ async def check_scan_quota(uid: str, users_collection) -> None:
     if not reserved:
         user_fresh = await users_collection.find_one({"uid": uid})
         curr = user_fresh.get("usage", {}).get("scans_used_this_month", limit) if user_fresh else limit
-        raise HTTPException(
-            status_code=429,
-            detail=f"Monthly scan quota exceeded ({curr}/{limit}). Upgrade your plan to continue scanning."
+        raise QuotaExceededException(
+            current_tier=tier,
+            limit=limit,
+            current_used=curr
         )
 
 
@@ -395,7 +467,13 @@ async def get_user_quota_status(uid: str, users_collection) -> Dict[str, Any]:
     """
     user = await users_collection.find_one({"uid": uid})
     if not user:
-        return {"scans_used": 0, "scan_limit": 20, "tier": "free", "reset_date": get_next_reset_date()}
+        return {
+            "scans_used": 0,
+            "scan_limit": 20,
+            "tier": "free",
+            "reset_date": get_next_reset_date(),
+            "scan_period": get_current_period()
+        }
 
     raw_tier = user.get("tier")
     tier = normalize_tier(raw_tier)
@@ -403,15 +481,20 @@ async def get_user_quota_status(uid: str, users_collection) -> Dict[str, Any]:
     usage = user.get("usage", {})
     scans_used = usage.get("scans_used_this_month", 0)
     reset_date = usage.get("reset_date", get_next_reset_date())
+    stored_period = usage.get("scan_period", "")
 
-    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    if reset_date and reset_date <= today_str:
+    today_dt = datetime.now(timezone.utc)
+    today_str = today_dt.strftime("%Y-%m-%d")
+    current_period = today_dt.strftime("%Y-%m")
+    new_reset_date = get_next_reset_date()
+
+    if (stored_period and stored_period != current_period) or (reset_date and reset_date <= today_str):
         scans_used = 0
-        new_reset_date = get_next_reset_date()
         await users_collection.update_one(
             {"uid": uid},
             {"$set": {
                 "usage.scans_used_this_month": 0,
+                "usage.scan_period": current_period,
                 "usage.reset_date": new_reset_date,
                 "usage.scan_limit": limit,
             }}
@@ -423,4 +506,5 @@ async def get_user_quota_status(uid: str, users_collection) -> Dict[str, Any]:
         "scan_limit": limit,
         "tier": tier,
         "reset_date": reset_date,
+        "scan_period": current_period,
     }

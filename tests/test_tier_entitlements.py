@@ -210,33 +210,57 @@ class MockUserCollectionForQuota:
     async def update_one(self, filter_query, update_query):
         self.update_log.append((filter_query, update_query))
         
-        # Check match
+        # Check match on UID
         if filter_query.get("uid") != self.user.get("uid"):
             mock_res = MagicMock()
             mock_res.matched_count = 0
             return mock_res
 
-        # Check atomic condition
+        usage = self.user.get("usage", {})
+
+        # Check direct field condition e.g. {"usage.scans_used_this_month": {"$gt": 0}}
+        if "usage.scans_used_this_month" in filter_query:
+            cond = filter_query["usage.scans_used_this_month"]
+            curr_val = usage.get("scans_used_this_month", 0)
+            if "$gt" in cond and not (curr_val > cond["$gt"]):
+                mock_res = MagicMock()
+                mock_res.matched_count = 0
+                return mock_res
+
+        # Check atomic condition in $or
         if "$or" in filter_query:
             conditions = filter_query["$or"]
-            curr_used = self.user.get("usage", {}).get("scans_used_this_month", 0)
             matched = False
             for cond in conditions:
                 if "usage.scans_used_this_month" in cond:
                     sub_cond = cond["usage.scans_used_this_month"]
+                    has_key = "scans_used_this_month" in usage
+                    curr_used = usage.get("scans_used_this_month", 0)
+                    if "$exists" in sub_cond and not has_key:
+                        matched = True
+                        break
                     if "$lt" in sub_cond and curr_used < sub_cond["$lt"]:
+                        matched = True
+                        break
+                elif "usage.scan_period" in cond:
+                    sub_cond = cond["usage.scan_period"]
+                    curr_period = usage.get("scan_period")
+                    if "$exists" in sub_cond and "scan_period" not in usage:
+                        matched = True
+                        break
+                    if "$ne" in sub_cond and curr_period != sub_cond["$ne"]:
+                        matched = True
+                        break
+                elif "usage.reset_date" in cond:
+                    sub_cond = cond["usage.reset_date"]
+                    curr_reset = usage.get("reset_date", "")
+                    if "$lte" in sub_cond and curr_reset and curr_reset <= sub_cond["$lte"]:
                         matched = True
                         break
             if not matched:
                 mock_res = MagicMock()
                 mock_res.matched_count = 0
                 return mock_res
-
-        # Apply $inc
-        if "$inc" in update_query:
-            inc_val = update_query["$inc"].get("usage.scans_used_this_month", 0)
-            curr = self.user.setdefault("usage", {}).get("scans_used_this_month", 0)
-            self.user["usage"]["scans_used_this_month"] = max(0, curr + inc_val)
 
         # Apply $set
         if "$set" in update_query:
@@ -246,6 +270,12 @@ class MockUserCollectionForQuota:
                     self.user.setdefault("usage", {})[sub_k] = v
                 else:
                     self.user[k] = v
+
+        # Apply $inc
+        if "$inc" in update_query:
+            inc_val = update_query["$inc"].get("usage.scans_used_this_month", 0)
+            curr = self.user.setdefault("usage", {}).get("scans_used_this_month", 0)
+            self.user["usage"]["scans_used_this_month"] = max(0, curr + inc_val)
 
         mock_res = MagicMock()
         mock_res.matched_count = 1
@@ -413,3 +443,168 @@ async def test_12_fastapi_lifespan_lifecycle():
     init_task = getattr(test_app.state, "db_init_task", None)
     if init_task:
         assert init_task.done() or init_task.cancelled()
+
+
+# ============================================================================
+# 7. ADDITIONAL SECTION 27 & 28 REGRESSION TESTS
+# ============================================================================
+@pytest.mark.asyncio
+async def test_13_missing_usage_counter_initializes_and_increments():
+    """User with missing usage dict initializes correctly on first scan."""
+    mock_db = MockUserCollectionForQuota({
+        "uid": "new_user_without_usage",
+        "tier": "free"
+    })
+    ok = await reserve_scan_quota("new_user_without_usage", mock_db)
+    assert ok is True
+    assert mock_db.user["usage"]["scans_used_this_month"] == 1
+    assert "scan_period" in mock_db.user["usage"]
+    assert mock_db.user["usage"]["scan_limit"] == 20
+
+
+@pytest.mark.asyncio
+async def test_14_starter_tier_quota_matrix():
+    """Starter tier (limit=100): 99/100 allowed, 100/100 rejected."""
+    mock_db = MockUserCollectionForQuota({
+        "uid": "starter_u1",
+        "tier": "starter",
+        "usage": {"scans_used_this_month": 99, "reset_date": "2099-01-01"}
+    })
+    ok = await reserve_scan_quota("starter_u1", mock_db)
+    assert ok is True
+    assert mock_db.user["usage"]["scans_used_this_month"] == 100
+
+    # Next attempt fails
+    ok = await reserve_scan_quota("starter_u1", mock_db)
+    assert ok is False
+
+
+@pytest.mark.asyncio
+async def test_15_monthly_period_rollover_resets_usage():
+    """Stale usage from previous month is automatically reset in a new period."""
+    mock_db = MockUserCollectionForQuota({
+        "uid": "rollover_u1",
+        "tier": "free",
+        "usage": {
+            "scans_used_this_month": 20,
+            "scan_period": "2020-01",
+            "reset_date": "2020-02-01"
+        }
+    })
+    # Stale period 2020-01 has 20 scans used (limit reached for old month).
+    # Request in current period must reset scans_used_this_month to 0 and allow scan.
+    ok = await reserve_scan_quota("rollover_u1", mock_db)
+    assert ok is True
+    assert mock_db.user["usage"]["scans_used_this_month"] == 1
+    assert mock_db.user["usage"]["scan_period"] == datetime.now(timezone.utc).strftime("%Y-%m")
+
+
+@pytest.mark.asyncio
+async def test_16_refund_guarded_against_negative_counter():
+    """Refund when usage is already 0 cannot decrement below 0."""
+    mock_db = MockUserCollectionForQuota({
+        "uid": "zero_usage_u1",
+        "tier": "free",
+        "usage": {"scans_used_this_month": 0, "reset_date": "2099-01-01"}
+    })
+    await release_scan_quota("zero_usage_u1", mock_db)
+    assert mock_db.user["usage"]["scans_used_this_month"] == 0
+
+
+@pytest.mark.asyncio
+async def test_17_elite_no_lt_numeric_comparison():
+    """Elite reservation never performs $lt: None or invalid numeric comparison."""
+    mock_db = MockUserCollectionForQuota({
+        "uid": "elite_clean_u1",
+        "tier": "elite",
+        "usage": {"scans_used_this_month": 1000}
+    })
+    ok = await reserve_scan_quota("elite_clean_u1", mock_db)
+    assert ok is True
+
+    # Check update_log to verify no $lt condition was sent for elite
+    for filter_query, _ in mock_db.update_log:
+        if "$or" in filter_query:
+            for cond in filter_query["$or"]:
+                if "usage.scans_used_this_month" in cond:
+                    assert "$lt" not in cond["usage.scans_used_this_month"], "Invalid $lt query sent for Elite tier!"
+
+
+def test_18_downstream_persistence_failure_refunds_quota():
+    """Reservation succeeds, but downstream MongoDB persistence fails -> quota is refunded."""
+    import routes.scan
+    mock_uid = "persist_fail_u1"
+
+    # User starts with 5 scans used
+    mock_users_col = MockUserCollectionForQuota({
+        "uid": mock_uid,
+        "tier": "free",
+        "usage": {"scans_used_this_month": 5, "reset_date": "2099-01-01"}
+    })
+
+    mock_foods_col = AsyncMock()
+    mock_foods_col.find_one.return_value = None  # Not duplicate
+    mock_foods_col.insert_one.side_effect = Exception("MongoDB connection drop during insert")
+
+    from schemas.scan import OCRAnalysisResponse
+    mock_ocr = OCRAnalysisResponse(
+        product_name="Test Cookie",
+        brand="Test Brand",
+        parsed_ingredients=["wheat", "sugar"],
+        raw_ocr_text="Ingredients: wheat, sugar"
+    )
+
+    app.dependency_overrides[routes.scan.get_users_collection] = lambda: mock_users_col
+    app.dependency_overrides[routes.scan.get_foods_collection] = lambda: mock_foods_col
+    app.dependency_overrides[routes.scan.get_system_logs_collection] = lambda: AsyncMock()
+
+    try:
+        with patch("backend.routes.scan.fb_auth.verify_id_token", return_value={"uid": mock_uid}), \
+             patch("backend.routes.scan.extract_and_analyze", new=AsyncMock(return_value=mock_ocr)):
+
+            response = client.post(
+                "/api/scan/analyze",
+                files={"image": ("test.jpg", b"fake_image_bytes_here", "image/jpeg")},
+                headers={"Authorization": "Bearer mock_token_persist"}
+            )
+
+            assert response.status_code == 500
+            # Quota was reserved (+1 to 6) then refunded (-1 back to 5)
+            assert mock_users_col.user["usage"]["scans_used_this_month"] == 5
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_19_validation_failure_does_not_mutate_quota():
+    """Client validation failure (e.g. invalid content-type) rejects without reserving or refunding quota."""
+    import routes.scan
+    mock_uid = "valid_fail_u1"
+
+    mock_users_col = MockUserCollectionForQuota({
+        "uid": mock_uid,
+        "tier": "free",
+        "usage": {"scans_used_this_month": 5, "reset_date": "2099-01-01"}
+    })
+
+    app.dependency_overrides[routes.scan.get_users_collection] = lambda: mock_users_col
+    app.dependency_overrides[routes.scan.get_foods_collection] = lambda: AsyncMock()
+    app.dependency_overrides[routes.scan.get_system_logs_collection] = lambda: AsyncMock()
+
+    try:
+        with patch("backend.routes.scan.fb_auth.verify_id_token", return_value={"uid": mock_uid}):
+            # Send unsupported text file
+            response = client.post(
+                "/api/scan/analyze",
+                files={"image": ("test.txt", b"plain_text_not_image", "text/plain")},
+                headers={"Authorization": "Bearer mock_token_valid"}
+            )
+
+            assert response.status_code == 415
+            # Quota was completely untouched
+            assert mock_users_col.user["usage"]["scans_used_this_month"] == 5
+            assert len(mock_users_col.update_log) == 0
+    finally:
+        app.dependency_overrides.clear()
+
+
+

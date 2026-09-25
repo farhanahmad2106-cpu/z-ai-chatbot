@@ -1,13 +1,45 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-25 (Session: Native Browser Dialog Elimination, Accessible Confirm Modal & UI Accessibility Hardening)
+> **Last Updated:** 2026-09-25 (Session: Freemium Tier-Gating Enforcement, Atomic Quota Consistency & FastAPI Lifespan Migration)
 
 ---
 
 ## 🗓️ Last Session Summary
 **Date:** 2026-09-25
-**Work Done — Native Browser Dialog Elimination, Accessible Confirm Modal & UI Accessibility Hardening:**
+**Work Done — Freemium Tier-Gating Enforcement, Atomic Quota Consistency & FastAPI Lifespan Migration:**
+- **Authoritative Plan Entitlements & Server-Side Feature Gating (`backend/middleware/quota_check.py`, `backend/routes/meals.py`)**:
+  - Centralized single source of truth `TIER_ENTITLEMENTS` in `backend/middleware/quota_check.py` with explicit definitions for `free` (20 scans, no smart meal planning), `starter` (100 scans, basic smart meal planning), `pro` (500 scans, full 7-day revolving planner, priority OCR), and `elite` (explicitly `None` unlimited scans, full features).
+  - Defined both `monthly_scan_limit` and backward-compatible `monthly_scans` across all tiers.
+  - Server-side dependency `require_meal_feature("smart_meal_planning")` and `require_tier_feature(...)` protect `/api/meals/weekly-plan`, `/api/meals/weekly-plan/swap-day-slot`, and `/api/meals/grocery-list`.
+  - Enforced structured HTTP 403 `FeatureNotEntitledException`: returns both root `error` and `detail` objects containing `code: "FEATURE_NOT_ENTITLED"`, `current_tier`, `required_tiers`, `upgrade_required: true`.
+  - Authorization executes before expensive AI generation, calculation, or DB mutations. Malicious client-provided tiers in bodies or query params cannot bypass server user documents. Unknown tiers fail closed to `unknown` (0 scans, 0 features).
+- **Atomic Monthly Scan Quota Reservation & Concurrency Defense (`backend/middleware/quota_check.py`, `backend/routes/scan.py`)**:
+  - Implemented atomic MongoDB quota reservation via `reserve_scan_quota`: evaluates `{"$or": [{"usage.scans_used_this_month": {"$lt": limit}}, {"usage.scans_used_this_month": {"$exists": False}}]}` with atomic `$inc: {"usage.scans_used_this_month": 1}`. Prevents race conditions at limit boundaries (e.g. 19/20).
+  - Elite Unlimited Quota: clean unmetered path without invalid `$lt: None` queries.
+  - Monthly Period Correctness & Auto-Rollover: tracks `usage.scan_period` (`YYYY-MM`) and `usage.reset_date`. Stale usage from previous months is atomically reset on the first scan of a new billing period.
+  - Machine-readable HTTP 429 `QuotaExceededException`: returns structured `code: "QUOTA_EXCEEDED"`, `monthly_limit`, `current_tier`, `upgrade_required: true`.
+- **Safe Quota Refund & Double-Refund Immunity (`backend/routes/scan.py`, `backend/middleware/quota_check.py`)**:
+  - Enforced single request-local reservation lifecycle (`quota_reserved = False`).
+  - Validation failures (empty image, unsupported format, oversized image, 429 quota exhaustion) happen before reservation -> zero refund operations.
+  - Downstream internal failures (OCR failure, database unavailability, unhandled exceptions, persistence failure) catch errors and execute `release_scan_quota(auth_uid, users_col)`, setting `quota_reserved = False` to prevent any double-refund.
+  - Guarded refund operation: MongoDB query `{ "uid": uid, "usage.scans_used_this_month": {"$gt": 0} }` with `$inc: -1` guarantees scan usage counter can never decrement below zero.
+- **FastAPI Lifespan Migration & Clean Shutdown (`backend/main.py`)**:
+  - Verified 0 occurrences of deprecated `@app.on_event("startup")` and `@app.on_event("shutdown")`.
+  - Lifespan context manager owns startup resource allocation (`app.state.mongo_client`, `app.state.db`, `app.state.db_init_task`) and cleanly cancels background DB init and closes connections on shutdown.
+  - Registered global exception handlers for `FeatureNotEntitledException` (HTTP 403) and `QuotaExceededException` (HTTP 429).
+- **Zero Coroutine / RuntimeWarning Strict Verification**:
+  - Executed pytest under strict warning escalation (`-W error::RuntimeWarning`).
+  - Corrected mock async contracts; 0 `RuntimeWarning: coroutine was never awaited` warnings exist.
+- **Automated Verification Matrix**:
+  - Backend Pytest suite (`python -m pytest -W error::RuntimeWarning`): **200/200 passed (100%)** across 15 test files in 17.03s.
+  - Frontend Vitest suite (`npm --prefix frontend test -- --run`): **132/132 passed (100%)** across 10 test files.
+  - Total automated regression tests: **332/332 passed (100%)**.
+
+---
+
+## 🗓️ Previous Session Summary (Native Browser Dialog Elimination, Accessible Confirm Modal & UI Accessibility Hardening)
+**Date:** 2026-09-25
 - **Zero Production Native Dialog Verification & Guard (`frontend/src/`)**:
   - Confirmed 0 occurrences of `alert()`, `confirm()`, `prompt()`, `window.*`, and `globalThis.*` across all production frontend source files (verified via `git grep` and automated regression tests).
   - Enhanced automated regression test suite (`frontend/src/tests/nativeDialogRegression.test.ts`) to also detect bracket notation invocations (`window["alert"|"confirm"|"prompt"]` and `globalThis[...]`).

@@ -24,6 +24,7 @@ from middleware.quota_check import (
     release_scan_quota,
     get_tier_quota,
     normalize_tier,
+    QuotaExceededException,
 )
 
 
@@ -141,161 +142,167 @@ async def analyze_back_of_pack(
             quota_granted = await reserve_scan_quota(auth_uid, users_col)
             if not quota_granted:
                 curr_used = user_doc.get("usage", {}).get("scans_used_this_month", limit)
-                raise HTTPException(
-                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail=f"Monthly scan quota exceeded ({curr_used}/{limit}). Upgrade your plan to continue scanning."
+                raise QuotaExceededException(
+                    current_tier=tier,
+                    limit=limit,
+                    current_used=curr_used
                 )
             quota_reserved = True
 
     try:
         # Process via the multi-tier OCR service
         analysis_result = await extract_and_analyze(image_bytes, image.content_type)
+
+        if not analysis_result.estimated_macros:
+            analysis_result.estimated_macros = analysis_result.nutrition_per_100g
+        if not analysis_result.nutrition_per_100g:
+            analysis_result.nutrition_per_100g = analysis_result.estimated_macros or {}
+
+        product_title = analysis_result.product_name or "Packaged Food Item"
+        brand_title = analysis_result.brand or "Local Brand"
+        if brand_title and brand_title.lower() not in product_title.lower():
+            full_product_name = f"{brand_title} {product_title}".strip()
+        else:
+            full_product_name = product_title
+
+        analysis_result.product_name = full_product_name
+        analysis_result.name = full_product_name
+        analysis_result.brand = brand_title
+        analysis_result.barcode = normalized_barcode
+
+        formatted_additives = [
+            f"{a.get('code', '')}: {a.get('name', '')}" if isinstance(a, dict) else str(a)
+            for a in (analysis_result.detected_ins_additives or [])
+        ]
+        analysis_result.additives = formatted_additives
+        analysis_result.allergens = analysis_result.flagged_allergens or []
+        analysis_result.ingredients = [
+            {"name": ing, "safety": "Safe", "description": f"Extracted ingredient: {ing}"}
+            for ing in (analysis_result.parsed_ingredients or [])
+        ]
+
+        # Verify database availability
+        if foods_col is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Database connection unavailable"
+            )
+
+        # -------------------------------------------------------------
+        # EXISTING FOOD LOOKUP & DUPLICATE PREVENTION
+        # -------------------------------------------------------------
+        existing_food = None
+        if normalized_barcode:
+            found = await foods_col.find_one({
+                "barcode": normalized_barcode,
+                "status": {"$ne": "rejected"}
+            })
+            if isinstance(found, dict):
+                existing_food = found
+
+        if not existing_food and full_product_name:
+            found = await foods_col.find_one({
+                "$or": [
+                    {"name": {"$regex": f"^{re.escape(full_product_name)}$", "$options": "i"}},
+                    {"product_name": {"$regex": f"^{re.escape(full_product_name)}$", "$options": "i"}}
+                ],
+                "status": {"$ne": "rejected"}
+            })
+            if isinstance(found, dict):
+                existing_food = found
+
+        if existing_food and isinstance(existing_food, dict):
+            existing_id = str(existing_food.get("_id", existing_food.get("id", "")))
+            is_verified_doc = bool(existing_food.get("is_verified", True))
+
+            analysis_result.food_id = existing_id
+            analysis_result.is_verified = is_verified_doc
+            if is_verified_doc:
+                analysis_result.requires_user_review = False
+
+            if existing_food.get("name"):
+                analysis_result.name = existing_food["name"]
+                analysis_result.product_name = existing_food["name"]
+            if existing_food.get("brand") and not analysis_result.brand:
+                analysis_result.brand = existing_food["brand"]
+
+            return analysis_result
+
+        # -------------------------------------------------------------
+        # OCR FAILURE / EMPTY PARSE CHECK
+        # -------------------------------------------------------------
+        has_ingredients = bool(analysis_result.parsed_ingredients and len(analysis_result.parsed_ingredients) > 0)
+        if not has_ingredients and not (analysis_result.raw_ocr_text and analysis_result.raw_ocr_text.strip()):
+            # Empty parse - do not insert a bogus uncatalogued record
+            analysis_result.food_id = None
+            analysis_result.is_verified = False
+            analysis_result.requires_user_review = True
+            return analysis_result
+
+        # -------------------------------------------------------------
+        # PERSIST UNCATALOGED PRODUCT (is_verified: False, pending_review)
+        # -------------------------------------------------------------
+        now_ts = datetime.now(timezone.utc).isoformat()
+        food_doc = {
+            "name": full_product_name,
+            "product_name": full_product_name,
+            "brand": brand_title,
+            "barcode": normalized_barcode,
+            "is_verified": False,
+            "requires_moderation": True,
+            "status": "pending_review",
+            "submitted_by": submitted_by,
+            "raw_ocr_text": analysis_result.raw_ocr_text,
+            "detected_ins_additives": analysis_result.detected_ins_additives,
+            "additives": formatted_additives,
+            "flagged_allergens": analysis_result.flagged_allergens,
+            "allergens": analysis_result.flagged_allergens,
+            "parsed_ingredients": analysis_result.parsed_ingredients,
+            "ingredients": analysis_result.ingredients,
+            "nutrition_per_100g": analysis_result.nutrition_per_100g,
+            "estimated_macros": analysis_result.estimated_macros,
+            "safety_score": analysis_result.safety_score or 75,
+            "source": "crowdsourced_ocr",
+            "created_at": now_ts,
+        }
+
+        try:
+            res = await foods_col.insert_one(food_doc)
+            analysis_result.food_id = str(res.inserted_id)
+            analysis_result.is_verified = False
+            analysis_result.requires_user_review = True
+        except Exception as exc:
+            try:
+                if logs_col is not None:
+                    await logs_col.insert_one({
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "level": "ERROR",
+                        "service": "CrowdsourcedFoodPersistence",
+                        "operation": "insert_crowdsourced_food",
+                        "message": "Failed to persist crowdsourced food item to database",
+                        "exception_type": type(exc).__name__,
+                        "details": {
+                            "product_name": full_product_name,
+                            "brand": brand_title,
+                            "barcode": normalized_barcode,
+                            "submitted_by": submitted_by,
+                        }
+                    })
+            except Exception as log_err:
+                print(f"[SystemLog Error] Failed to log food persistence failure: {log_err}")
+
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to persist crowdsourced food item"
+            )
+
+        return analysis_result
+
     except Exception:
         if quota_reserved and auth_uid and users_col is not None:
-            await release_scan_quota(auth_uid, users_col)
+            try:
+                await release_scan_quota(auth_uid, users_col)
+            except Exception as refund_err:
+                print(f"[Quota Refund Error] Failed to refund quota: {refund_err}")
+            quota_reserved = False
         raise
-
-    if not analysis_result.estimated_macros:
-        analysis_result.estimated_macros = analysis_result.nutrition_per_100g
-    if not analysis_result.nutrition_per_100g:
-        analysis_result.nutrition_per_100g = analysis_result.estimated_macros or {}
-
-    product_title = analysis_result.product_name or "Packaged Food Item"
-    brand_title = analysis_result.brand or "Local Brand"
-    if brand_title and brand_title.lower() not in product_title.lower():
-        full_product_name = f"{brand_title} {product_title}".strip()
-    else:
-        full_product_name = product_title
-
-    analysis_result.product_name = full_product_name
-    analysis_result.name = full_product_name
-    analysis_result.brand = brand_title
-    analysis_result.barcode = normalized_barcode
-
-    formatted_additives = [
-        f"{a.get('code', '')}: {a.get('name', '')}" if isinstance(a, dict) else str(a)
-        for a in (analysis_result.detected_ins_additives or [])
-    ]
-    analysis_result.additives = formatted_additives
-    analysis_result.allergens = analysis_result.flagged_allergens or []
-    analysis_result.ingredients = [
-        {"name": ing, "safety": "Safe", "description": f"Extracted ingredient: {ing}"}
-        for ing in (analysis_result.parsed_ingredients or [])
-    ]
-
-    # Verify database availability
-    if foods_col is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Database connection unavailable"
-        )
-
-    # -------------------------------------------------------------
-    # EXISTING FOOD LOOKUP & DUPLICATE PREVENTION
-    # -------------------------------------------------------------
-    existing_food = None
-    if normalized_barcode:
-        found = await foods_col.find_one({
-            "barcode": normalized_barcode,
-            "status": {"$ne": "rejected"}
-        })
-        if isinstance(found, dict):
-            existing_food = found
-
-    if not existing_food and full_product_name:
-        found = await foods_col.find_one({
-            "$or": [
-                {"name": {"$regex": f"^{re.escape(full_product_name)}$", "$options": "i"}},
-                {"product_name": {"$regex": f"^{re.escape(full_product_name)}$", "$options": "i"}}
-            ],
-            "status": {"$ne": "rejected"}
-        })
-        if isinstance(found, dict):
-            existing_food = found
-
-    if existing_food and isinstance(existing_food, dict):
-        existing_id = str(existing_food.get("_id", existing_food.get("id", "")))
-        is_verified_doc = bool(existing_food.get("is_verified", True))
-
-        analysis_result.food_id = existing_id
-        analysis_result.is_verified = is_verified_doc
-        if is_verified_doc:
-            analysis_result.requires_user_review = False
-
-        if existing_food.get("name"):
-            analysis_result.name = existing_food["name"]
-            analysis_result.product_name = existing_food["name"]
-        if existing_food.get("brand") and not analysis_result.brand:
-            analysis_result.brand = existing_food["brand"]
-
-        return analysis_result
-
-    # -------------------------------------------------------------
-    # OCR FAILURE / EMPTY PARSE CHECK
-    # -------------------------------------------------------------
-    has_ingredients = bool(analysis_result.parsed_ingredients and len(analysis_result.parsed_ingredients) > 0)
-    if not has_ingredients and not (analysis_result.raw_ocr_text and analysis_result.raw_ocr_text.strip()):
-        # Empty parse - do not insert a bogus uncatalogued record
-        analysis_result.food_id = None
-        analysis_result.is_verified = False
-        analysis_result.requires_user_review = True
-        return analysis_result
-
-    # -------------------------------------------------------------
-    # PERSIST UNCATALOGED PRODUCT (is_verified: False, pending_review)
-    # -------------------------------------------------------------
-    now_ts = datetime.now(timezone.utc).isoformat()
-    food_doc = {
-        "name": full_product_name,
-        "product_name": full_product_name,
-        "brand": brand_title,
-        "barcode": normalized_barcode,
-        "is_verified": False,
-        "requires_moderation": True,
-        "status": "pending_review",
-        "submitted_by": submitted_by,
-        "raw_ocr_text": analysis_result.raw_ocr_text,
-        "detected_ins_additives": analysis_result.detected_ins_additives,
-        "additives": formatted_additives,
-        "flagged_allergens": analysis_result.flagged_allergens,
-        "allergens": analysis_result.flagged_allergens,
-        "parsed_ingredients": analysis_result.parsed_ingredients,
-        "ingredients": analysis_result.ingredients,
-        "nutrition_per_100g": analysis_result.nutrition_per_100g,
-        "estimated_macros": analysis_result.estimated_macros,
-        "safety_score": analysis_result.safety_score or 75,
-        "source": "crowdsourced_ocr",
-        "created_at": now_ts,
-    }
-
-    try:
-        res = await foods_col.insert_one(food_doc)
-        analysis_result.food_id = str(res.inserted_id)
-        analysis_result.is_verified = False
-        analysis_result.requires_user_review = True
-    except Exception as exc:
-        try:
-            if logs_col is not None:
-                await logs_col.insert_one({
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "level": "ERROR",
-                    "service": "CrowdsourcedFoodPersistence",
-                    "operation": "insert_crowdsourced_food",
-                    "message": "Failed to persist crowdsourced food item to database",
-                    "exception_type": type(exc).__name__,
-                    "details": {
-                        "product_name": full_product_name,
-                        "brand": brand_title,
-                        "barcode": normalized_barcode,
-                        "submitted_by": submitted_by,
-                    }
-                })
-        except Exception as log_err:
-            print(f"[SystemLog Error] Failed to log food persistence failure: {log_err}")
-
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to persist crowdsourced food item"
-        )
-
-    return analysis_result
