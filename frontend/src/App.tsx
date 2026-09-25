@@ -489,7 +489,7 @@ function App() {
       <ConfirmModal
         isOpen={showLogoutConfirm}
         title="Sign Out"
-        message="Are you sure you want to sign out of your Z-SeHealth account?"
+        message="Are you sure you want to sign out of your Z-SeHealth session?"
         confirmLabel="Sign Out"
         cancelLabel="Cancel"
         variant="primary"

@@ -644,7 +644,7 @@ export default function UserManagementTab() {
       <ConfirmModal
         isOpen={Boolean(resetQuotaTarget)}
         title="Reset Monthly Scan Quota"
-        message={`Reset monthly scan quota for ${resetQuotaTarget?.email || resetQuotaTarget?.name || 'this user'} back to 0? This will immediately restore their monthly scan allowance.`}
+        message="Reset monthly scan usage to 0 for this user? This will be recorded in the admin audit ledger."
         confirmLabel="Reset Quota"
         cancelLabel="Cancel"
         variant="warning"

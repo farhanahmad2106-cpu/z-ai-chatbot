@@ -611,8 +611,8 @@ export default function AdminTeamTab() {
       {/* Revoke Admin Confirmation Modal */}
       <ConfirmModal
         isOpen={Boolean(adminToRevoke)}
-        title="Revoke Administrator"
-        message={`Permanently revoke and delete administrative privileges for ${adminToRevoke?.email}? This action is immediate and cannot be undone.`}
+        title="Revoke Administrator Privileges"
+        message="Are you sure you want to permanently revoke admin access for this account?"
         confirmLabel="Revoke Admin"
         cancelLabel="Cancel"
         variant="danger"

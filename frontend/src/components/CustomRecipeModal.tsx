@@ -685,7 +685,7 @@ export const CustomRecipeModal: React.FC<CustomRecipeModalProps> = ({
       <ConfirmModal
         isOpen={Boolean(recipeToDelete)}
         title="Delete Custom Recipe"
-        message={`Are you sure you want to delete "${recipeToDelete?.name}"? This will permanently remove it from your saved recipes.`}
+        message="Are you sure you want to delete this recipe? This will remove it from your personal Smart Meal Planner candidate pool."
         confirmLabel="Delete Recipe"
         cancelLabel="Cancel"
         variant="danger"

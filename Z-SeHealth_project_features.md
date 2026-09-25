@@ -75,10 +75,10 @@ All test counts reflect executed test runs verified in the repository:
 | Test Suite | Framework | Files | Tests Executed | Passed | Failed | Status |
 |---|---|---|---|---|---|---|
 | **Backend Pytest Suite** | `pytest 9.1.1` + `pytest-asyncio` | 15 files | 192 | **192** | 0 | **PASS (100%)** |
-| **Frontend Vitest Suite** | `vitest 5.0.1` | 9 files | 110 | **110** | 0 | **PASS (100%)** |
+| **Frontend Vitest Suite** | `vitest 5.0.1` | 10 files | 121 | **121** | 0 | **PASS (100%)** |
 | **TypeScript Typecheck** | `tsc -b` | Project | — | Clean | 0 errors | **PASS** |
-| **Production Vite Build** | `vite build` | Production | — | Built in 7.06s | 0 warnings | **PASS** |
-| **Total Automated Tests** | Combined | 24 files | 302 | **302** | 0 | **PASS (100%)** |
+| **Production Vite Build** | `vite build` | Production | — | Built in 7.07s | 0 warnings | **PASS** |
+| **Total Automated Tests** | Combined | 25 files | 313 | **313** | 0 | **PASS (100%)** |
 
 ---
 

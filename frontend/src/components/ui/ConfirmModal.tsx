@@ -8,7 +8,7 @@ export interface ConfirmModalProps {
   confirmLabel?: string;
   cancelLabel?: string;
   variant?: 'danger' | 'warning' | 'primary';
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
   onCancel: () => void;
   isLoading?: boolean;
   closeOnBackdropClick?: boolean;
@@ -60,13 +60,19 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
     return () => {
       clearTimeout(timer);
       document.body.style.overflow = originalOverflow;
-      // Restore focus to previous active element if still connected
-      if (
-        previousActiveElementRef.current &&
-        typeof previousActiveElementRef.current.focus === 'function' &&
-        document.contains(previousActiveElementRef.current)
-      ) {
-        previousActiveElementRef.current.focus();
+      // Restore focus to previous active element if still connected, or safe fallback
+      try {
+        if (
+          previousActiveElementRef.current &&
+          typeof previousActiveElementRef.current.focus === 'function' &&
+          document.contains(previousActiveElementRef.current)
+        ) {
+          previousActiveElementRef.current.focus();
+        } else if (document.body && typeof document.body.focus === 'function') {
+          document.body.focus();
+        }
+      } catch {
+        // Safe fallback - avoid throwing if opener element was unmounted
       }
     };
   }, [isOpen]);
@@ -151,7 +157,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl animate-in fade-in duration-200 motion-reduce:animate-none"
       onClick={handleBackdropClick}
       data-testid="confirm-modal-backdrop"
     >
@@ -161,7 +167,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
-        className="relative bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl font-manrope animate-in zoom-in-95 duration-200"
+        className="relative bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl font-manrope animate-in zoom-in-95 duration-200 motion-reduce:animate-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close Button */}

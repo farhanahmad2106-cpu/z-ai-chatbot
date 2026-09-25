@@ -1,25 +1,38 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-24 (Session: Canonical Scan-to-Moderation Pipeline & MongoDB Dependency Architecture)
+> **Last Updated:** 2026-09-25 (Session: Native Dialog Elimination & Accessible Brutalist Modal System Finalization)
 
 ---
 
 ## 🗓️ Last Session Summary
-**Date:** 2026-09-24
-**Work Done — Canonical Scan-to-Moderation Pipeline & MongoDB Dependency Architecture:**
-- **Robust Database Access Architecture (`backend/db.py`, `backend/routes/scan.py`)**:
-  - Eliminated the brittle `sys.modules.get("backend.main")` hack for database collection resolution.
-  - Refactored `backend/db.py` to expose formal FastAPI dependencies (`get_database`, `get_foods_collection`, `get_users_collection`, `get_system_logs_collection`) that cleanly access `request.app.state.db` initialized during the application lifespan.
-  - Injected `Depends()` collections directly into `analyze_back_of_pack` in `backend/routes/scan.py`.
-- **Eliminated Hacks from OCR Service (`backend/services/ocr_service.py`)**:
-  - Removed `sys.modules` reflection for retrieving NVIDIA NIM API keys.
-  - Cleaned `_get_nvidia_keys()` to fetch directly from `os.getenv` environment variables, ensuring deterministic fallback rotation without module coupling.
+**Date:** 2026-09-25
+**Work Done — Native Dialog Elimination & Accessible Brutalist Modal System Finalization:**
+- **Zero Production Native Dialog Verification & Guard (`frontend/src/`)**:
+  - Validated 0 occurrences of `alert()`, `confirm()`, `prompt()`, `window.*`, and `globalThis.*` across all production frontend source files.
+  - Implemented automated regression test suite (`frontend/src/tests/nativeDialogRegression.test.ts`) utilizing Vite's `import.meta.glob` to continuously scan and enforce 0 native dialog calls in production code.
+- **Accessible Dark-Brutalist Confirmation Modal (`frontend/src/components/ui/ConfirmModal.tsx`)**:
+  - Strongly typed contract: `onConfirm: () => void | Promise<void>`, `variant: 'danger' | 'warning' | 'primary'`, `isOpen`, `isLoading`, `closeOnBackdropClick`.
+  - Accessible semantics: `role="dialog"`, `aria-modal="true"`, paired `aria-labelledby` and `aria-describedby` IDs generated via React `useId()`.
+  - Focus & Keyboard Trapping: Initial focus management moving to Cancel button or first focusable element; Tab & Shift+Tab focus trap cycling; safe focus restoration to opener with graceful fallback to `document.body?.focus()`.
+  - Overlay & Scroll: `fixed inset-0 z-50 bg-black/90 backdrop-blur-xl`, `motion-reduce:animate-none` reduced-motion support, non-destructive `document.body.style.overflow` scroll locking with unmount restoration.
+  - Mutation protection: Disables buttons and dismissibility (Escape, backdrop click) during `isLoading=true` with inline animated loader.
+- **Precise Migration & Microcopy Standardization**:
+  - `Dashboard.tsx`: Aligned camera denial error to canonical toast message: `"Camera access was denied. Please enable camera permissions in your browser settings to scan food packaging."`.
+  - `CustomRecipeModal.tsx`: Destructive recipe deletion gated behind `variant="danger"` modal with exact microcopy: `"Are you sure you want to delete this recipe? This will remove it from your personal Smart Meal Planner candidate pool."`.
+  - `UserManagementTab.tsx`: Scan quota reset confirmation gated behind `variant="warning"` modal with exact microcopy: `"Reset monthly scan usage to 0 for this user? This will be recorded in the admin audit ledger."`.
+  - `AdminTeamTab.tsx`: Administrator privilege revocation gated behind `variant="danger"` modal: `title="Revoke Administrator Privileges"`, `message="Are you sure you want to permanently revoke admin access for this account?"`.
+  - `AdminDashboard.tsx`: Admin logout gated behind `variant="primary"` modal: `title="Sign Out"`, `message="Are you sure you want to sign out of the administrative session?"`.
+  - `App.tsx`: Unified desktop and mobile sign-out confirmation gated behind `variant="primary"` modal: `title="Sign Out"`, `message="Are you sure you want to sign out of your Z-SeHealth session?"`.
 - **Automated Verification**:
-  - Re-authored `tests/test_scan_remediation.py` to supply mock dependencies safely as keyword arguments rather than utilizing brittle path-based `patch()` intercepts on internal module functions.
-  - Test suite re-execution: **8/8 scan remediation tests passing (100%)**.
+  - Frontend Vitest suite: **121/121 tests passing (100%)** across 10 test files.
+  - Production frontend build (`npm --prefix frontend run build` -> `tsc -b && vite build`): **0 TypeScript compiler errors (exit code 0), built in 7.07s**.
+  - Static grep audit: **0 production violations**.
 
 ---
+
+## 🗓️ Previous Session Summary (Canonical Scan-to-Moderation Pipeline & MongoDB Dependency Architecture)
+**Date:** 2026-09-24
 
 ## 🗓️ Previous Session Summary (Production Bundle Code-Splitting & Living Documentation Synchronization)
 **Date:** 2026-09-24

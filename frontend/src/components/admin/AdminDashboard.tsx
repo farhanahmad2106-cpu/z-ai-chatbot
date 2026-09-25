@@ -182,9 +182,9 @@ export default function AdminDashboard({ onExit }: AdminDashboardProps) {
 
       <ConfirmModal
         isOpen={showLogoutConfirm}
-        title="End Admin Session"
-        message="Are you sure you want to log out from your administrative session?"
-        confirmLabel="Log Out"
+        title="Sign Out"
+        message="Are you sure you want to sign out of the administrative session?"
+        confirmLabel="Sign Out"
         cancelLabel="Cancel"
         variant="primary"
         onConfirm={() => {

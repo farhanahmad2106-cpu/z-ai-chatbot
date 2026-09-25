@@ -38,7 +38,10 @@ export default function Dashboard({ onNavigateToScan, onGoToPricing }: Dashboard
       }
     } catch (err) {
       console.error("Error accessing camera: ", err);
-      showToast("Could not access camera. Please check device permissions.", "error");
+      showToast(
+        "Camera access was denied. Please enable camera permissions in your browser settings to scan food packaging.",
+        "error"
+      );
       setIsCameraActive(false);
     }
   };
