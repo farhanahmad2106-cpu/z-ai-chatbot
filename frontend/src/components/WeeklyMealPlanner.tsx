@@ -20,7 +20,8 @@ import {
   Play,
   Pause,
   Square,
-  RotateCcw
+  RotateCcw,
+  ShoppingCart
 } from 'lucide-react';
 import {
   QuickCommerceProvider,
@@ -797,6 +798,11 @@ const WeeklyMealPlanner: React.FC<WeeklyMealPlannerProps> = ({
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const exportTriggerRef = useRef<HTMLButtonElement | null>(null);
 
+  // Per-Meal Quick-Commerce Dish Order State
+  const [activeOrderMealId, setActiveOrderMealId] = useState<string | null>(null);
+  const [mealSelectedIngredients, setMealSelectedIngredients] = useState<Record<string, string>>({});
+  const orderPopoverRef = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
     setActiveSubView(initialSubView);
   }, [initialSubView]);
@@ -808,16 +814,20 @@ const WeeklyMealPlanner: React.FC<WeeklyMealPlannerProps> = ({
     setSelectedDayIndex(mappedIndex);
   }, []);
 
-  // Close popover and modal on Escape or outside click
+  // Close popovers and modal on Escape or outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
         setActivePopoverKey(null);
       }
+      if (orderPopoverRef.current && !orderPopoverRef.current.contains(e.target as Node)) {
+        setActiveOrderMealId(null);
+      }
     };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setActivePopoverKey(null);
+        setActiveOrderMealId(null);
         setIsExportModalOpen(false);
       }
     };
@@ -828,6 +838,17 @@ const WeeklyMealPlanner: React.FC<WeeklyMealPlannerProps> = ({
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
+
+  const handleToggleMealOrder = (mealId: string) => {
+    setActiveOrderMealId((prev) => (prev === mealId ? null : mealId));
+  };
+
+  const handleSelectMealIngredient = (mealId: string, ing: string) => {
+    setMealSelectedIngredients((prev) => ({
+      ...prev,
+      [mealId]: ing,
+    }));
+  };
 
   // Ensure translations when weekly plan is loaded in an Indic language
   useEffect(() => {
@@ -1145,44 +1166,157 @@ const WeeklyMealPlanner: React.FC<WeeklyMealPlannerProps> = ({
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
-                  <div className="p-3 bg-slate-950/60 rounded-2xl border border-slate-800/80 text-center">
-                    <p className="text-[10px] uppercase font-bold text-gray-500">Calories</p>
-                    <p className="text-lg font-bold text-emerald-400">
-                      {Math.round(selectedDay.daily_totals.calories)}
-                    </p>
-                    <p className="text-[9px] text-gray-500 font-mono">
-                      Target: {Math.round(weeklyPlan.target_calories)}
-                    </p>
+                  <div className="p-3 bg-slate-950/60 rounded-2xl border border-slate-800/80 text-center flex flex-col justify-between">
+                    <div>
+                      <p className="text-[10px] uppercase font-bold text-gray-500 font-mono">Calories</p>
+                      <p className="text-lg font-bold text-emerald-400 font-outfit">
+                        {Math.round(selectedDay.daily_totals.calories)}
+                      </p>
+                      <p className="text-[9px] text-gray-500 font-mono">
+                        Target: {Math.round(weeklyPlan.target_calories)}
+                      </p>
+                    </div>
+                    <div
+                      role="progressbar"
+                      aria-valuenow={Math.round(selectedDay.daily_totals.calories)}
+                      aria-valuemin={0}
+                      aria-valuemax={Math.round(weeklyPlan.target_calories)}
+                      aria-label={`Calories progress: ${Math.round(selectedDay.daily_totals.calories)} of ${Math.round(weeklyPlan.target_calories)} kcal`}
+                      className="w-full bg-slate-900 rounded-full h-1 overflow-hidden mt-1.5"
+                    >
+                      <div
+                        className="h-full rounded-full transition-[width] duration-500 ease-out motion-reduce:transition-none bg-emerald-400"
+                        style={{
+                          width: `${Math.min(
+                            100,
+                            Math.max(0, (selectedDay.daily_totals.calories / weeklyPlan.target_calories) * 100)
+                          )}%`,
+                        }}
+                      />
+                    </div>
                   </div>
-                  <div className="p-3 bg-slate-950/60 rounded-2xl border border-slate-800/80 text-center">
-                    <p className="text-[10px] uppercase font-bold text-gray-500">Protein</p>
-                    <p className="text-lg font-bold text-blue-400">
-                      {Math.round(selectedDay.daily_totals.protein_g)}g
-                    </p>
+                  <div className="p-3 bg-slate-950/60 rounded-2xl border border-slate-800/80 text-center flex flex-col justify-between">
+                    <div>
+                      <p className="text-[10px] uppercase font-bold text-gray-500 font-mono">Protein</p>
+                      <p className="text-lg font-bold text-sky-400 font-outfit">
+                        {Math.round(selectedDay.daily_totals.protein_g)}g
+                      </p>
+                      {dailyGoals?.protein && dailyGoals.protein > 0 ? (
+                        <p className="text-[9px] text-gray-500 font-mono">
+                          Target: {Math.round(dailyGoals.protein)}g
+                        </p>
+                      ) : (
+                        <p className="text-[9px] text-gray-500 font-mono">Daily Total</p>
+                      )}
+                    </div>
+                    {dailyGoals?.protein && dailyGoals.protein > 0 && (
+                      <div
+                        role="progressbar"
+                        aria-valuenow={Math.round(selectedDay.daily_totals.protein_g)}
+                        aria-valuemin={0}
+                        aria-valuemax={Math.round(dailyGoals.protein)}
+                        aria-label={`Protein progress: ${Math.round(selectedDay.daily_totals.protein_g)} of ${Math.round(dailyGoals.protein)}g`}
+                        className="w-full bg-slate-900 rounded-full h-1 overflow-hidden mt-1.5"
+                      >
+                        <div
+                          className="h-full rounded-full transition-[width] duration-500 ease-out motion-reduce:transition-none bg-sky-400"
+                          style={{
+                            width: `${Math.min(
+                              100,
+                              Math.max(0, (selectedDay.daily_totals.protein_g / dailyGoals.protein) * 100)
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                    )}
                   </div>
-                  <div className="p-3 bg-slate-950/60 rounded-2xl border border-slate-800/80 text-center">
-                    <p className="text-[10px] uppercase font-bold text-gray-500">Carbs</p>
-                    <p className="text-lg font-bold text-amber-400">
-                      {Math.round(selectedDay.daily_totals.carbs_g)}g
-                    </p>
+                  <div className="p-3 bg-slate-950/60 rounded-2xl border border-slate-800/80 text-center flex flex-col justify-between">
+                    <div>
+                      <p className="text-[10px] uppercase font-bold text-gray-500 font-mono">Carbs</p>
+                      <p className="text-lg font-bold text-amber-400 font-outfit">
+                        {Math.round(selectedDay.daily_totals.carbs_g)}g
+                      </p>
+                      {dailyGoals?.carbs && dailyGoals.carbs > 0 ? (
+                        <p className="text-[9px] text-gray-500 font-mono">
+                          Target: {Math.round(dailyGoals.carbs)}g
+                        </p>
+                      ) : (
+                        <p className="text-[9px] text-gray-500 font-mono">Daily Total</p>
+                      )}
+                    </div>
+                    {dailyGoals?.carbs && dailyGoals.carbs > 0 && (
+                      <div
+                        role="progressbar"
+                        aria-valuenow={Math.round(selectedDay.daily_totals.carbs_g)}
+                        aria-valuemin={0}
+                        aria-valuemax={Math.round(dailyGoals.carbs)}
+                        aria-label={`Carbs progress: ${Math.round(selectedDay.daily_totals.carbs_g)} of ${Math.round(dailyGoals.carbs)}g`}
+                        className="w-full bg-slate-900 rounded-full h-1 overflow-hidden mt-1.5"
+                      >
+                        <div
+                          className="h-full rounded-full transition-[width] duration-500 ease-out motion-reduce:transition-none bg-amber-400"
+                          style={{
+                            width: `${Math.min(
+                              100,
+                              Math.max(0, (selectedDay.daily_totals.carbs_g / dailyGoals.carbs) * 100)
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                    )}
                   </div>
-                  <div className="p-3 bg-slate-950/60 rounded-2xl border border-slate-800/80 text-center">
-                    <p className="text-[10px] uppercase font-bold text-gray-500">Fats</p>
-                    <p className="text-lg font-bold text-rose-400">
-                      {Math.round(selectedDay.daily_totals.fat_g)}g
-                    </p>
+                  <div className="p-3 bg-slate-950/60 rounded-2xl border border-slate-800/80 text-center flex flex-col justify-between">
+                    <div>
+                      <p className="text-[10px] uppercase font-bold text-gray-500 font-mono">Fats</p>
+                      <p className="text-lg font-bold text-rose-400 font-outfit">
+                        {Math.round(selectedDay.daily_totals.fat_g)}g
+                      </p>
+                      {dailyGoals?.fat && dailyGoals.fat > 0 ? (
+                        <p className="text-[9px] text-gray-500 font-mono">
+                          Target: {Math.round(dailyGoals.fat)}g
+                        </p>
+                      ) : (
+                        <p className="text-[9px] text-gray-500 font-mono">Daily Total</p>
+                      )}
+                    </div>
+                    {dailyGoals?.fat && dailyGoals.fat > 0 && (
+                      <div
+                        role="progressbar"
+                        aria-valuenow={Math.round(selectedDay.daily_totals.fat_g)}
+                        aria-valuemin={0}
+                        aria-valuemax={Math.round(dailyGoals.fat)}
+                        aria-label={`Fats progress: ${Math.round(selectedDay.daily_totals.fat_g)} of ${Math.round(dailyGoals.fat)}g`}
+                        className="w-full bg-slate-900 rounded-full h-1 overflow-hidden mt-1.5"
+                      >
+                        <div
+                          className="h-full rounded-full transition-[width] duration-500 ease-out motion-reduce:transition-none bg-rose-400"
+                          style={{
+                            width: `${Math.min(
+                              100,
+                              Math.max(0, (selectedDay.daily_totals.fat_g / dailyGoals.fat) * 100)
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                    )}
                   </div>
-                  <div className="p-3 bg-slate-950/60 rounded-2xl border border-slate-800/80 text-center">
-                    <p className="text-[10px] uppercase font-bold text-gray-500">Sodium</p>
-                    <p className="text-lg font-bold text-purple-400">
-                      {Math.round(selectedDay.daily_totals.sodium_mg)}mg
-                    </p>
+                  <div className="p-3 bg-slate-950/60 rounded-2xl border border-slate-800/80 text-center flex flex-col justify-between">
+                    <div>
+                      <p className="text-[10px] uppercase font-bold text-gray-500 font-mono">Sodium</p>
+                      <p className="text-lg font-bold text-purple-400 font-outfit">
+                        {Math.round(selectedDay.daily_totals.sodium_mg)}mg
+                      </p>
+                      <p className="text-[9px] text-gray-500 font-mono">Clinical Max: 2300mg</p>
+                    </div>
                   </div>
-                  <div className="p-3 bg-slate-950/60 rounded-2xl border border-slate-800/80 text-center">
-                    <p className="text-[10px] uppercase font-bold text-gray-500">Added Sugar</p>
-                    <p className="text-lg font-bold text-cyan-400">
-                      {Math.round(selectedDay.daily_totals.added_sugar_g || 0)}g
-                    </p>
+                  <div className="p-3 bg-slate-950/60 rounded-2xl border border-slate-800/80 text-center flex flex-col justify-between">
+                    <div>
+                      <p className="text-[10px] uppercase font-bold text-gray-500 font-mono">Added Sugar</p>
+                      <p className="text-lg font-bold text-cyan-400 font-outfit">
+                        {Math.round(selectedDay.daily_totals.added_sugar_g || 0)}g
+                      </p>
+                      <p className="text-[9px] text-gray-500 font-mono">Target: &lt;25g</p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1195,6 +1329,8 @@ const WeeklyMealPlanner: React.FC<WeeklyMealPlannerProps> = ({
                   const displayName = trans?.translated_name || meal.name;
                   const displayDesc = trans?.translated_serving_description || meal.serving_description;
                   const displayIngredients = trans?.translated_ingredients || meal.ingredients;
+                  const hasIngredients = Boolean(displayIngredients && displayIngredients.length > 0);
+                  const currentSelectedIng = mealSelectedIngredients[meal.meal_id] || (hasIngredients ? displayIngredients[0] : '');
 
                   return (
                     <div
@@ -1202,31 +1338,50 @@ const WeeklyMealPlanner: React.FC<WeeklyMealPlannerProps> = ({
                       className="p-5 bg-slate-900 border border-slate-800 hover:border-slate-700 transition-all rounded-3xl flex flex-col justify-between"
                     >
                       <div>
-                        {/* Meal Slot & Multiplier Badge */}
-                        <div className="flex justify-between items-start mb-2">
-                          <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-800/30">
-                            {meal.meal_type}
-                          </span>
-                          <span className="text-xs font-mono font-bold text-gray-400 bg-slate-950 px-2 py-0.5 rounded-lg border border-slate-800">
-                            {meal.servings || 1.0}x serving
+                        {/* Collision-free Meal Header (Section 10) */}
+                        <div className="flex items-start justify-between gap-3 mb-2">
+                          <h3 className="min-w-0 flex-1 font-outfit text-base sm:text-lg font-bold text-white tracking-tight leading-snug break-words">
+                            {meal.meal_type.toUpperCase()}: {displayName}
+                          </h3>
+
+                          <span
+                            className={`shrink-0 px-2.5 py-1 text-xs font-mono font-semibold rounded-full flex items-center gap-1 border ${
+                              meal.safety_class === 'critical'
+                                ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                                : meal.safety_class === 'moderate'
+                                ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                                : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                            }`}
+                            aria-label={`Dietary status: ${meal.safety_class ? meal.safety_class.toUpperCase() : 'SAFE'}`}
+                          >
+                            {meal.safety_class === 'critical' || meal.safety_class === 'moderate' ? (
+                              <AlertTriangle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                            ) : (
+                              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                            )}
+                            <span>{meal.safety_class ? meal.safety_class.toUpperCase() : 'SAFE'}</span>
                           </span>
                         </div>
 
-                        <h4 className="text-lg font-bold font-outfit text-white leading-snug">
-                          {displayName}
-                        </h4>
-                        <p className="text-xs text-gray-500 mt-0.5">{displayDesc}</p>
+                        <p className="text-xs text-gray-400 mt-0.5 leading-relaxed break-words">
+                          {displayDesc}
+                          {meal.servings && meal.servings !== 1.0 ? (
+                            <span className="ml-1.5 font-mono text-[11px] text-gray-400 font-semibold bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">
+                              {meal.servings}x serving
+                            </span>
+                          ) : null}
+                        </p>
 
                         {/* Macro pills */}
-                        <div className="flex flex-wrap gap-2 my-3 text-xs bg-slate-950 p-2 rounded-xl border border-slate-800/60">
+                        <div className="flex flex-wrap gap-2 my-3 text-xs bg-slate-950 p-2.5 rounded-xl border border-slate-800/60 font-mono">
                           <span className="text-emerald-400 font-bold">{Math.round(meal.calories)} kcal</span>
-                          <span className="text-gray-500">•</span>
-                          <span className="text-blue-400 font-medium">{meal.protein_g}g P</span>
-                          <span className="text-gray-500">•</span>
+                          <span className="text-gray-600">•</span>
+                          <span className="text-sky-400 font-medium">{meal.protein_g}g P</span>
+                          <span className="text-gray-600">•</span>
                           <span className="text-amber-400 font-medium">{meal.carbs_g}g C</span>
-                          <span className="text-gray-500">•</span>
+                          <span className="text-gray-600">•</span>
                           <span className="text-rose-400 font-medium">{meal.fat_g}g F</span>
-                          <span className="text-gray-500">•</span>
+                          <span className="text-gray-600">•</span>
                           <span className="text-purple-400 font-medium">{meal.sodium_mg || 0}mg Sod</span>
                         </div>
 
@@ -1235,28 +1390,151 @@ const WeeklyMealPlanner: React.FC<WeeklyMealPlannerProps> = ({
                           {displayIngredients.slice(0, 5).map((ing, i) => (
                             <span
                               key={i}
-                              className="text-[10px] bg-slate-950 text-gray-400 px-2 py-0.5 rounded-md border border-slate-800"
+                              className="text-[10px] bg-slate-950 text-gray-300 px-2 py-0.5 rounded-md border border-slate-800 break-words"
                             >
                               {ing}
                             </span>
                           ))}
                           {displayIngredients.length > 5 && (
-                            <span className="text-[10px] text-gray-500 px-1 py-0.5">
+                            <span className="text-[10px] text-gray-500 px-1 py-0.5 font-mono">
                               +{displayIngredients.length - 5} more
                             </span>
                           )}
                         </div>
                       </div>
 
-                      {/* Swap Action */}
-                      <button
-                        onClick={() => handleSwapMeal(selectedDay.day, meal.meal_type)}
-                        disabled={isSwapping}
-                        className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-2 active:scale-95"
-                      >
-                        <RefreshCw className={`w-3.5 h-3.5 ${isSwapping ? 'animate-spin text-emerald-400' : ''}`} />
-                        {isSwapping ? 'Validating Alternative...' : 'Swap Meal'}
-                      </button>
+                      {/* Responsive Action Footer: Swap Meal + Order Dish Ingredients (Section 20) */}
+                      <div className="flex flex-col sm:flex-row gap-2 mt-4 pt-3 border-t border-slate-800/80">
+                        <button
+                          type="button"
+                          onClick={() => handleSwapMeal(selectedDay.day, meal.meal_type)}
+                          disabled={isSwapping}
+                          aria-label={`Swap ${displayName} for alternative`}
+                          className="flex-1 min-h-[44px] py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-2 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isSwapping ? 'animate-spin text-emerald-400' : ''}`} aria-hidden="true" />
+                          <span className="truncate">{isSwapping ? 'Validating...' : 'Swap Meal'}</span>
+                        </button>
+
+                        <div className="flex-1 relative">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleMealOrder(meal.meal_id);
+                            }}
+                            disabled={!hasIngredients}
+                            aria-expanded={activeOrderMealId === meal.meal_id}
+                            aria-haspopup="dialog"
+                            aria-label={`Order dish ingredients for ${displayName}`}
+                            className={`w-full min-h-[44px] py-2.5 px-3 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400 ${
+                              activeOrderMealId === meal.meal_id
+                                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
+                                : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:border-emerald-500/50'
+                            }`}
+                          >
+                            <ShoppingCart className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                            <span className="truncate">Order Dish Ingredients</span>
+                          </button>
+
+                          {/* Popover for Ordering Dish Ingredients */}
+                          {activeOrderMealId === meal.meal_id && (
+                            <div
+                              ref={orderPopoverRef}
+                              onClick={(e) => e.stopPropagation()}
+                              role="dialog"
+                              aria-modal="false"
+                              aria-label={`Order ingredients for ${displayName}`}
+                              className="absolute bottom-full mb-2 left-0 right-0 sm:left-auto sm:right-0 sm:w-72 z-30 p-3.5 bg-slate-950 border border-slate-700 rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+                            >
+                              <div className="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-800">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <ShoppingCart className="w-3.5 h-3.5 text-emerald-400 shrink-0" aria-hidden="true" />
+                                  <span className="text-xs font-bold font-outfit text-white truncate">
+                                    Order Dish Ingredients
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveOrderMealId(null)}
+                                  className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-slate-800 transition-colors focus-visible:outline-emerald-400"
+                                  aria-label="Close order popover"
+                                >
+                                  <X className="w-3.5 h-3.5" aria-hidden="true" />
+                                </button>
+                              </div>
+
+                              {/* Ingredient Selector if multiple ingredients */}
+                              <div className="mb-3">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5 block">
+                                  Primary Ingredient
+                                </label>
+                                {displayIngredients.length > 1 ? (
+                                  <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pr-1">
+                                    {displayIngredients.map((ing) => {
+                                      const isSelected = currentSelectedIng === ing;
+                                      const sanitized = sanitizeIngredientForSearch(ing) || ing;
+                                      return (
+                                        <button
+                                          key={ing}
+                                          type="button"
+                                          onClick={() => handleSelectMealIngredient(meal.meal_id, ing)}
+                                          className={`px-2 py-1 rounded-lg text-[10px] font-medium transition-all ${
+                                            isSelected
+                                              ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm shadow-emerald-500/20'
+                                              : 'bg-slate-900 text-gray-300 hover:bg-slate-800 border border-slate-800'
+                                          }`}
+                                        >
+                                          {sanitized}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <div className="text-xs text-emerald-400 font-mono font-semibold truncate bg-slate-900 px-2.5 py-1.5 rounded-xl border border-slate-800">
+                                    {sanitizeIngredientForSearch(currentSelectedIng) || currentSelectedIng}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Providers list */}
+                              <div className="space-y-1.5">
+                                {(['blinkit', 'zepto', 'instamart'] as QuickCommerceProvider[]).map((prov) => {
+                                  const cfg = PROVIDER_CONFIG[prov];
+                                  const links = generateQuickCommerceLinks(currentSelectedIng);
+                                  const url = links[prov];
+                                  return (
+                                    <button
+                                      key={prov}
+                                      type="button"
+                                      disabled={!url}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (!url) {
+                                          showToast('Unable to construct search link.', 'error');
+                                          return;
+                                        }
+                                        const success = safeOpenProviderSearch(url, prov);
+                                        if (success) {
+                                          showToast(`Opening ${cfg.label} for ${links.sanitizedName}...`, 'success');
+                                          setActiveOrderMealId(null);
+                                        } else {
+                                          showToast('Browser blocked opening new tab. Please allow popups.', 'error');
+                                        }
+                                      }}
+                                      className={`w-full min-h-[40px] px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-between border border-transparent ${cfg.accentBorder} bg-slate-900 hover:bg-slate-850 ${cfg.accentColor} active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400`}
+                                      aria-label={`Search ${links.sanitizedName || currentSelectedIng} on ${cfg.label}`}
+                                    >
+                                      <span className="font-extrabold">{cfg.label}</span>
+                                      <ExternalLink className="w-3.5 h-3.5 opacity-70 shrink-0" aria-hidden="true" />
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   );
                 })}

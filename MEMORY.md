@@ -1,12 +1,43 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-25 (Session: Production Bundle Code-Splitting, Chunk Error Recovery & Living Documentation Synchronization)
+> **Last Updated:** 2026-09-25 (Session: Mobile Meal Planner UX Hardening, Macro Visualization & Quick-Commerce Actions)
 
 ---
 
 ## 🗓️ Last Session Summary
 **Date:** 2026-09-25
+**Work Done — Mobile Meal Planner UX Hardening, Macro Visualization & Quick-Commerce Actions:**
+- **Compact Macro Progress Indicators (`frontend/src/components/MealPlanner.tsx`)**:
+  - Implemented reusable `<MacroMetricCard>` for Calories (`bg-emerald-400`), Protein (`bg-sky-400`), Carbs (`bg-amber-400`), and Fat (`bg-rose-400`).
+  - Progress calculated dynamically via `(current / target) * 100`, visually clamped strictly between 0% and 100% to prevent container overflow while displaying real over-target numeric values (e.g. `2,250 / 2,000 kcal` with `+13% over`).
+  - Safely omits progress bars when target is unavailable without fabricating artificial budgets.
+  - Complete accessible semantics: `role="progressbar"`, dynamic `aria-valuenow`, `aria-valuemin="0"`, `aria-valuemax`, `aria-label`, with GPU-friendly smooth `transition-[width] duration-500 ease-out` and `motion-reduce:transition-none` reduced-motion respect.
+- **Collision-Free Meal Card Headers (`frontend/src/components/WeeklyMealPlanner.tsx`, `frontend/src/components/MealPlanner.tsx`)**:
+  - Re-architected meal card headers with `min-w-0 flex-1 font-outfit break-words` on titles and `shrink-0` on status badges.
+  - Tested long titles (e.g. "Very Long Mediterranean Vegetable Protein Rich Breakfast Bowl With Homemade Low Sodium Dressing") without horizontal overflow or overlapping badges.
+  - Accessible dietary safety badges: preserved full state hierarchy (`SAFE`, `MODERATE`, `CRITICAL`) with distinct semantic colorways (`emerald`, `amber`, `rose`), paired icons (`CheckCircle2`, `AlertTriangle`), and `aria-label` tags.
+- **Per-Meal Quick-Commerce Shopping Action (`frontend/src/components/WeeklyMealPlanner.tsx`)**:
+  - Added dedicated `🛒 Order Dish Ingredients` action operating strictly on the selected meal's ingredients rather than the entire weekly grocery list.
+  - Reused centralized `generateQuickCommerceLinks`, `PROVIDER_CONFIG`, and `safeOpenProviderSearch` from `groceryDeepLinks.ts`, generating direct deep links for **Blinkit**, **Zepto**, and **Swiggy Instamart**.
+  - Accessible contained popover: `role="dialog"`, `aria-label`, `Escape` key and outside-click dismissibility, ingredient selector pills with primary ingredient default, and `e.stopPropagation()` protection preventing card selection or event bleed.
+  - Non-blocking error handling through `showToast` on blocked popups or generation failures with 0 native browser dialogs.
+- **Mobile-First Responsive Action Footer & Touch Targets**:
+  - Refactored meal card action footers with responsive stacking (`flex-col sm:flex-row`) ensuring buttons stack cleanly on narrow mobile viewports (< 640px) without cramping or horizontal overflow.
+  - All interactive controls (`Swap Meal`, `Order Dish Ingredients`, provider buttons, popover controls) maintain `>= 44px` effective touch targets with `focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400`.
+- **Targeted Automated Regression Suite (`frontend/src/tests/mobileMealPlannerUX.test.ts`)**:
+  - Added 12 rigorous automated tests covering current/target value rendering, progress calculation, 100% clamping on over-target metrics, missing-target behavior, color mapping, long-title wrapping, status badge semantics, ingredient deep links, 44px mobile footer stacking, and popover accessibility.
+- **Automated Verification Matrix**:
+  - Frontend Vitest suite (`npm --prefix frontend test -- --run`): **148/148 passed (100%)** across 11 test files.
+  - Backend Pytest suite (`python -m pytest -W error::RuntimeWarning`): **200/200 passed (100%)** across 15 test files (0 RuntimeWarnings, 0 unawaited coroutines).
+  - Total automated regression tests: **348/348 passed (100%)**.
+  - Production build (`npm --prefix frontend run build`): Clean (exit code 0, 9.12s, 0 TypeScript errors, 0 warnings).
+
+---
+
+## 🗓️ Previous Session Summary (Production Bundle Code-Splitting, Chunk Error Recovery & Living Documentation Synchronization)
+**Date:** 2026-09-25
+
 **Work Done — Production Bundle Code-Splitting, Chunk Error Recovery & Living Documentation Synchronization:**
 - **Route/View-Level Dynamic Code-Splitting & Eager Critical Shell (`frontend/src/App.tsx`)**:
   - Genuinely deferred 8 heavy non-critical views via `React.lazy()` and dynamic `import()`: `Search`, `Scan`, `MealPlanner`, `Profile`, `Settings`, `PricingPage`, `AdminDashboard`, and `LegalViewer`.

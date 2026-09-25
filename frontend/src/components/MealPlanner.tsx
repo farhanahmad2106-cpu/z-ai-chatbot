@@ -6,7 +6,7 @@ import { useToast } from '../context/ToastContext';
 import { API_BASE } from '../config';
 import {
   AlertTriangle,
-  CheckCircle,
+  CheckCircle2,
   Info,
   RefreshCw,
   Plus,
@@ -17,6 +17,78 @@ import {
 } from 'lucide-react';
 import WeeklyMealPlanner, { MealLanguage, TranslatedMealItem, TranslatableMealItem } from './WeeklyMealPlanner';
 import { CustomRecipeModal } from './CustomRecipeModal';
+
+export interface MacroMetricCardProps {
+  label: string;
+  current: number;
+  target?: number;
+  unit: string;
+  textColor: string;
+  barColor: string;
+}
+
+export const MacroMetricCard: React.FC<MacroMetricCardProps> = ({
+  label,
+  current,
+  target,
+  unit,
+  textColor,
+  barColor,
+}) => {
+  const hasTarget = typeof target === 'number' && target > 0;
+  const percentage = hasTarget ? (current / target) * 100 : 0;
+  const clampedWidth = Math.min(Math.max(percentage, 0), 100);
+  const roundedCurrent = Math.round(current);
+  const roundedTarget = hasTarget ? Math.round(target) : 0;
+
+  return (
+    <div className="p-3.5 sm:p-4 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col justify-between transition-all hover:border-slate-700 min-w-0">
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 font-mono truncate">
+          {label}
+        </p>
+        <div className="mt-1 flex items-baseline gap-1 flex-wrap">
+          <span className={`text-lg sm:text-xl font-bold font-outfit ${textColor} tracking-tight`}>
+            {roundedCurrent.toLocaleString()}
+          </span>
+          {hasTarget && (
+            <span className="text-xs text-gray-500 font-mono">
+              {`/ ${roundedTarget.toLocaleString()}`}
+            </span>
+          )}
+          <span className="text-xs text-gray-400 font-medium">
+            {unit}
+          </span>
+        </div>
+      </div>
+
+      {hasTarget && (
+        <div className="mt-2.5 sm:mt-3">
+          <div
+            role="progressbar"
+            aria-valuenow={roundedCurrent}
+            aria-valuemin={0}
+            aria-valuemax={roundedTarget}
+            aria-label={`${label} progress: ${roundedCurrent} of ${roundedTarget} ${unit}`}
+            className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden"
+          >
+            <div
+              className={`h-full rounded-full transition-[width] duration-500 ease-out motion-reduce:transition-none ${barColor}`}
+              style={{ width: `${clampedWidth}%` }}
+            />
+          </div>
+          <div className="mt-1 flex justify-between items-center text-[10px] font-mono text-gray-500">
+            <span>{`${Math.round(percentage)}%`}</span>
+            {percentage > 100 && (
+              <span className="text-amber-400 font-bold">{`+${Math.round(percentage - 100)}% over`}</span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 
 
 
@@ -299,17 +371,30 @@ const MealPlanner: React.FC = () => {
     setLogging(false);
   };
 
-  const getSafetyBadge = (cls: string) => {
-    switch (cls) {
-      case 'safe':
-        return <span className="flex items-center gap-1 text-xs font-bold text-emerald-400 bg-emerald-900/40 px-2 py-1 rounded-full"><CheckCircle className="w-3 h-3" /> SAFE</span>;
-      case 'moderate':
-        return <span className="flex items-center gap-1 text-xs font-bold text-amber-400 bg-amber-900/40 px-2 py-1 rounded-full"><AlertTriangle className="w-3 h-3" /> MODERATE</span>;
-      case 'critical':
-        return <span className="flex items-center gap-1 text-xs font-bold text-red-400 bg-red-900/40 px-2 py-1 rounded-full"><AlertTriangle className="w-3 h-3" /> CRITICAL</span>;
-      default:
-        return null;
-    }
+  const getSafetyBadge = (cls?: string) => {
+    const safety = cls || 'safe';
+    const isCritical = safety === 'critical';
+    const isModerate = safety === 'moderate';
+
+    return (
+      <span
+        className={`shrink-0 px-2.5 py-1 text-xs font-mono font-semibold rounded-full flex items-center gap-1 border ${
+          isCritical
+            ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+            : isModerate
+            ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+            : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+        }`}
+        aria-label={`Dietary status: ${safety.toUpperCase()}`}
+      >
+        {isCritical || isModerate ? (
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+        ) : (
+          <CheckCircle2 className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+        )}
+        <span>{safety.toUpperCase()}</span>
+      </span>
+    );
   };
 
   return (
@@ -499,23 +584,39 @@ const MealPlanner: React.FC = () => {
 
           {plan && (
             <div className="space-y-6">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl text-center">
-                  <p className="text-xs text-gray-500 uppercase tracking-wider">Calories</p>
-                  <p className="text-xl font-bold text-emerald-400">{Math.round(plan.daily_totals.calories)} / {plan.target_calories}</p>
-                </div>
-                <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl text-center">
-                  <p className="text-xs text-gray-500 uppercase tracking-wider">Protein</p>
-                  <p className="text-xl font-bold text-blue-400">{Math.round(plan.daily_totals.protein_g)}g</p>
-                </div>
-                <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl text-center">
-                  <p className="text-xs text-gray-500 uppercase tracking-wider">Carbs</p>
-                  <p className="text-xl font-bold text-amber-400">{Math.round(plan.daily_totals.carbs_g)}g</p>
-                </div>
-                <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl text-center">
-                  <p className="text-xs text-gray-500 uppercase tracking-wider">Fat</p>
-                  <p className="text-xl font-bold text-red-400">{Math.round(plan.daily_totals.fat_g)}g</p>
-                </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+                <MacroMetricCard
+                  label="Calories"
+                  current={plan.daily_totals.calories}
+                  target={plan.target_calories}
+                  unit="kcal"
+                  textColor="text-emerald-400"
+                  barColor="bg-emerald-400"
+                />
+                <MacroMetricCard
+                  label="Protein"
+                  current={plan.daily_totals.protein_g}
+                  target={dailyGoals?.protein && dailyGoals.protein > 0 ? dailyGoals.protein : undefined}
+                  unit="g"
+                  textColor="text-sky-400"
+                  barColor="bg-sky-400"
+                />
+                <MacroMetricCard
+                  label="Carbs"
+                  current={plan.daily_totals.carbs_g}
+                  target={dailyGoals?.carbs && dailyGoals.carbs > 0 ? dailyGoals.carbs : undefined}
+                  unit="g"
+                  textColor="text-amber-400"
+                  barColor="bg-amber-400"
+                />
+                <MacroMetricCard
+                  label="Fat"
+                  current={plan.daily_totals.fat_g}
+                  target={dailyGoals?.fat && dailyGoals.fat > 0 ? dailyGoals.fat : undefined}
+                  unit="g"
+                  textColor="text-rose-400"
+                  barColor="bg-rose-400"
+                />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -527,50 +628,61 @@ const MealPlanner: React.FC = () => {
                   const displayWarnings = trans?.translated_warning_reasons || meal.conflict.warning_reasons;
 
                   return (
-                    <div key={meal.meal_id} className={`p-5 rounded-2xl border ${meal.safety_class === 'critical' ? 'bg-red-950/20 border-red-900/50' : meal.safety_class === 'moderate' ? 'bg-amber-950/20 border-amber-900/50' : 'bg-slate-900 border-slate-800'} shadow-lg relative overflow-hidden group`}>
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <h3 className="font-outfit font-bold text-lg capitalize">{meal.meal_type}: {displayName}</h3>
-                          <p className="text-xs text-gray-400">{displayDesc}</p>
+                    <div key={meal.meal_id} className={`p-5 rounded-3xl border ${meal.safety_class === 'critical' ? 'bg-red-950/20 border-red-900/50' : meal.safety_class === 'moderate' ? 'bg-amber-950/20 border-amber-900/50' : 'bg-slate-900 border-slate-800'} shadow-lg relative overflow-hidden flex flex-col justify-between group`}>
+                      <div>
+                        {/* Collision-free Meal Header */}
+                        <div className="flex items-start justify-between gap-3 mb-2">
+                          <h3 className="min-w-0 flex-1 font-outfit text-base sm:text-lg font-bold text-white tracking-tight leading-snug break-words">
+                            {meal.meal_type.toUpperCase()}: {displayName}
+                          </h3>
+                          {getSafetyBadge(meal.safety_class)}
                         </div>
-                        {getSafetyBadge(meal.safety_class)}
-                      </div>
+                        <p className="text-xs text-gray-400 mb-3 leading-relaxed break-words">{displayDesc}</p>
 
-                      <div className="flex gap-3 text-xs mb-3 text-gray-300 bg-slate-950/50 p-2 rounded-lg">
-                        <span><strong className="text-emerald-400">{Math.round(meal.calories)}</strong> kcal</span>
-                        <span><strong className="text-blue-400">{meal.protein_g}g</strong> p</span>
-                        <span><strong className="text-amber-400">{meal.carbs_g}g</strong> c</span>
-                        <span><strong className="text-red-400">{meal.fat_g}g</strong> f</span>
-                        <span><strong className="text-gray-400">{meal.sodium_mg}mg</strong> sod</span>
-                      </div>
-
-                      <div className="mb-4">
-                        <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Key Ingredients</p>
-                        <div className="flex flex-wrap gap-1">
-                          {displayIngredients.map((ing, i) => (
-                            <span key={i} className="text-[10px] bg-slate-800 px-2 py-0.5 rounded-full text-gray-300">{ing}</span>
-                          ))}
+                        <div className="flex flex-wrap gap-2 text-xs mb-3 text-gray-300 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/60 font-mono">
+                          <span><strong className="text-emerald-400">{Math.round(meal.calories)}</strong> kcal</span>
+                          <span className="text-gray-600">•</span>
+                          <span><strong className="text-sky-400">{meal.protein_g}g</strong> P</span>
+                          <span className="text-gray-600">•</span>
+                          <span><strong className="text-amber-400">{meal.carbs_g}g</strong> C</span>
+                          <span className="text-gray-600">•</span>
+                          <span><strong className="text-rose-400">{meal.fat_g}g</strong> F</span>
+                          <span className="text-gray-600">•</span>
+                          <span><strong className="text-gray-400">{meal.sodium_mg}mg</strong> Sod</span>
                         </div>
-                      </div>
 
-                      {displayWarnings.length > 0 && (
-                        <div className={`mt-2 mb-4 p-2 rounded-lg text-xs ${meal.safety_class === 'critical' ? 'bg-red-900/20 text-red-300' : 'bg-amber-900/20 text-amber-300'}`}>
-                          <ul className="list-disc pl-4 space-y-1">
-                            {displayWarnings.map((warn, i) => (
-                              <li key={i}>{warn}</li>
+                        <div className="mb-4">
+                          <p className="text-[10px] text-gray-400 uppercase font-mono font-bold tracking-wider mb-1.5">Key Ingredients</p>
+                          <div className="flex flex-wrap gap-1">
+                            {displayIngredients.map((ing, i) => (
+                              <span key={i} className="text-[10px] bg-slate-950 px-2 py-0.5 rounded-md text-gray-300 border border-slate-800 break-words">{ing}</span>
                             ))}
-                          </ul>
+                          </div>
                         </div>
-                      )}
 
-                      <button
-                        onClick={() => swapMeal(meal)}
-                        disabled={swapping === meal.meal_id}
-                        className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-sm font-medium rounded-xl transition-colors disabled:opacity-50 flex justify-center items-center gap-2 text-white"
-                      >
-                        {swapping === meal.meal_id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                        Swap Meal
-                      </button>
+                        {displayWarnings.length > 0 && (
+                          <div className={`mt-2 mb-4 p-2.5 rounded-xl text-xs ${meal.safety_class === 'critical' ? 'bg-red-900/20 text-red-300 border border-red-900/30' : 'bg-amber-900/20 text-amber-300 border border-amber-900/30'}`}>
+                            <ul className="list-disc pl-4 space-y-1">
+                              {displayWarnings.map((warn, i) => (
+                                <li key={i}>{warn}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-slate-800/80">
+                        <button
+                          type="button"
+                          onClick={() => swapMeal(meal)}
+                          disabled={swapping === meal.meal_id}
+                          aria-label={`Swap ${displayName} for alternative`}
+                          className="w-full min-h-[44px] py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl text-xs font-bold transition-all disabled:opacity-50 flex justify-center items-center gap-2 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400"
+                        >
+                          {swapping === meal.meal_id ? <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" aria-hidden="true" /> : <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />}
+                          <span>{swapping === meal.meal_id ? 'Validating Alternative...' : 'Swap Meal'}</span>
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
