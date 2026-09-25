@@ -1,5 +1,7 @@
 import { Component, ErrorInfo, ReactNode } from 'react';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
+
+const CHUNK_RETRY_KEY_PREFIX = 'z_chunk_retry_';
 
 interface Props {
   children: ReactNode;
@@ -10,58 +12,170 @@ interface Props {
 interface State {
   hasError: boolean;
   error: Error | null;
+  isRepeatedFailure: boolean;
 }
 
 export class ViewErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,
     error: null,
+    isRepeatedFailure: false,
   };
 
   public static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
+    return { 
+      hasError: true, 
+      error,
+      isRepeatedFailure: false,
+    };
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     if (import.meta.env.DEV) {
       console.error('[ViewErrorBoundary] Failed to load view chunk:', error, errorInfo);
     }
+
+    // Check if a retry was already attempted for this view during this session
+    const viewKey = this.props.viewName || 'unknown';
+    try {
+      const priorAttempt = typeof sessionStorage !== 'undefined' 
+        ? sessionStorage.getItem(CHUNK_RETRY_KEY_PREFIX + viewKey) 
+        : null;
+      if (priorAttempt === '1') {
+        this.state = { ...this.state, isRepeatedFailure: true };
+        this.setState({ isRepeatedFailure: true });
+      }
+    } catch {
+      // In private browsing or restricted environments, gracefully ignore sessionStorage errors
+    }
+  }
+
+  public componentDidUpdate(prevProps: Props) {
+    // If the active view changed while in error state, reset error to allow normal view rendering
+    if (prevProps.viewName !== this.props.viewName && this.state.hasError) {
+      this.state = { hasError: false, error: null, isRepeatedFailure: false };
+      this.setState({ hasError: false, error: null, isRepeatedFailure: false });
+    }
   }
 
   private handleRetry = () => {
-    this.setState({ hasError: false, error: null });
+    const viewKey = this.props.viewName || 'unknown';
+
+    // If this is already a repeated failure, avoid infinite reload loops
+    if (this.state.isRepeatedFailure) {
+      if (this.props.onReset) {
+        try {
+          if (typeof sessionStorage !== 'undefined') {
+            sessionStorage.removeItem(CHUNK_RETRY_KEY_PREFIX + viewKey);
+          }
+        } catch {
+          // ignore
+        }
+        this.state = { hasError: false, error: null, isRepeatedFailure: false };
+        this.setState({ hasError: false, error: null, isRepeatedFailure: false });
+        this.props.onReset();
+      } else if (typeof window !== 'undefined') {
+        try {
+          if (typeof sessionStorage !== 'undefined') {
+            sessionStorage.removeItem(CHUNK_RETRY_KEY_PREFIX + viewKey);
+          }
+        } catch {
+          // ignore
+        }
+        window.location.reload();
+      }
+      return;
+    }
+
+    // First failure: mark attempt to prevent continuous automatic loops
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem(CHUNK_RETRY_KEY_PREFIX + viewKey, '1');
+      }
+    } catch {
+      // ignore
+    }
+
+    // Clear state
+    this.state = { hasError: false, error: null, isRepeatedFailure: false };
+    this.setState({ hasError: false, error: null, isRepeatedFailure: false });
+
+    // Trigger controlled reload
+    if (typeof window !== 'undefined') {
+      window.location.reload();
+    }
+  };
+
+  private handleGoHome = () => {
+    const viewKey = this.props.viewName || 'unknown';
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem(CHUNK_RETRY_KEY_PREFIX + viewKey);
+      }
+    } catch {
+      // ignore
+    }
+    this.state = { hasError: false, error: null, isRepeatedFailure: false };
+    this.setState({ hasError: false, error: null, isRepeatedFailure: false });
     if (this.props.onReset) {
       this.props.onReset();
-    } else {
-      window.location.reload();
     }
   };
 
   public render() {
     if (this.state.hasError) {
+      const viewKey = this.props.viewName || 'unknown';
+      let isRepeated = this.state.isRepeatedFailure;
+      try {
+        if (!isRepeated && typeof sessionStorage !== 'undefined' && sessionStorage.getItem(CHUNK_RETRY_KEY_PREFIX + viewKey) === '1') {
+          isRepeated = true;
+        }
+      } catch {
+        // ignore
+      }
+
       return (
-        <div className="min-h-[400px] flex items-center justify-center p-6">
+        <div 
+          role="alert" 
+          aria-live="assertive"
+          className="min-h-[400px] flex items-center justify-center p-6 animate-in fade-in duration-200"
+        >
           <div className="max-w-md w-full bg-slate-900 border border-red-500/30 rounded-2xl p-6 text-center shadow-2xl relative overflow-hidden">
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-red-500 to-amber-500" />
             <div className="w-12 h-12 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-4 text-red-400">
-              <AlertTriangle className="w-6 h-6" />
+              <AlertTriangle className="w-6 h-6" aria-hidden="true" />
             </div>
             <span className="font-mono text-xs uppercase tracking-widest text-red-400 font-bold block mb-1">
-              Chunk Load Error
+              {isRepeated ? 'Persistent Load Error' : 'Chunk Load Error'}
             </span>
             <h3 className="text-lg font-bold text-white mb-2 font-outfit">
-              Failed to load view
+              {isRepeated ? 'Unable to load section' : 'Failed to load view'}
             </h3>
             <p className="text-xs text-slate-400 mb-6 leading-relaxed">
-              A network disruption or newer version prevented this section from loading. Please retry or refresh.
+              {isRepeated
+                ? 'Repeated attempts to load this section failed. A network disruption or cached asset issue may be present.'
+                : 'A network disruption or newer version prevented this section from loading. Please retry.'}
             </p>
-            <button
-              onClick={this.handleRetry}
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-lg shadow-emerald-500/20 active:scale-95 cursor-pointer font-mono"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              Reload View
-            </button>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={this.handleRetry}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-lg shadow-emerald-500/20 active:scale-95 cursor-pointer font-mono focus:outline-none focus:ring-2 focus:ring-emerald-400"
+              >
+                <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
+                {isRepeated ? 'Force Reload' : 'Reload View'}
+              </button>
+              {this.props.onReset && (
+                <button
+                  type="button"
+                  onClick={this.handleGoHome}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs uppercase tracking-wider rounded-xl transition-all border border-slate-700 active:scale-95 cursor-pointer font-mono focus:outline-none focus:ring-2 focus:ring-slate-400"
+                >
+                  <Home className="w-3.5 h-3.5" aria-hidden="true" />
+                  Dashboard
+                </button>
+              )}
+            </div>
           </div>
         </div>
       );
@@ -72,3 +186,4 @@ export class ViewErrorBoundary extends Component<Props, State> {
 }
 
 export default ViewErrorBoundary;
+

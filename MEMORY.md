@@ -1,13 +1,47 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-25 (Session: Freemium Tier-Gating Enforcement, Atomic Scan Quotas, FastAPI Lifespan & 100% Backend Verification)
+> **Last Updated:** 2026-09-25 (Session: Production Bundle Code-Splitting, Chunk Error Recovery & Living Documentation Synchronization)
 
 ---
 
 ## 🗓️ Last Session Summary
 **Date:** 2026-09-25
-**Work Done — Freemium Tier-Gating Enforcement, Atomic Scan Quotas, FastAPI Lifespan & 100% Backend Verification:**
+**Work Done — Production Bundle Code-Splitting, Chunk Error Recovery & Living Documentation Synchronization:**
+- **Route/View-Level Dynamic Code-Splitting (`frontend/src/App.tsx`)**:
+  - Genuinely deferred 8 heavy non-critical views via `React.lazy()` and dynamic `import()`: `Search`, `Scan`, `MealPlanner`, `Profile`, `Settings`, `PricingPage`, `AdminDashboard`, and `LegalViewer`.
+  - Preserved eager critical shell (`Dashboard`, navigation bar, auth state, login/profile modals, footer).
+  - Wrapped dynamic tab view rendering in accessible localized `<Suspense>` boundary with dark-brutalist loading state (`min-h-[400px]`, emerald spinner, monospace uppercase label) with zero layout shifts or white screens.
+- **Production-Grade Chunk Error Shield & Infinite Loop Prevention (`frontend/src/components/ViewErrorBoundary.tsx`)**:
+  - Catches dynamic module loading failures, CDN mismatches, and deployment chunk discrepancies.
+  - Infinite reload loop defense: tracks retry attempts via `sessionStorage` (`z_chunk_retry_${viewName}`).
+  - Surfaces accessible alert UI (`role="alert"`, `aria-live="assertive"`, `AlertTriangle` icon).
+  - On first failure: user clicks "Reload View" to execute controlled cache-refreshing reload.
+  - On repeated failure: detects existing attempt, displays "Unable to load section" with dual recovery paths: primary "Force Reload" and secondary "Dashboard" navigation (via `onReset`).
+  - Automatically resets error state when `viewName` changes in `componentDidUpdate`, allowing effortless navigation away from a failed view.
+- **Rollup Manual Vendor Chunking (`frontend/vite.config.ts`)**:
+  - Configured intelligent manual vendor boundaries:
+    - `react-vendor` (`react`, `react-dom`): 182.33 kB (57.44 kB gzip)
+    - `zxing-vendor` (`@zxing/*`): 451.75 kB (119.25 kB gzip) — strictly deferred until Scan view is rendered!
+    - `lucide-vendor` (`lucide-react`): 27.09 kB (9.67 kB gzip)
+- **Actual Measured Production Bundle Metrics (`frontend/dist/assets/`)**:
+  - Baseline primary entry chunk (before code splitting): **~1,400.00 kB**.
+  - Current primary entry chunk (`index-[hash].js`): **251.43 kB raw/minified** (68.74 kB gzip).
+  - Net primary entry reduction: **-1,148.57 kB (-82.04%)**, strictly under the `< 400 kB` threshold.
+  - Total JavaScript emitted: **1,408.31 kB** across 13 JS chunks.
+  - Largest async chunk: `zxing-vendor` (451.75 kB) / `LegalViewer` (165.08 kB).
+  - Total CSS emitted: `index-[hash].css`: **129.26 kB** (18.34 kB gzip).
+  - Compiler / Rollup warnings: **0 warnings, 0 chunk-size warnings, 0 errors**.
+- **Automated Verification Matrix**:
+  - Frontend Vitest suite (`npm --prefix frontend test -- --run`): **127/127 passed (100%)** across 10 test files (added comprehensive error boundary, loop prevention, and tab routing tests in `codeSplitting.test.ts`).
+  - Backend pytest suite (`python -m pytest -W error::RuntimeWarning`): **192/192 passed (100%)** across 15 test files.
+  - Total automated regression tests: **319/319 passed (100%)**.
+  - Production build (`npm --prefix frontend run build`): Clean (exit code 0, 9.60s, PWA generated).
+
+---
+
+## 🗓️ Previous Session Summary (Freemium Tier-Gating Enforcement, Atomic Scan Quotas, FastAPI Lifespan & 100% Backend Verification)
+**Date:** 2026-09-25
 - **Authoritative Subscription Entitlement Matrix (`backend/middleware/quota_check.py`)**:
   - Baseline matrix strictly enforced: `free` (20 scans, no smart meal planning), `starter` (100 scans, basic meal planning), `pro` (500 scans, full 7-day revolving planner, priority OCR), `elite` (unlimited scans via `None`).
   - Safe normalization: `normalize_tier(tier)` safely falls back to `free` on missing/empty values and fails closed to `unknown` (0 quota, 0 features) on unrecognized strings.
