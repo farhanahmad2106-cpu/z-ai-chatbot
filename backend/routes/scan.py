@@ -3,6 +3,7 @@ import re
 from datetime import datetime, timezone
 from typing import Optional, Any
 from fastapi import APIRouter, UploadFile, File, Header, HTTPException, status, Form, Depends
+from fastapi.params import Depends as DependsParam
 from schemas.scan import OCRAnalysisResponse
 from services.ocr_service import extract_and_analyze
 import firebase_admin.auth as fb_auth
@@ -26,6 +27,45 @@ from middleware.quota_check import (
 )
 
 
+def _get_foods_collection():
+    import sys
+    main_mod = sys.modules.get("main") or sys.modules.get("backend.main")
+    if main_mod:
+        if hasattr(main_mod, "foods_collection"):
+            return main_mod.foods_collection
+        if hasattr(main_mod, "db") and main_mod.db is not None:
+            return main_mod.db["foods"]
+        if hasattr(main_mod, "app") and hasattr(main_mod.app.state, "db") and main_mod.app.state.db is not None:
+            return main_mod.app.state.db["foods"]
+    return None
+
+
+def _get_system_logs_collection():
+    import sys
+    main_mod = sys.modules.get("main") or sys.modules.get("backend.main")
+    if main_mod:
+        if hasattr(main_mod, "system_logs_collection"):
+            return main_mod.system_logs_collection
+        if hasattr(main_mod, "db") and main_mod.db is not None:
+            return main_mod.db["system_logs"]
+        if hasattr(main_mod, "app") and hasattr(main_mod.app.state, "db") and main_mod.app.state.db is not None:
+            return main_mod.app.state.db["system_logs"]
+    return None
+
+
+def _get_users_collection():
+    import sys
+    main_mod = sys.modules.get("main") or sys.modules.get("backend.main")
+    if main_mod:
+        if hasattr(main_mod, "users_collection"):
+            return main_mod.users_collection
+        if hasattr(main_mod, "db") and main_mod.db is not None:
+            return main_mod.db["users"]
+        if hasattr(main_mod, "app") and hasattr(main_mod.app.state, "db") and main_mod.app.state.db is not None:
+            return main_mod.app.state.db["users"]
+    return None
+
+
 @router.post("/analyze", response_model=OCRAnalysisResponse, status_code=status.HTTP_200_OK)
 async def analyze_back_of_pack(
     image: UploadFile = File(...),
@@ -40,6 +80,13 @@ async def analyze_back_of_pack(
     ingredients, additives, allergens, and nutritional info via a multi-tier OCR pipeline.
     Uncataloged crowdsourced products are isolated with is_verified: False in the moderation queue.
     """
+    if isinstance(foods_col, DependsParam):
+        foods_col = _get_foods_collection()
+    if isinstance(users_col, DependsParam):
+        users_col = _get_users_collection()
+    if isinstance(logs_col, DependsParam):
+        logs_col = _get_system_logs_collection()
+
     if image.content_type not in ALLOWED_MIME_TYPES:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,

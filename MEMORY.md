@@ -1,13 +1,36 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-25 (Session: Native Dialog Elimination & Accessible Brutalist Modal System Finalization)
+> **Last Updated:** 2026-09-25 (Session: Freemium Tier-Gating Enforcement, Atomic Scan Quotas, FastAPI Lifespan & 100% Backend Verification)
 
 ---
 
 ## 🗓️ Last Session Summary
 **Date:** 2026-09-25
-**Work Done — Native Dialog Elimination & Accessible Brutalist Modal System Finalization:**
+**Work Done — Freemium Tier-Gating Enforcement, Atomic Scan Quotas, FastAPI Lifespan & 100% Backend Verification:**
+- **Authoritative Subscription Entitlement Matrix (`backend/middleware/quota_check.py`)**:
+  - Baseline matrix strictly enforced: `free` (20 scans, no smart meal planning), `starter` (100 scans, basic meal planning), `pro` (500 scans, full 7-day revolving planner, priority OCR), `elite` (unlimited scans via `None`).
+  - Safe normalization: `normalize_tier(tier)` safely falls back to `free` on missing/empty values and fails closed to `unknown` (0 quota, 0 features) on unrecognized strings.
+  - Reusable dependency factory `require_tier_feature("smart_meal_planning")` and structured 403 `FeatureNotEntitledException` providing standardized machine-readable contract for frontend `<UpgradeModal />`.
+- **Atomic Metered Scanner Quota & Safe Refund (`backend/middleware/quota_check.py`, `backend/routes/scan.py`)**:
+  - Atomic MongoDB reservation query (`usage.scans_used_this_month < limit` with `$inc: 1`) preventing concurrent over-allocation at quota boundaries (e.g. 19/20).
+  - Explicit bypass for `elite` tier where `limit is None` without invalid numeric comparisons or `$lt: None`.
+  - Atomic refund via `release_scan_quota` strictly bounded to `usage.scans_used_this_month > 0` on OCR/persistence failure.
+- **FastAPI Modern Lifespan Architecture (`backend/main.py`)**:
+  - Replaced all deprecated `@app.on_event("startup")` and `@app.on_event("shutdown")` with `@asynccontextmanager async def lifespan(app: FastAPI): ...`.
+  - Tracked background DB initialization task (`app.state.db_init_task`), clean cancellation and graceful handling of `asyncio.CancelledError`, and safe Motor client disconnection.
+- **Collection Resolution Bridge (`backend/routes/scan.py`)**:
+  - Resolved `DependsParam` type collision using `isinstance(col, DependsParam)` to cleanly distinguish FastAPI dependency injection parameters from unit test `AsyncMock` objects.
+  - Provided robust fallback resolution to `main.py` collections when called directly in unit tests without a live Request context.
+- **Automated Verification**:
+  - Python compilation: `python -m py_compile backend/main.py backend/middleware/quota_check.py backend/routes/meals.py backend/routes/scan.py backend/routes/webhooks.py` clean (exit code 0).
+  - Full backend pytest suite with strict runtime warnings: **192/192 passed (100%)** across 15 test files with `python -m pytest -W error::RuntimeWarning` (0 RuntimeWarnings, 0 unawaited coroutines).
+  - Lifecycle deprecation check: 0 `@app.on_event` occurrences in `backend/`.
+
+---
+
+## 🗓️ Previous Session Summary (Native Dialog Elimination & Accessible Brutalist Modal System Finalization)
+**Date:** 2026-09-25
 - **Zero Production Native Dialog Verification & Guard (`frontend/src/`)**:
   - Validated 0 occurrences of `alert()`, `confirm()`, `prompt()`, `window.*`, and `globalThis.*` across all production frontend source files.
   - Implemented automated regression test suite (`frontend/src/tests/nativeDialogRegression.test.ts`) utilizing Vite's `import.meta.glob` to continuously scan and enforce 0 native dialog calls in production code.
