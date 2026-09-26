@@ -41,6 +41,135 @@ def normalize_custom_meal_for_planner(cm: Dict[str, Any]) -> Dict[str, Any]:
         "servings": cm.get("servings", 1)
     }
 
+def calculate_scaled_meal(
+    meal: Dict[str, Any],
+    target_calories: float,
+    user_conditions: Any
+) -> Optional[Dict[str, Any]]:
+    """
+    Calculates portion scaling [0.5, 2.5] and scaled nutrition attributes for a meal.
+    Enforces strict mathematical derivation from a single serving factor.
+    Rejects candidates (returns None) if clinical constraints cannot be satisfied at >= 0.5x portion.
+    """
+    if isinstance(user_conditions, (list, tuple, set)):
+        conditions_str = " ".join(str(c).lower() for c in user_conditions)
+    elif isinstance(user_conditions, str):
+        conditions_str = user_conditions.lower()
+    else:
+        conditions_str = ""
+
+    # Step 5.1: Validate source calories and target calories
+    try:
+        meal_calories = float(meal.get("calories", 0.0))
+    except (ValueError, TypeError):
+        return None
+
+    try:
+        target_calories_val = float(target_calories)
+    except (ValueError, TypeError):
+        return None
+
+    if meal_calories <= 0 or target_calories_val <= 0:
+        return None
+
+    # Step 9: Validate non-negative nutrient values
+    for key in ["protein_g", "carbs_g", "fat_g", "fiber_g", "sodium_mg", "sugar_g", "added_sugar_g"]:
+        val = meal.get(key)
+        if val is not None:
+            try:
+                if float(val) < 0:
+                    return None
+            except (ValueError, TypeError):
+                return None
+
+    # Step 5.2: Calculate ideal calorie-based scale clamped to [0.5, 2.5]
+    scale = target_calories_val / meal_calories
+    scale = max(0.5, min(scale, 2.5))
+
+    # Step 6: Hypertension constraint
+    try:
+        source_sodium = float(meal.get("sodium_mg", 0.0) or 0.0)
+    except (ValueError, TypeError):
+        source_sodium = 0.0
+
+    if "hypertension" in conditions_str and source_sodium > 0:
+        max_scale_for_sodium = 490.0 / source_sodium
+        scale = min(scale, max_scale_for_sodium)
+
+    # Step 7: Diabetes constraint
+    try:
+        source_added_sugar = float(meal.get("added_sugar_g", 0.0) or 0.0)
+    except (ValueError, TypeError):
+        source_added_sugar = 0.0
+
+    if "diabetes" in conditions_str and source_added_sugar > 0:
+        max_scale_for_sugar = 5.0 / source_added_sugar
+        scale = min(scale, max_scale_for_sugar)
+
+    # Hard clinical boundary: if portion cannot satisfy constraints at minimum 0.5x serving, reject
+    if scale < 0.5:
+        return None
+
+    # Section 25: Serving factor precision and step-down boundary guard
+    scale = round(scale, 2)
+    if "hypertension" in conditions_str and source_sodium > 0:
+        if round(source_sodium * scale, 1) > 490.0:
+            scale = round(scale - 0.01, 2)
+    if "diabetes" in conditions_str and source_added_sugar > 0:
+        if round(source_added_sugar * scale, 1) > 5.0:
+            scale = round(scale - 0.01, 2)
+
+    if scale < 0.5:
+        return None
+
+    # Step 10: Calculate all nutrients proportionally from the final physical serving factor
+    scaled_calories = round(meal_calories * scale, 1)
+    scaled_protein = round(float(meal.get("protein_g", 0.0) or 0.0) * scale, 1)
+    scaled_carbs = round(float(meal.get("carbs_g", 0.0) or 0.0) * scale, 1)
+    scaled_fat = round(float(meal.get("fat_g", 0.0) or 0.0) * scale, 1)
+    scaled_fiber = round(float(meal.get("fiber_g", 0.0) or 0.0) * scale, 1)
+    scaled_sodium = round(source_sodium * scale, 1)
+    scaled_sugar = round(float(meal.get("sugar_g", 0.0) or 0.0) * scale, 1)
+    scaled_added_sugar = round(source_added_sugar * scale, 1)
+
+    serving_desc = meal.get("serving_description", "1 serving")
+    if abs(scale - 1.0) >= 0.1:
+        serving_desc = f"{serving_desc} ({scale}x serving)"
+
+    conflict = meal.get("conflict")
+    if conflict is None:
+        conflict = {
+            "is_safe": True,
+            "conflict_severity": "none",
+            "warning_reasons": [],
+            "suggested_alternatives": [],
+            "rule_results": []
+        }
+
+    safety_score = float(meal.get("safety_score", 100.0))
+    safety_class = meal.get("safety_class", "safe")
+
+    return {
+        "meal_id": meal.get("id") or meal.get("meal_id", ""),
+        "name": meal.get("name", ""),
+        "meal_type": meal.get("meal_type", ""),
+        "serving_description": serving_desc,
+        "servings": float(scale),
+        "calories": float(scaled_calories),
+        "protein_g": float(scaled_protein),
+        "carbs_g": float(scaled_carbs),
+        "fat_g": float(scaled_fat),
+        "fiber_g": float(scaled_fiber),
+        "sodium_mg": float(scaled_sodium),
+        "sugar_g": float(scaled_sugar),
+        "added_sugar_g": float(scaled_added_sugar),
+        "refined_flour": bool(meal.get("refined_flour", False)),
+        "ingredients": meal.get("ingredients", []),
+        "conflict": conflict,
+        "safety_score": safety_score,
+        "safety_class": safety_class
+    }
+
 def generate_meal_plan(
     target_calories: float,
     meal_types: List[str],
@@ -116,60 +245,30 @@ def generate_meal_plan(
             return penalty + cal_diff + protein_bonus
 
         candidates.sort(key=rank_candidate)
-        best_meal = candidates[0]
         
-        # Portion scaling
-        base_cal = float(best_meal.get("calories", 300))
-        scale = round(target_cal_for_meal / base_cal, 2) if base_cal > 0 else 1.0
-        scale = max(0.5, min(scale, 2.5))
+        # Portion scaling and clinical candidate selection
+        selected_meal = None
+        for candidate in candidates:
+            scaled = calculate_scaled_meal(candidate, target_cal_for_meal, user_conditions)
+            if scaled is None:
+                continue
+            selected_meal = scaled
+            break
+
+        if selected_meal is None:
+            # Slot cannot be safely fulfilled
+            continue
+
+        selected_meals.append(selected_meal)
         
-        scaled_calories = round(target_cal_for_meal, 1)
-        scaled_protein = round(float(best_meal.get("protein_g", 0)) * scale, 1)
-        scaled_carbs = round(float(best_meal.get("carbs_g", 0)) * scale, 1)
-        scaled_fat = round(float(best_meal.get("fat_g", 0)) * scale, 1)
-        scaled_fiber = round(float(best_meal.get("fiber_g", 0)) * scale, 1)
-        scaled_sodium = round(float(best_meal.get("sodium_mg", 0)) * scale, 1)
-        scaled_sugar = round(float(best_meal.get("sugar_g", 0)) * scale, 1)
-        scaled_added_sugar = round(float(best_meal.get("added_sugar_g", 0)) * scale, 1)
-        
-        # Safety guards
-        if "hypertension" in user_conditions and scaled_sodium >= 500:
-            scaled_sodium = 480.0
-        if "diabetes" in user_conditions and scaled_added_sugar > 5.0:
-            scaled_added_sugar = 5.0
-            
-        serving_desc = best_meal["serving_description"]
-        if abs(scale - 1.0) >= 0.1:
-            serving_desc = f"{best_meal['serving_description']} ({scale}x serving)"
-            
-        selected_meals.append({
-            "meal_id": best_meal["id"],
-            "name": best_meal["name"],
-            "meal_type": best_meal["meal_type"],
-            "serving_description": serving_desc,
-            "servings": float(scale),
-            "calories": float(scaled_calories),
-            "protein_g": float(scaled_protein),
-            "carbs_g": float(scaled_carbs),
-            "fat_g": float(scaled_fat),
-            "fiber_g": float(scaled_fiber),
-            "sodium_mg": float(scaled_sodium),
-            "sugar_g": float(scaled_sugar),
-            "added_sugar_g": float(scaled_added_sugar),
-            "ingredients": best_meal.get("ingredients", []),
-            "conflict": best_meal["conflict"],
-            "safety_score": float(best_meal["safety_score"]),
-            "safety_class": best_meal["safety_class"]
-        })
-        
-        total_calories += scaled_calories
-        total_protein += scaled_protein
-        total_carbs += scaled_carbs
-        total_fat += scaled_fat
-        total_fiber += scaled_fiber
-        total_sodium += scaled_sodium
-        total_sugar += scaled_sugar
-        total_added_sugar += scaled_added_sugar
+        total_calories += selected_meal["calories"]
+        total_protein += selected_meal["protein_g"]
+        total_carbs += selected_meal["carbs_g"]
+        total_fat += selected_meal["fat_g"]
+        total_fiber += selected_meal["fiber_g"]
+        total_sodium += selected_meal["sodium_mg"]
+        total_sugar += selected_meal["sugar_g"]
+        total_added_sugar += selected_meal["added_sugar_g"]
 
     calorie_deviation = 0.0
     if target_calories > 0:
@@ -246,46 +345,11 @@ def swap_meal(
         return penalty + abs(base_cal - target_cal_for_meal)
         
     candidates.sort(key=rank_swap_candidate)
-    best_meal = candidates[0]
-    
-    base_cal = float(best_meal.get("calories", 300))
-    scale = round(target_cal_for_meal / base_cal, 2) if base_cal > 0 else 1.0
-    scale = max(0.5, min(scale, 2.5))
-    
-    scaled_calories = round(target_cal_for_meal, 1)
-    scaled_protein = round(float(best_meal.get("protein_g", 0)) * scale, 1)
-    scaled_carbs = round(float(best_meal.get("carbs_g", 0)) * scale, 1)
-    scaled_fat = round(float(best_meal.get("fat_g", 0)) * scale, 1)
-    scaled_fiber = round(float(best_meal.get("fiber_g", 0)) * scale, 1)
-    scaled_sodium = round(float(best_meal.get("sodium_mg", 0)) * scale, 1)
-    scaled_sugar = round(float(best_meal.get("sugar_g", 0)) * scale, 1)
-    scaled_added_sugar = round(float(best_meal.get("added_sugar_g", 0)) * scale, 1)
-    
-    if "hypertension" in user_conditions and scaled_sodium >= 500:
-        scaled_sodium = 480.0
-    if "diabetes" in user_conditions and scaled_added_sugar > 5.0:
-        scaled_added_sugar = 5.0
-        
-    serving_desc = best_meal["serving_description"]
-    if abs(scale - 1.0) >= 0.1:
-        serving_desc = f"{best_meal['serving_description']} ({scale}x serving)"
-        
-    return {
-        "meal_id": best_meal["id"],
-        "name": best_meal["name"],
-        "meal_type": best_meal["meal_type"],
-        "serving_description": serving_desc,
-        "servings": float(scale),
-        "calories": float(scaled_calories),
-        "protein_g": float(scaled_protein),
-        "carbs_g": float(scaled_carbs),
-        "fat_g": float(scaled_fat),
-        "fiber_g": float(scaled_fiber),
-        "sodium_mg": float(scaled_sodium),
-        "sugar_g": float(scaled_sugar),
-        "added_sugar_g": float(scaled_added_sugar),
-        "ingredients": best_meal.get("ingredients", []),
-        "conflict": best_meal["conflict"],
-        "safety_score": float(best_meal["safety_score"]),
-        "safety_class": best_meal["safety_class"]
-    }
+
+    for candidate in candidates:
+        scaled = calculate_scaled_meal(candidate, target_cal_for_meal, user_conditions)
+        if scaled is None:
+            continue
+        return scaled
+
+    return None

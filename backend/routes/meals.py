@@ -128,7 +128,14 @@ async def generate_plan(request: GeneratePlanRequest, uid: str = Depends(get_cur
         raise HTTPException(status_code=422, detail="Invalid calorie target")
         
     custom_meals = await fetch_user_eligible_custom_meals(uid)
-    plan = generate_meal_plan(target_cals, request.meal_types, health_profile, preferences, custom_meals=custom_meals)
+    plan = await asyncio.to_thread(
+        generate_meal_plan,
+        target_cals,
+        request.meal_types,
+        health_profile,
+        preferences,
+        custom_meals=custom_meals,
+    )
     
     if len(plan["meals"]) == 0:
         raise HTTPException(status_code=409, detail="Cannot fulfill plan constraints safely.")

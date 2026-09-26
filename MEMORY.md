@@ -1,11 +1,35 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-25 (Session: Mobile Meal Planner UX Hardening, Macro Visualization & Quick-Commerce Actions)
+> **Last Updated:** 2026-09-26 (Session: ZS-001 Clinical Nutrient Scaling, Candidate Rejection & FastAPI Event-Loop Safety)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-26
+**Work Done — ZS-001 Clinical Nutrient Scaling, Candidate Rejection & FastAPI Event-Loop Safety:**
+- **Clinical Defect ZS-001 Remediation (`backend/services/meal_planner/planner.py`)**:
+  - Eliminated dangerous artificial nutrient overwrites where `scaled_sodium = 480.0` under hypertension and `scaled_added_sugar = 5.0` under diabetes were hardcoded without adjusting actual physical serving factors.
+  - Implemented `calculate_scaled_meal(meal, target_calories, user_conditions)`:
+    - Strictly derives all displayed nutrients from a single physical serving factor `scale` clamped to `[0.5, 2.5]`.
+    - Enforces clinical upper clamps: `max_scale_for_sodium = 490.0 / source_sodium` for hypertension and `max_scale_for_sugar = 5.0 / source_added_sugar` for diabetes.
+    - Combined clinical conditions share the same physical serving factor (`scale = min(calorie_scale, sodium_scale, sugar_scale)`).
+    - Hard clinical boundary: if `scale < 0.5`, candidate cannot safely satisfy requirements at minimum portion size and is rejected (`return None`).
+    - Full floating-point precision with step-down defense ensuring rounding never breaches upper ceilings (490.0mg sodium, 5.0g added sugar).
+  - Slot candidate selection in `generate_meal_plan` and `swap_meal` skips rejected candidates (`if scaled is None: continue`), selecting safe alternatives or safely failing closed.
+- **FastAPI ASGI Event-Loop Protection (`backend/routes/meals.py`)**:
+  - Offloaded synchronous CPU-bound `generate_meal_plan(...)` execution in `POST /api/meals/generate-plan` to background worker thread via `await asyncio.to_thread(...)`, preventing event-loop starvation while preserving authentication, authorization, and custom meal support.
+- **Targeted Clinical & Async Test Suite (`tests/test_meal_planner_clinical.py`)**:
+  - Added 11 automated test cases: Test 1 (Hypertension proportional scaling to 0.81x / 486mg), Test 2 (1100mg impossible hypertension rejection), Test 3 (Diabetes scaling to 0.62x / 5g), Test 4 (12g impossible diabetes rejection), Test 5 (Hypertension + Diabetes unified serving scale), Test 6 (Safe meal preservation), Test 7 (Unsafe candidate fallback to safe candidate), Test 8 (Zero sodium/sugar division-by-zero immunity), Test 9 (Invalid/negative calorie rejection), Test 10 (Regression against hardcoded 480mg/5g overwrites), and Test 11 (Route-level async `asyncio.to_thread` execution).
+- **Automated Verification Matrix**:
+  - Full Backend Pytest suite (`python -m pytest -W error::RuntimeWarning`): **211/211 passed (100%)** across 15 test files with 0 RuntimeWarnings and 0 unawaited coroutines.
+  - Frontend Vitest suite (`npm --prefix frontend test -- --run`): **148/148 passed (100%)** across 11 test files.
+  - Production frontend build (`npm --prefix frontend run build` -> `tsc -b && vite build`): **0 TypeScript compiler errors, clean PWA bundle**.
+  - Total automated tests: **359/359 passed (100%)**.
+
+---
+
+## 🗓️ Previous Session Summary (Mobile Meal Planner UX Hardening, Macro Visualization & Quick-Commerce Actions)
 **Date:** 2026-09-25
 **Work Done — Mobile Meal Planner UX Hardening, Macro Visualization & Quick-Commerce Actions:**
 - **Compact Macro Progress Indicators (`frontend/src/components/MealPlanner.tsx`)**:

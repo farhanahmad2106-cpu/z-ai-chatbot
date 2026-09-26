@@ -52,7 +52,7 @@ if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
 from backend.main import app
-from backend.services.meal_planner.planner import generate_meal_plan, swap_meal
+from backend.services.meal_planner.planner import generate_meal_plan, swap_meal, calculate_scaled_meal
 from backend.services.meal_planner.conflict_analyzer import analyze_meal_conflict, normalize_ingredients
 from backend.services.meal_planner.meal_repository import get_all_meals, get_meal_by_id
 from backend.routes.meals import get_current_user_id
@@ -643,3 +643,333 @@ def test_edge_case_swap_regression():
         if res2:
             assert res2["conflict"]["is_safe"] is True
             assert_no_forbidden_ingredients(res2, ["dairy", "paneer", "ghee"], "Successive Swap 2")
+
+
+# ============================================================================
+# 6. ZS-001 CLINICAL NUTRIENT SCALING, CANDIDATE REJECTION & ASYNC SAFETY
+# ============================================================================
+
+def test_zs001_hypertension_proportional_scaling():
+    """
+    Test 1: Hypertension proportional scaling
+    Source: sodium = 600mg, calories = 500kcal, target = 500kcal.
+    hypertension constraint: max_scale = 490 / 600 ≈ 0.8167.
+    Scaled serving factor must be 0.81x, yielding reported sodium = 486.0mg (<= 490mg).
+    Must NOT fabricate 480.0mg while keeping 1.0x serving.
+    """
+    meal = {
+        "id": "test_hyp_600",
+        "name": "High Sodium Dal",
+        "meal_type": "lunch",
+        "calories": 500.0,
+        "protein_g": 20.0,
+        "carbs_g": 50.0,
+        "fat_g": 15.0,
+        "fiber_g": 5.0,
+        "sodium_mg": 600.0,
+        "added_sugar_g": 0.0,
+        "serving_description": "1 bowl"
+    }
+    scaled = calculate_scaled_meal(meal, target_calories=500.0, user_conditions="hypertension")
+    assert scaled is not None, "Candidate should be scaled proportionally, not rejected"
+    assert scaled["sodium_mg"] <= 490.0, f"Reported sodium {scaled['sodium_mg']}mg exceeds 490mg limit"
+    assert scaled["servings"] == 0.81, f"Expected portion factor 0.81, got {scaled['servings']}"
+    assert scaled["sodium_mg"] == round(600.0 * scaled["servings"], 1), "Sodium must derive from actual portion factor"
+    assert scaled["sodium_mg"] == 486.0
+    assert scaled["sodium_mg"] != 480.0, "Must not fabricate hardcoded 480.0mg"
+    assert scaled["calories"] == round(500.0 * scaled["servings"], 1)
+
+
+def test_zs001_impossible_hypertension_candidate_rejected():
+    """
+    Test 2: Impossible hypertension candidate
+    Source: sodium = 1100mg.
+    490 / 1100 ≈ 0.445x < 0.5x minimum serving bound.
+    Candidate must be rejected (return None) rather than converted to 0.5x (550mg sodium)
+    or fabricated to 480mg.
+    """
+    meal = {
+        "id": "test_hyp_1100",
+        "name": "Excessive Sodium Pickle Curry",
+        "meal_type": "lunch",
+        "calories": 500.0,
+        "sodium_mg": 1100.0,
+        "added_sugar_g": 0.0,
+        "serving_description": "1 plate"
+    }
+    scaled = calculate_scaled_meal(meal, target_calories=500.0, user_conditions="hypertension")
+    assert scaled is None, "Meal requiring scale < 0.5x for sodium must be rejected"
+
+
+def test_zs001_diabetes_proportional_scaling():
+    """
+    Test 3: Diabetes proportional scaling
+    Source: added_sugar = 8g, calories = 400kcal.
+    diabetes constraint: max_scale = 5.0 / 8.0 = 0.625x (clamped to 0.62x).
+    Reported added sugar must be <= 5.0g and derive from original_sugar * servings.
+    """
+    meal = {
+        "id": "test_diab_8g",
+        "name": "Sweetened Porridge",
+        "meal_type": "breakfast",
+        "calories": 400.0,
+        "protein_g": 10.0,
+        "carbs_g": 60.0,
+        "fat_g": 5.0,
+        "fiber_g": 4.0,
+        "sodium_mg": 100.0,
+        "added_sugar_g": 8.0,
+        "serving_description": "1 bowl"
+    }
+    scaled = calculate_scaled_meal(meal, target_calories=400.0, user_conditions="diabetes")
+    assert scaled is not None
+    assert scaled["added_sugar_g"] <= 5.0, f"Reported sugar {scaled['added_sugar_g']}g exceeds 5g limit"
+    assert scaled["servings"] == 0.62
+    assert scaled["added_sugar_g"] == round(8.0 * scaled["servings"], 1)
+    assert scaled["calories"] == round(400.0 * scaled["servings"], 1)
+
+
+def test_zs001_impossible_diabetes_candidate_rejected():
+    """
+    Test 4: Impossible diabetes candidate
+    Source: added_sugar = 12g (> 10g).
+    5.0 / 12.0 ≈ 0.417x < 0.5x minimum serving bound.
+    Candidate must be rejected (return None).
+    """
+    meal = {
+        "id": "test_diab_12g",
+        "name": "Syrup Gulab Jamun",
+        "meal_type": "snack",
+        "calories": 350.0,
+        "sodium_mg": 50.0,
+        "added_sugar_g": 12.0,
+        "serving_description": "2 pieces"
+    }
+    scaled = calculate_scaled_meal(meal, target_calories=350.0, user_conditions="diabetes")
+    assert scaled is None, "Meal requiring scale < 0.5x for sugar must be rejected"
+
+
+def test_zs001_both_hypertension_and_diabetes_single_scale():
+    """
+    Test 5: Both hypertension and diabetes
+    Source: sodium = 600mg, added_sugar = 8g, calories = 500kcal.
+    sodium scale <= 490 / 600 ≈ 0.8167
+    sugar scale <= 5.0 / 8.0 = 0.625
+    Both constraints must share the same physical serving factor (0.62x).
+    """
+    meal = {
+        "id": "test_both_cond",
+        "name": "Sweet & Salty Snack",
+        "meal_type": "snack",
+        "calories": 500.0,
+        "protein_g": 12.0,
+        "carbs_g": 60.0,
+        "fat_g": 15.0,
+        "fiber_g": 5.0,
+        "sodium_mg": 600.0,
+        "added_sugar_g": 8.0,
+        "serving_description": "1 pack"
+    }
+    scaled = calculate_scaled_meal(meal, target_calories=500.0, user_conditions="hypertension, diabetes")
+    assert scaled is not None
+    assert scaled["servings"] == 0.62
+    assert scaled["sodium_mg"] <= 490.0
+    assert scaled["added_sugar_g"] <= 5.0
+    # Both nutrients must be calculated from the EXACT same portion factor
+    assert scaled["sodium_mg"] == round(600.0 * scaled["servings"], 1) # 372.0 mg
+    assert scaled["added_sugar_g"] == round(8.0 * scaled["servings"], 1) # 5.0 g
+    assert scaled["calories"] == round(500.0 * scaled["servings"], 1) # 310.0 kcal
+
+
+def test_zs001_safe_meal_remains_selectable():
+    """
+    Test 6: Safe meal remains selectable
+    Source: sodium = 200mg, added_sugar = 2g, calories = 400kcal.
+    Target = 400kcal.
+    Must not be rejected or downscaled unnecessarily.
+    """
+    meal = {
+        "id": "test_safe_meal",
+        "name": "Steamed Sprouted Moong Salad",
+        "meal_type": "breakfast",
+        "calories": 400.0,
+        "protein_g": 18.0,
+        "carbs_g": 55.0,
+        "fat_g": 6.0,
+        "fiber_g": 10.0,
+        "sodium_mg": 200.0,
+        "added_sugar_g": 2.0,
+        "serving_description": "1 large bowl"
+    }
+    scaled = calculate_scaled_meal(meal, target_calories=400.0, user_conditions="hypertension, diabetes")
+    assert scaled is not None
+    assert scaled["servings"] == 1.0
+    assert scaled["sodium_mg"] == 200.0
+    assert scaled["added_sugar_g"] == 2.0
+    assert scaled["calories"] == 400.0
+
+
+def test_zs001_candidate_fallback_rejection_and_selection():
+    """
+    Test 7: Candidate fallback
+    Pool has:
+    - Candidate A: sodium = 1200mg (impossible under hypertension at 0.5x minimum)
+    - Candidate B: sodium = 250mg (clinically compliant)
+    Candidate A must be rejected and Candidate B must be selected without planner crash.
+    """
+    custom_pool = [
+        {
+            "id": "custom_unsafe_a",
+            "name": "Overly Salted Curry",
+            "meal_type": "lunch",
+            "per_serving_nutrition": {
+                "calories": 500.0,
+                "sodium_mg": 1200.0,
+                "added_sugar_g": 0.0,
+                "protein_g": 20.0,
+                "carbs_g": 40.0,
+                "fat_g": 10.0
+            },
+            "planner_eligible": True,
+            "include_in_planner": True,
+            "safety_tier": "SAFE"
+        },
+        {
+            "id": "custom_safe_b",
+            "name": "Mild Palak Paneer Alternative",
+            "meal_type": "lunch",
+            "per_serving_nutrition": {
+                "calories": 500.0,
+                "sodium_mg": 250.0,
+                "added_sugar_g": 0.0,
+                "protein_g": 22.0,
+                "carbs_g": 35.0,
+                "fat_g": 12.0
+            },
+            "planner_eligible": True,
+            "include_in_planner": True,
+            "safety_tier": "SAFE"
+        }
+    ]
+    health_vault = {"medicalConditions": "hypertension"}
+    pref = {"diet": "None", "allergies": []}
+
+    plan = generate_meal_plan(
+        target_calories=500.0,
+        meal_types=["lunch"],
+        health_vault=health_vault,
+        preferences=pref,
+        custom_meals=custom_pool
+    )
+    assert len(plan["meals"]) == 1
+    selected_meal = plan["meals"][0]
+    assert selected_meal["meal_id"] != "custom_unsafe_a", "Unsafe candidate A must be rejected"
+    assert selected_meal["sodium_mg"] <= 490.0
+
+
+def test_zs001_zero_sodium_and_zero_sugar_no_division_by_zero():
+    """
+    Test 8: Zero sodium / zero sugar edge cases
+    Verifies that meals with 0mg sodium or 0g added sugar do not cause division by zero.
+    """
+    meal = {
+        "id": "test_zero_sodium_sugar",
+        "name": "Plain Boiled Rice",
+        "meal_type": "lunch",
+        "calories": 300.0,
+        "sodium_mg": 0.0,
+        "added_sugar_g": 0.0,
+        "serving_description": "1 cup"
+    }
+    scaled = calculate_scaled_meal(meal, target_calories=300.0, user_conditions="hypertension, diabetes")
+    assert scaled is not None
+    assert scaled["sodium_mg"] == 0.0
+    assert scaled["added_sugar_g"] == 0.0
+    assert scaled["servings"] == 1.0
+
+
+def test_zs001_invalid_calorie_data_rejected():
+    """
+    Test 9: Invalid calorie data
+    Meals with <= 0 calories or targets <= 0 must be safely rejected without division-by-zero.
+    """
+    meal_zero = {"id": "zero_cal", "name": "Zero Cal", "calories": 0.0, "sodium_mg": 100.0}
+    assert calculate_scaled_meal(meal_zero, 400.0, "") is None
+
+    meal_neg = {"id": "neg_cal", "name": "Negative Cal", "calories": -200.0, "sodium_mg": 100.0}
+    assert calculate_scaled_meal(meal_neg, 400.0, "") is None
+
+    meal_valid = {"id": "valid_cal", "name": "Valid Cal", "calories": 300.0, "sodium_mg": 100.0}
+    assert calculate_scaled_meal(meal_valid, 0.0, "") is None
+    assert calculate_scaled_meal(meal_valid, -50.0, "") is None
+
+    meal_neg_nutrient = {"id": "neg_sod", "name": "Negative Sodium", "calories": 300.0, "sodium_mg": -50.0}
+    assert calculate_scaled_meal(meal_neg_nutrient, 300.0, "") is None
+
+
+def test_zs001_regression_no_hardcoded_safety_overwrites():
+    """
+    Test 10: Regression against hardcoded safety values
+    Proves that the old behavior:
+        if "hypertension" in user_conditions and scaled_sodium >= 500: scaled_sodium = 480.0
+        if "diabetes" in user_conditions and scaled_added_sugar > 5.0: scaled_added_sugar = 5.0
+    is gone. The reported values must equal original_nutrient * actual_servings.
+    """
+    meal = {
+        "id": "reg_hyp_600",
+        "name": "Regression Sodium Dish",
+        "meal_type": "lunch",
+        "calories": 500.0,
+        "sodium_mg": 600.0,
+        "added_sugar_g": 0.0,
+        "serving_description": "1 plate"
+    }
+    scaled = calculate_scaled_meal(meal, target_calories=500.0, user_conditions="hypertension")
+    assert scaled is not None
+    # 600 * 0.81 = 486.0
+    assert scaled["sodium_mg"] == 486.0
+    assert scaled["sodium_mg"] != 480.0, "Old hardcoded safety override 480.0 detected!"
+    assert scaled["servings"] == 0.81
+    assert round(meal["sodium_mg"] * scaled["servings"], 1) == scaled["sodium_mg"]
+
+
+@pytest.mark.asyncio
+async def test_zs001_route_level_async_regression_with_asyncio_to_thread(mock_auth):
+    """
+    Test 11 (Route Async Regression):
+    Verifies that POST /api/meals/generate-plan executes safely through asyncio.to_thread,
+    retaining full response schema, 200 OK, custom meals support, and non-blocking event-loop execution.
+    """
+    fake_user = {
+        "uid": "clinical_test_user_uid",
+        "health_profile": {"medicalConditions": "Hypertension"},
+        "preferences": {
+            "diet": "Vegetarian",
+            "allergies": []
+        }
+    }
+
+    with patch("routes.meals.get_users_collection") as mock_get_users, \
+         patch("routes.meals.fetch_user_eligible_custom_meals", return_value=[]) as mock_custom:
+        mock_col = MagicMock()
+        mock_col.find_one = AsyncMock(return_value=fake_user)
+        mock_get_users.return_value = mock_col
+
+        response = client.post(
+            "/api/meals/generate-plan",
+            json={"target_calories": 1800.0, "meal_types": ["breakfast", "lunch", "snack", "dinner"]},
+            headers={"Authorization": "Bearer mock_token"}
+        )
+
+        assert response.status_code == 200, f"Generate plan failed: {response.text}"
+        data = response.json()
+        assert "plan_id" in data
+        assert data["target_calories"] == 1800.0
+        assert len(data["meals"]) == 4
+        assert "daily_totals" in data
+        assert data["daily_totals"]["sodium_mg"] <= 1960.0
+        for meal in data["meals"]:
+            assert meal["sodium_mg"] <= 490.0
+            assert meal["servings"] is not None
+            assert meal["servings"] >= 0.5
+
