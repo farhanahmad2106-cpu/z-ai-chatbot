@@ -276,3 +276,16 @@ backend/
 - Fixed floating elements (bottom bar, tick button): positioned `right-6` with responsive top values
 - Target breakpoints: **375px** (iPhone SE), **768px** (tablet), **1440px** (desktop)
 - Bottom padding on scrollable pages: `pb-32` or `pb-36` to avoid content hidden behind fixed bars
+
+---
+
+## 11. 🛡️ Security & Reliability Invariants (P1 Security Mandates)
+
+### Scan API & Quota Enforcement
+- **Canonical Scan Route:** `POST /api/scan/analyze` MUST require valid Firebase token authentication via `get_current_user_id`. Never trust client-provided user IDs.
+- **Fail-Closed Quotas:** Quota reservation (`reserve_scan_quota`) succeeds ONLY if MongoDB atomically performs the increment (`matched_count > 0`). `matched_count == 0`, unacknowledged writes, or database errors MUST strictly fail closed (`return False`). Never fall back to `True`.
+- **Legacy Scan Retirement:** Legacy scan endpoints (`POST /api/scan` and `POST /api/scan/ingredients`) are permanently retired (HTTP 410 Gone) and must NEVER execute OCR, database mutations, or quota checks.
+
+### Input Sanitization & Outbound Safety
+- **Food Search ReDoS Defense:** All food search queries (`GET /api/foods`, `GET /api/search/food`) MUST enforce a maximum length of 200 characters (reject >200 with HTTP 400), strip whitespace, and escape all metacharacters via `re.escape(search)`. Empty search queries must NOT generate `$regex` filters, preserving indexed collection performance.
+- **Barcode Validation & External Request Safety:** Barcodes (`GET /api/barcode/{barcode}`, `GET /api/foods/barcode/{barcode}`) MUST match `^[0-9A-Za-z_-]{6,24}$` (reject invalid with HTTP 422). Outbound requests to Open Food Facts must use fixed hostnames (`https://world.openfoodfacts.org/api/v2/product/{quoted_barcode}.json`), URL-encode the path component with `quote(normalized_barcode, safe="")`, and enforce strict request timeouts.

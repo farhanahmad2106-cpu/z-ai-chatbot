@@ -393,33 +393,39 @@ async def reserve_scan_quota(uid: str, users_collection) -> bool:
         return True
 
     # Atomic reservation query: matched only if scans_used_this_month < limit
-    update_res = await users_collection.update_one(
-        {
-            "uid": uid,
-            "$or": [
-                {"usage.scans_used_this_month": {"$lt": limit}},
-                {"usage.scans_used_this_month": {"$exists": False}},
-            ]
-        },
-        {
-            "$inc": {"usage.scans_used_this_month": 1},
-            "$set": {
-                "usage.scan_period": current_period,
-                "usage.reset_date": usage.get("reset_date") or new_reset_date,
-                "usage.scan_limit": limit,
+    try:
+        update_res = await users_collection.update_one(
+            {
+                "uid": uid,
+                "$or": [
+                    {"usage.scans_used_this_month": {"$lt": limit}},
+                    {"usage.scans_used_this_month": {"$exists": False}},
+                ]
+            },
+            {
+                "$inc": {"usage.scans_used_this_month": 1},
+                "$set": {
+                    "usage.scan_period": current_period,
+                    "usage.reset_date": usage.get("reset_date") or new_reset_date,
+                    "usage.scan_limit": limit,
+                }
             }
-        }
-    )
+        )
+    except Exception as e:
+        # Transient database exception -> fail closed
+        print(f"[Quota] Database error during atomic reservation for uid={uid}: {e}")
+        return False
 
+    # STRICT FAIL-CLOSED (FIX-001):
+    # A reservation succeeds ONLY if MongoDB atomically matched and updated the document.
+    # matched_count == 0 must NEVER return True.
     matched = getattr(update_res, "matched_count", 0)
     if matched == 0:
-        # Check fresh state
-        user_fresh = await users_collection.find_one({"uid": uid})
-        curr_used = user_fresh.get("usage", {}).get("scans_used_this_month", scans_used) if user_fresh else scans_used
-        if curr_used >= limit:
-            return False
-        if scans_used >= limit:
-            return False
+        return False
+
+    # Fail closed if write result was unacknowledged
+    if hasattr(update_res, "acknowledged") and not update_res.acknowledged:
+        return False
 
     return True
 

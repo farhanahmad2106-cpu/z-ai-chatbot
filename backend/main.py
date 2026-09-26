@@ -7,7 +7,7 @@ if os.path.exists(backend_env):
     load_dotenv(backend_env)
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, Query, Depends, Header, Request
+from fastapi import FastAPI, HTTPException, Query, Depends, Header, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -15,6 +15,8 @@ from typing import List, Optional, Literal
 import json
 import base64
 import math
+import re
+from urllib.parse import quote
 from pydantic import BaseModel, Field
 from motor.motor_asyncio import AsyncIOMotorClient
 from google import genai
@@ -298,13 +300,39 @@ def get_local_mock_foods(search: str = "") -> List[dict]:
         print(f"Error reading mock_foods.json: {e}")
         return []
 
+# --- BARCODE VALIDATION (FIX-002) ---
+BARCODE_REGEX = re.compile(r"^[0-9A-Za-z_-]{6,24}$")
+
+
+def validate_barcode(barcode: str) -> str:
+    """
+    Normalizes barcode and enforces strict allowlist: ^[0-9A-Za-z_-]{6,24}$ (FIX-002).
+    Rejects path traversal, query fragments, special characters, and out-of-bound lengths with HTTP 422.
+    """
+    if not barcode:
+        raise HTTPException(
+            status_code=422,
+            detail="Barcode parameter cannot be empty."
+        )
+    normalized = barcode.strip()
+    if not BARCODE_REGEX.match(normalized):
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid barcode format. Expected 6-24 alphanumeric characters, underscores, or hyphens."
+        )
+    return normalized
+
+
 @app.get("/api/foods/barcode/{barcode}")
+@app.get("/api/barcode/{barcode}")
 async def get_food_by_barcode(barcode: str):
     """Exact barcode lookup and Open Food Facts fallback proxy."""
+    normalized_barcode = validate_barcode(barcode)
+
     try:
         # Check database for exact barcode match
         food_doc = await foods_collection.find_one({
-            "barcode": barcode,
+            "barcode": normalized_barcode,
             "$and": [
                 {"$or": [{"is_verified": True}, {"is_verified": {"$exists": False}}]},
                 {"status": {"$ne": "rejected"}}
@@ -314,9 +342,13 @@ async def get_food_by_barcode(barcode: str):
         if food_doc:
             food_doc["_id"] = str(food_doc["_id"])
             return food_doc
-            
-        # Check OFF API if missing
-        off_url = f"https://world.openfoodfacts.org/api/v2/product/{barcode}.json"
+    except Exception as e:
+        print(f"Database query failed during barcode lookup: {e}")
+
+    # Check OFF API if missing in local database
+    quoted_barcode = quote(normalized_barcode, safe="")
+    off_url = f"https://world.openfoodfacts.org/api/v2/product/{quoted_barcode}.json"
+    try:
         async with httpx.AsyncClient(timeout=15.0) as http_client:
             resp = await http_client.get(off_url)
             if resp.status_code == 200:
@@ -351,7 +383,7 @@ async def get_food_by_barcode(barcode: str):
                         "name": name,
                         "product_name": name,
                         "brand": brand,
-                        "barcode": barcode,
+                        "barcode": normalized_barcode,
                         "is_verified": False,
                         "requires_moderation": True,
                         "status": "pending_review",
@@ -373,18 +405,38 @@ async def get_food_by_barcode(barcode: str):
                     new_food["_id"] = str(insert_res.inserted_id)
                     return new_food
     except Exception as e:
-        print(f"Barcode lookup failed: {e}")
+        print(f"Barcode Open Food Facts lookup failed: {e}")
         
     raise HTTPException(status_code=404, detail="Product not found by barcode")
 
 
+# --- FOOD SEARCH & INPUT SANITIZATION (ZS-005) ---
+MAX_FOOD_SEARCH_LENGTH = 200
+
+
+def sanitize_food_search(search: Optional[str]) -> str:
+    """
+    Normalizes food search input, enforces 200-character upper bound (HTTP 400),
+    and strips leading/trailing whitespace (ZS-005).
+    """
+    if not search:
+        return ""
+    normalized = search.strip()
+    if len(normalized) > MAX_FOOD_SEARCH_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Search query exceeds maximum length of {MAX_FOOD_SEARCH_LENGTH} characters."
+        )
+    return normalized
+
+
 @app.get("/api/foods")
 async def get_foods(search: str = ""):
+    search_clean = sanitize_food_search(search)
     results = []
     db_error = False
     try:
-        if search:
-            search_clean = search.strip()
+        if search_clean:
             # If search matches a barcode pattern, execute exact indexed lookup first
             if search_clean.isalnum() and 6 <= len(search_clean) <= 18:
                 exact_barcode_item = await foods_collection.find_one({
@@ -406,12 +458,13 @@ async def get_foods(search: str = ""):
                 {"status": {"$ne": "rejected"}}
             ]
         }
-        if search:
+        if search_clean:
+            escaped_search = re.escape(search_clean)
             query["$and"].append({
                 "$or": [
-                    {"name": {"$regex": search, "$options": "i"}},
-                    {"product_name": {"$regex": search, "$options": "i"}},
-                    {"brand": {"$regex": search, "$options": "i"}},
+                    {"name": {"$regex": escaped_search, "$options": "i"}},
+                    {"product_name": {"$regex": escaped_search, "$options": "i"}},
+                    {"brand": {"$regex": escaped_search, "$options": "i"}},
                 ]
             })
         cursor = foods_collection.find(query).limit(50)
@@ -427,14 +480,15 @@ async def get_foods(search: str = ""):
 
         # If no verified food items were found and an unverified crowdsourced item exists,
         # strictly isolate it from public results (never return it, never trigger AI fallback)
-        if search:
+        if search_clean:
+            escaped_search = re.escape(search_clean)
             pending_item = await foods_collection.find_one({
                 "$and": [
                     {
                         "$or": [
-                            {"name": {"$regex": search.strip(), "$options": "i"}},
-                            {"product_name": {"$regex": search.strip(), "$options": "i"}},
-                            {"brand": {"$regex": search.strip(), "$options": "i"}},
+                            {"name": {"$regex": escaped_search, "$options": "i"}},
+                            {"product_name": {"$regex": escaped_search, "$options": "i"}},
+                            {"brand": {"$regex": escaped_search, "$options": "i"}},
                         ]
                     },
                     {"is_verified": False}
@@ -442,16 +496,17 @@ async def get_foods(search: str = ""):
             })
             if pending_item:
                 return []
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Database query failed, using local mock: {e}")
         db_error = True
 
-
     if db_error or not results:
-        results = get_local_mock_foods(search)
+        results = get_local_mock_foods(search_clean)
 
-    if len(results) == 0 and search:
-        fallback = await get_ai_fallback_food(search)
+    if len(results) == 0 and search_clean:
+        fallback = await get_ai_fallback_food(search_clean)
         if fallback: 
             if "error" in fallback:
                 return fallback
@@ -947,7 +1002,7 @@ async def sync_user(req: TokenRequest):
         raise HTTPException(status_code=401, detail="Invalid authentication token")
 
 async def get_current_user_id(authorization: str = Header(None)):
-    if not authorization or not authorization.startswith("Bearer "):
+    if not authorization or not isinstance(authorization, str) or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid token")
     token = authorization.split(" ")[1]
     try:
@@ -1456,120 +1511,23 @@ async def log_meal(request: dict, uid: str = Depends(get_current_user_id)):
     fresh_stats = updated_user.get("stats", {}) if updated_user else {}
     return {"status": "success", "added_macros": macros, "new_stats": fresh_stats}
 
-@app.post("/api/scan")
-async def scan_ingredients(request: dict, authorization: str = Header(None)):
-    image_data = request.get("image")
-    barcode = request.get("barcode")
-    if not image_data:
-        raise HTTPException(status_code=400, detail="No image data")
-
-    if "," in image_data:
-        image_data = image_data.split(",")[1]
-
-    prompt = (
-        "Analyze this image. First, determine if it clearly contains a food item, food packaging, or an ingredients list. "
-        "If it DOES NOT contain any of those (e.g., it is a person, random object, dark room, etc.), you MUST return EXACTLY this JSON: "
-        '{"has_ingredients": false, "error_message": "Ingredients list not Detected, Scan Again."}. '
-        "If it DOES contain food/ingredients, analyze it and return ONLY a JSON object with: "
-        "{name, safety_score, ingredients: [{name, safety, description}], warnings}. No markdown."
+# --- DECOMMISSIONED LEGACY SCAN ENDPOINTS (ZS-003) ---
+@app.post("/api/scan", status_code=status.HTTP_410_GONE)
+async def legacy_scan_retired():
+    """Decommissioned legacy scan endpoint (ZS-003). Replaced by POST /api/scan/analyze."""
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="This scan endpoint has been permanently retired. Use /api/scan/analyze."
     )
 
-    # --- FREEMIUM: Determine user tier and enforce scan quota ---
-    tier = "free"  # Default: unauthenticated users get free-tier routing
-    uid = None
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization.split(" ")[1]
-        try:
-            decoded_token = firebase_auth.verify_id_token(token)
-            uid = decoded_token.get("uid")
-            if uid:
-                user = await users_collection.find_one({"uid": uid})
-                if user:
-                    tier = user.get("tier", "free")
-                    # Enforce monthly quota for authenticated users
-                    await check_scan_quota(uid, users_collection)
-        except HTTPException:
-            raise  # Re-raise quota exceeded (429)
-        except Exception as e:
-            print(f"Scan auth check failed (non-blocking): {e}")
-            # Auth failure is non-fatal for scan — fall through as free tier
 
-    # --- FREEMIUM: Route scan to appropriate AI model by tier ---
-    try:
-        result = await route_scan_by_tier(image_data, prompt, tier)
-        if result:
-            print(f"[Scan] Successfully processed for tier={tier}")
-            if isinstance(result, dict) and barcode:
-                result["barcode"] = barcode
-            return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"[Scan] AI router failed: {e}")
-
-    # Final fallback: try legacy Ollama path (local dev)
-    try:
-        result = await try_ollama_scan(image_data, prompt)
-        if result:
-            print("[Scan] Succeeded via legacy Ollama fallback.")
-            if isinstance(result, dict) and barcode:
-                result["barcode"] = barcode
-            return result
-    except Exception as e:
-        print(f"[Scan] Ollama legacy fallback failed: {e}")
-
-    # Backup: Return structured scanned ingredient fallback
-    print("[Scan] All remote AI services timed out or failed. Returning error.")
-    return {
-        "has_ingredients": False,
-        "error_message": "AI services unavailable or timed out. Please try again later."
-    }
-
-@app.post("/api/scan/ingredients")
-async def scan_ingredients_ocr(request: dict, authorization: str = Header(None)):
-    image_data = request.get("image")
-    if not image_data:
-        raise HTTPException(status_code=400, detail="No image data provided")
-        
-    if "," in image_data:
-        image_data = image_data.split(",")[1]
-        
-    try:
-        image_bytes = base64.b64decode(image_data)
-        extracted_text = extract_text_from_image(image_bytes)
-        print(f"OCR Extracted Text: {extracted_text[:100]}...")
-    except Exception as e:
-        print(f"OCR Extraction failed: {e}")
-        raise HTTPException(status_code=500, detail="Failed to process image via OCR")
-        
-    prompt = (
-        f"Parse the following OCR text extracted from a product ingredients label: '{extracted_text}'. "
-        "Clean up any typos from OCR and extract the ingredients, additives, allergens, and estimate nutritional macros. "
-        "Return ONLY a raw JSON object matching this schema exactly: "
-        "{\"ingredients\": [\"str\"], \"additives\": [\"str\"], \"allergens\": [\"str\"], \"estimated_macros\": {\"calories\": 0, \"protein\": 0, \"carbs\": 0, \"fat\": 0}}. "
-        "Do NOT include markdown formatting or any other text."
+@app.post("/api/scan/ingredients", status_code=status.HTTP_410_GONE)
+async def legacy_scan_ingredients_retired():
+    """Decommissioned legacy scan ingredients endpoint (ZS-003). Replaced by POST /api/scan/analyze."""
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="This scan endpoint has been permanently retired. Use /api/scan/analyze."
     )
-    
-    # Use Gemini Flash as primary for structuring as agreed
-    result = await try_gemini_fallback_food(prompt)
-    if not result:
-        # Fallback to NVIDIA if Gemini fails
-        nvidia_keys = get_nvidia_keys()
-        for key in nvidia_keys:
-            result = await try_nvidia_fallback_food(prompt, key)
-            if result:
-                break
-    
-    if not result:
-        # Final fallback
-        result = {
-            "ingredients": ["Raw text: " + extracted_text[:50]],
-            "additives": [],
-            "allergens": [],
-            "estimated_macros": {"calories": 0, "protein": 0, "carbs": 0, "fat": 0}
-        }
-        
-    return result
 
 @app.get("/")
 def root():

@@ -1,11 +1,52 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-26 (Session: ZS-002 Cryptographic Secrets Purge & Android Keystore Sanitation — P0 Security Incident)
+> **Last Updated:** 2026-09-26 (Session: Master Prompt 3 — Legacy Scan Decommissioning, Input Sanitization & Quota Fail-Closed)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-26
+**Work Done — Master Prompt 3: Legacy Scan Decommissioning, Input Sanitization & Quota Fail-Closed:**
+- **Fail-Closed Atomic Quota Reservation (`backend/middleware/quota_check.py`)**:
+  - Remediated FIX-001: Eliminated fail-open vulnerability where missing document matches or unacknowledged updates fell through to grant scans.
+  - Implemented atomic MongoDB update: `update_one({"uid": uid, "usage.scans_used_this_month": {"$lt": limit}}, {"$inc": {"usage.scans_used_this_month": 1}})`.
+  - Enforced strict fail-closed contract: `matched_count == 0` strictly returns `False`; unacknowledged writes strictly return `False`; any unexpected exception/network failure in `try...except` logs warning and strictly returns `False`.
+- **Legacy Scan Route Decommissioning (`backend/main.py`)**:
+  - Remediated ZS-003: Securely retired legacy unauthenticated endpoints `POST /api/scan` and `POST /api/scan/ingredients`.
+  - Replaced handlers with explicit HTTP 410 Gone deprecation responses: `{"detail": "This scan endpoint has been permanently retired. Use /api/scan/analyze."}`.
+  - Zero OCR, zero AI inference, zero database mutation, and zero quota consumption are triggered when legacy routes are called.
+- **Canonical Scan Authentication Invariants (`backend/routes/scan.py`)**:
+  - Enforced mandatory Firebase ID token authentication via `get_current_user_id` on `POST /api/scan/analyze`. Unauthenticated requests immediately fail closed with HTTP 401 Unauthorized.
+  - User identity is bound directly to verified token claims; client-provided body parameters cannot spoof or override user identity.
+  - Pre-flight quota check via `reserve_scan_quota` occurs before expensive OCR work; downstream processing failures trigger automatic quota refund via `release_scan_quota`.
+- **Food Search ReDoS Defense & Length Limiting (`backend/main.py`, `backend/foods.py`)**:
+  - Remediated ZS-005: Created centralized `sanitize_food_search` enforcing 200-character maximum query boundary (HTTP 400 Bad Request on violation) and whitespace trimming.
+  - Metacharacters in search queries are strictly escaped via `re.escape()` prior to constructing MongoDB `$regex` filters, preventing regex injection, ReDoS, and malformed pattern crashes (`[a-z]+(`, `.*`, `^admin$`, etc.).
+  - Empty queries (`""` or `"   "`) completely bypass `$regex` clauses, preserving indexed queries and native pagination without collection scanning.
+- **Barcode Validation & Safe External HTTP Requests (`backend/main.py`)**:
+  - Remediated FIX-002: Added `validate_barcode` enforcing strict allowlist regex `^[0-9A-Za-z_-]{6,24}$`. Malformed inputs, spaces, URI fragments, query parameters, or injection attempts return HTTP 422 Unprocessable Entity with zero outbound network calls.
+  - Hardened `get_food_by_barcode`: Normalized barcode value is safely URL-encoded via `quote(normalized_barcode, safe="")` before constructing the fixed external URL `https://world.openfoodfacts.org/api/v2/product/{quoted_barcode}.json`.
+  - Guaranteed fixed HTTPS scheme, immutable hostname, bounded 15.0s timeout, and structured error handling.
+- **Comprehensive Regression Test Suite (`tests/test_p1_security_remediation.py`)**:
+  - Added 43 dedicated security regression tests:
+    - Legacy 410 Gone validation & zero-processing assertions (4 tests)
+    - Canonical scan authentication & quota enforcement (4 tests)
+    - Quota Cases A, B, C, D (successful, exhausted, concurrent stress, failure fail-closed) (6 tests)
+    - Search ReDoS metacharacter safety & literal matching (8 tests)
+    - Search length boundary tests (199 accepted, 200 accepted, 201 rejected with 400) (4 tests)
+    - Search empty/whitespace filter bypass (4 tests)
+    - Barcode allowlist validation & invalid 422 rejection (9 tests)
+    - Outbound Open Food Facts URL isolation & encoding assertions (4 tests)
+- **Automated Verification Matrix**:
+  - Full Backend Pytest suite (`python -m pytest -W error::RuntimeWarning`): **259/259 passed (100%)** across 17 test files (0 RuntimeWarnings, 0 failures).
+  - Frontend Vitest suite (`npm --prefix frontend test -- --run`): **148/148 passed (100%)** across 11 test files.
+  - Production frontend build (`npm --prefix frontend run build`): **0 TypeScript compiler errors, clean PWA bundle**.
+  - Total automated tests: **407/407 passed (100%)**.
+
+---
+
+## 🗓️ Previous Session Summary (ZS-002 Cryptographic Secrets Purge & Android Keystore Sanitation — P0 Incident)
 **Date:** 2026-09-26
 **Work Done — ZS-002 Cryptographic Secrets Purge & Android Keystore Sanitation (P0 Incident):**
 - **Git History Cryptographic Secrets Purge (`git-filter-repo`)**:

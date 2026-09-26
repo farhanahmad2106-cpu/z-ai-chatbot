@@ -105,7 +105,8 @@ async def test_unknown_food_creates_pending_record():
         res = await analyze_back_of_pack(
             image=mock_image,
             barcode="0123456789012",
-            authorization=None,
+            authorization="Bearer test_token",
+            auth_uid="qa_tester",
             foods_col=mock_foods_col,
             users_col=None,
             logs_col=None
@@ -120,7 +121,7 @@ async def test_unknown_food_creates_pending_record():
         assert persisted["name"] == "NatureFarm Brand New Organic Snack"
         assert persisted["is_verified"] is False
         assert persisted["status"] == "pending_review"
-        assert persisted["submitted_by"] == "anon_contributor"
+        assert persisted["submitted_by"] == f"anon_{hashlib.sha256('qa_tester'.encode('utf-8')).hexdigest()[:12]}"
         assert persisted["barcode"] == "0123456789012"
 
 
@@ -157,6 +158,7 @@ async def test_existing_food_does_not_create_duplicate():
             image=mock_image,
             barcode="8901234567890",
             authorization="Bearer test_token",
+            auth_uid="qa_tester",
             foods_col=mock_foods_col,
             users_col=None,
             logs_col=None
@@ -197,7 +199,8 @@ async def test_barcode_matching_preserves_leading_zeroes():
         res = await analyze_back_of_pack(
             image=mock_image,
             barcode="  0001234567890  ",  # with whitespace
-            authorization=None,
+            authorization="Bearer test_token",
+            auth_uid="qa_tester",
             foods_col=mock_foods_col,
             users_col=None,
             logs_col=None
@@ -211,7 +214,7 @@ async def test_barcode_matching_preserves_leading_zeroes():
 
 @pytest.mark.asyncio
 async def test_authentication_identity_resolution():
-    """Test 4: Valid Firebase token derives anon_<sha256[:12]>; missing token uses anon_contributor."""
+    """Test 4: Valid Firebase token derives anon_<sha256[:12]>; missing token is rejected with 401 (ZS-003)."""
     mock_foods_col = MockAsyncCollection()
 
     mock_analysis = OCRAnalysisResponse(
@@ -238,23 +241,29 @@ async def test_authentication_identity_resolution():
         assert len(mock_foods_col.docs) == 1
         assert mock_foods_col.docs[0]["submitted_by"] == expected_anon_id
 
-        # Missing token
+        # Missing token rejected with HTTP 401 (ZS-003)
         mock_image2 = create_mock_upload_file()
-        mock_analysis2 = OCRAnalysisResponse(
-            product_name="Snack B",
-            parsed_ingredients=["Ingredient 2"],
-            raw_ocr_text="Ingredient 2"
-        )
-        with patch("backend.routes.scan.extract_and_analyze", return_value=mock_analysis2):
-            res2 = await analyze_back_of_pack(
+        with pytest.raises(HTTPException) as exc_missing:
+            await analyze_back_of_pack(
                 image=mock_image2,
                 authorization=None,
                 foods_col=mock_foods_col,
                 users_col=None,
                 logs_col=None
             )
-            assert len(mock_foods_col.docs) == 2
-            assert mock_foods_col.docs[1]["submitted_by"] == "anon_contributor"
+        assert exc_missing.value.status_code == 401
+
+        # Invalid token rejected with HTTP 401 (ZS-003)
+        mock_image3 = create_mock_upload_file()
+        with pytest.raises(HTTPException) as exc_invalid:
+            await analyze_back_of_pack(
+                image=mock_image3,
+                authorization="InvalidToken",
+                foods_col=mock_foods_col,
+                users_col=None,
+                logs_col=None
+            )
+        assert exc_invalid.value.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -265,6 +274,7 @@ async def test_invalid_image_inputs():
     with pytest.raises(HTTPException) as exc1:
         await analyze_back_of_pack(
             image=mock_empty,
+            auth_uid="qa_tester",
             foods_col=None,
             users_col=None,
             logs_col=None
@@ -276,6 +286,7 @@ async def test_invalid_image_inputs():
     with pytest.raises(HTTPException) as exc2:
         await analyze_back_of_pack(
             image=mock_unsupported,
+            auth_uid="qa_tester",
             foods_col=None,
             users_col=None,
             logs_col=None
@@ -287,6 +298,7 @@ async def test_invalid_image_inputs():
     with pytest.raises(HTTPException) as exc3:
         await analyze_back_of_pack(
             image=mock_oversized,
+            auth_uid="qa_tester",
             foods_col=None,
             users_col=None,
             logs_col=None
@@ -310,6 +322,7 @@ async def test_ocr_failure_does_not_create_pending_food():
         mock_image = create_mock_upload_file()
         res = await analyze_back_of_pack(
             image=mock_image,
+            auth_uid="qa_tester",
             foods_col=mock_foods_col,
             users_col=None,
             logs_col=None
@@ -340,6 +353,7 @@ async def test_mongodb_failure_raises_500():
         with pytest.raises(HTTPException) as exc:
             await analyze_back_of_pack(
                 image=mock_image,
+                auth_uid="qa_tester",
                 foods_col=mock_foods_col,
                 users_col=None,
                 logs_col=mock_logs_col
@@ -364,6 +378,7 @@ async def test_objectid_serialization():
         mock_image = create_mock_upload_file()
         res = await analyze_back_of_pack(
             image=mock_image,
+            auth_uid="qa_tester",
             foods_col=mock_foods_col,
             users_col=None,
             logs_col=None

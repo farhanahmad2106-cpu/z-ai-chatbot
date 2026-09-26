@@ -68,17 +68,25 @@
 
 ---
 
+### I. API Security & Input Hardening (P1 Reliability Remediation)
+- **Legacy Scan Decommissioning**: Securely retired legacy unauthenticated endpoints `POST /api/scan` and `POST /api/scan/ingredients` with machine-readable HTTP 410 Gone responses, executing 0 OCR, 0 DB mutations, and 0 quota checks.
+- **Fail-Closed Atomic Quota Reservation**: Scans succeed only on verified atomic MongoDB increments (`matched_count > 0`). Missing users, quota exhaustion, unacknowledged writes, and DB exceptions strictly fail closed (`return False`).
+- **Food Search ReDoS Defense**: Search queries on `GET /api/foods` and `GET /api/search/food` are bounded to 200 characters (HTTP 400 on breach), trimmed, and escaped via `re.escape()` prior to constructing MongoDB `$regex` expressions. Empty queries bypass regex filtering.
+- **Barcode Validation & Safe Outbound Requests**: All barcode inputs match `^[0-9A-Za-z_-]{6,24}$` (HTTP 422 on failure) with zero outbound calls on invalid input. Valid barcodes are URL-encoded via `quote(barcode, safe="")` before querying Open Food Facts via fixed HTTPS endpoints with explicit timeouts.
+
+---
+
 ## 🧪 2. Verified Automated Test Matrix
 
 All test counts reflect executed test runs verified in the repository:
 
 | Test Suite | Framework | Files | Tests Executed | Passed | Failed | Status |
 |---|---|---|---|---|---|---|
-| **Backend Pytest Suite** | `pytest 9.1.1` + `pytest-asyncio` | 16 files | 216 | **216** | 0 | **PASS (100%)** |
+| **Backend Pytest Suite** | `pytest 9.1.1` + `pytest-asyncio` | 17 files | 259 | **259** | 0 | **PASS (100%)** |
 | **Frontend Vitest Suite** | `vitest 5.0.1` | 11 files | 148 | **148** | 0 | **PASS (100%)** |
 | **TypeScript Typecheck** | `tsc -b` | Project | — | Clean | 0 errors | **PASS** |
-| **Production Vite Build** | `vite build` | Production | — | Built in 11.15s | 0 warnings | **PASS** |
-| **Total Automated Tests** | Combined | 27 files | 364 | **364** | 0 | **PASS (100%)** |
+| **Production Vite Build** | `vite build` | Production | — | Built in 13.17s | 0 warnings | **PASS** |
+| **Total Automated Tests** | Combined | 28 files | 407 | **407** | 0 | **PASS (100%)** |
 
 ---
 

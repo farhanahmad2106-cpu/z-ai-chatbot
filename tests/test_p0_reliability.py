@@ -208,6 +208,7 @@ async def test_food_persistence_success():
     )
 
     with patch("backend.routes.scan._get_foods_collection", return_value=mock_foods_col), \
+         patch("backend.routes.scan._get_users_collection", return_value=None), \
          patch("backend.routes.scan.extract_and_analyze", return_value=mock_analysis):
 
         mock_image = MagicMock()
@@ -217,7 +218,8 @@ async def test_food_persistence_success():
         res = await analyze_back_of_pack(
             image=mock_image,
             barcode="8901234567890",
-            authorization="Bearer test_token"
+            authorization="Bearer test_token",
+            auth_uid="qa_p0_user"
         )
 
         assert res.is_verified is False
@@ -251,13 +253,14 @@ async def test_food_persistence_database_unavailable_raises_503():
     )
 
     with patch("backend.routes.scan._get_foods_collection", return_value=None), \
+         patch("backend.routes.scan._get_users_collection", return_value=None), \
          patch("backend.routes.scan.extract_and_analyze", return_value=mock_analysis):
         mock_image = MagicMock()
         mock_image.content_type = "image/jpeg"
         mock_image.read = AsyncMock(return_value=b"fake_jpeg_content")
 
         with pytest.raises(HTTPException) as exc_info:
-            await analyze_back_of_pack(image=mock_image)
+            await analyze_back_of_pack(image=mock_image, auth_uid="qa_p0_user")
         assert exc_info.value.status_code == 503
         assert exc_info.value.detail == "Database connection unavailable"
 
@@ -287,6 +290,7 @@ async def test_food_persistence_insert_failure_raises_500():
     )
 
     with patch("backend.routes.scan._get_foods_collection", return_value=mock_foods_col), \
+         patch("backend.routes.scan._get_users_collection", return_value=None), \
          patch("backend.routes.scan._get_system_logs_collection", return_value=mock_logs_col), \
          patch("backend.routes.scan.extract_and_analyze", return_value=mock_analysis):
 
@@ -295,7 +299,7 @@ async def test_food_persistence_insert_failure_raises_500():
         mock_image.read = AsyncMock(return_value=b"fake_jpeg_content")
 
         with pytest.raises(HTTPException) as exc_info:
-            await analyze_back_of_pack(image=mock_image)
+            await analyze_back_of_pack(image=mock_image, auth_uid="qa_p0_user")
         assert exc_info.value.status_code == 500
         assert exc_info.value.detail == "Failed to persist crowdsourced food item"
 
