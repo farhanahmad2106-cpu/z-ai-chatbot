@@ -2,7 +2,7 @@
   "name": "z-sehealth",
   "version": "1.0.0",
   "scripts": {
-    "dev": "npx concurrently --kill-others -n \"frontend,backend\" -c \"cyan,green\" \"npm --prefix frontend run dev\" \"cd backend && .venv\\Scripts\\python -m uvicorn main:app --host localhost --port 8000 --reload\""
+    "dev": "npx concurrently --kill-others -n \"frontend,backend\" -c \"cyan,green\" \"npm --prefix frontend run dev\" \"cd backend && venv\\Scripts\\python -m uvicorn main:app --host localhost --port 8000 --reload\""
   },
   "dependencies": {
     "lucide-react": "^1.14.0"

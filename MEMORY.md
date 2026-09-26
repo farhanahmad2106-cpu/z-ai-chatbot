@@ -1,11 +1,43 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-26 (Session: Master Prompt 3 — Legacy Scan Decommissioning, Input Sanitization & Quota Fail-Closed)
+> **Last Updated:** 2026-09-26 (Session: Master Prompt 4 — Documentation Synchronization, Dependency Hygiene & Local Script Alignment)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-26
+**Work Done — Master Prompt 4: Documentation Synchronization, Dependency Hygiene & Local Script Alignment:**
+- **Frontend Dependency Hygiene (`frontend/package.json`, `frontend/package-lock.json`)**:
+  - Audited frontend source code, build scripts, tests, and configuration for `axios` and `react-router-dom`.
+  - Confirmed 0 imports or references across `frontend/src`. Native `fetch` is the architectural standard and navigation is tab-state-driven (`setActiveTab` in `App.tsx`).
+  - Executed `npm --prefix frontend uninstall axios react-router-dom`, cleanly purging both unused dependencies and synchronizing `package-lock.json` with 0 broken transitive trees.
+- **Root Development Script Alignment (`package.json`)**:
+  - Inspected `backend/venv` vs `backend/.venv`. Discovered `backend/.venv` was missing core dependencies (`ModuleNotFoundError: No module named 'motor'`), whereas `backend/venv` is the canonical populated environment (Python 3.12.10, Pytest 9.0.3, Motor, FastAPI, Uvicorn).
+  - Updated root `package.json` dev script:
+    `"dev": "npx concurrently --kill-others -n \"frontend,backend\" -c \"cyan,green\" \"npm --prefix frontend run dev\" \"cd backend && venv\\Scripts\\python -m uvicorn main:app --host localhost --port 8000 --reload\""`
+- **API Documentation Reconciliation (`Z-SeHealth_project_features.md`)**:
+  - Reconciled meal planning endpoints: verified that `POST /api/meals/weekly-plan/swap-day-slot` is implemented, while single-day regeneration (`POST /api/meals/weekly-plan/regenerate-day`) and slot locking (`POST /api/meals/weekly-plan/lock-slot`) are planned roadmap features.
+  - Reconciled custom meals: corrected route from `/api/meals/custom-recipes` to `GET, POST, DELETE /api/meals/custom`.
+  - Reconciled Indic translation endpoint: corrected route to `POST /api/meals/translate-plan`.
+- **Quick-Commerce Provider Reconciliation (`Z-SeHealth_project_features.md`)**:
+  - Audited `frontend/src/utils/groceryDeepLinks.ts`: verified that only **Blinkit**, **Zepto**, and **Swiggy Instamart** are implemented, supported, and user-accessible.
+  - Moved **BigBasket** and **Amazon Fresh** from implemented features to Planned / Future Roadmap.
+- **AI Vision / OCR Routing Synchronization (`RULES.md`)**:
+  - Audited `backend/services/ocr_service.py` and synchronized `RULES.md` Section 3 with verified reality:
+    1. Sarvam AI Vision (or local edge model)
+    2. NVIDIA NIM 5-Key Pool — 60s SLA (multi-key rotation across `NVIDIA_API_KEY` and `NVIDIA_API_KEY_1..5`, 429 exponential backoff, immediate failover on 401/403/non-retryable statuses)
+    3. Google Gemini Flash fallback
+  - Documented strict `OCR_GLOBAL_TIMEOUT_SECONDS = 60.0` deadline and confirmed Ollama is not in the production vision/OCR pipeline.
+- **Automated Verification Matrix**:
+  - Backend Pytest suite (`venv\Scripts\python -m pytest -W error::RuntimeWarning`): **259/259 passed (100%)** across 17 test files.
+  - Frontend Vitest suite (`npm --prefix frontend test -- --run`): **148/148 passed (100%)** across 11 test files.
+  - Frontend production build (`npm --prefix frontend run build`): **0 TypeScript compiler errors, clean PWA bundle**.
+  - Total verified automated tests: **407/407 passed (100%)**.
+
+---
+
+## 🗓️ Previous Session Summary (Master Prompt 3 — Legacy Scan Decommissioning, Input Sanitization & Quota Fail-Closed)
 **Date:** 2026-09-26
 **Work Done — Master Prompt 3: Legacy Scan Decommissioning, Input Sanitization & Quota Fail-Closed:**
 - **Fail-Closed Atomic Quota Reservation (`backend/middleware/quota_check.py`)**:
@@ -1709,16 +1741,16 @@
 |---|---|---|---|
 | `GET` | `/api/foods?search=` | ❌ | Search food items (DB + AI fallback, verified only) |
 | `POST` | `/api/translate` | ❌ | Batch translate ingredient text |
-| `POST` | `/api/scan/analyze` | ✅ / Optional | Analyze food image via AI vision & register unverified items |
-| `GET` | `/api/meals/weekly-plan` | ✅ (`smart_meal_planning`) | Retrieve active 7-day revolving meal plan |
+| `POST` | `/api/scan/analyze` | ✅ (Firebase Bearer token) | Analyze food image via AI vision & register unverified items |
+| `POST` | `/api/meals/generate-plan` | ✅ | Generate single-day meal plan |
+| `POST` | `/api/meals/swap` | ✅ | Swap single meal slot |
 | `POST` | `/api/meals/weekly-plan` | ✅ (`smart_meal_planning`) | Generate or update 7-day revolving meal plan |
 | `POST` | `/api/meals/weekly-plan/swap-day-slot` | ✅ (`smart_meal_planning`) | Swap meal slots in plan |
-| `POST` | `/api/meals/weekly-plan/regenerate-day` | ✅ (`smart_meal_planning`) | Regenerate single day's meals |
 | `POST` | `/api/meals/grocery-list` | ✅ (`smart_meal_planning`) | Aggregate grocery list with quick-commerce deep links |
-| `POST` | `/api/meals/translate` | ✅ | Translate meal plan items into regional Indian languages |
-| `GET` | `/api/meals/custom-recipes` | ✅ | List user custom recipes |
-| `POST` | `/api/meals/custom-recipes` | ✅ | Create new custom user recipe |
-| `DELETE` | `/api/meals/custom-recipes/{recipe_id}` | ✅ | Delete user custom recipe |
+| `POST` | `/api/meals/translate-plan` | ✅ | Translate meal plan items into regional Indian languages |
+| `GET` | `/api/meals/custom` | ✅ | List user custom recipes |
+| `POST` | `/api/meals/custom` | ✅ | Create new custom user recipe |
+| `DELETE` | `/api/meals/custom/{meal_id}` | ✅ | Delete user custom recipe |
 | `POST` | `/api/subscription/create-order` | ✅ | Create Razorpay order/subscription |
 | `POST` | `/api/subscription/verify` | ✅ | Verify Razorpay payment signature & update tier |
 | `GET` | `/api/subscription/status` | ✅ | Retrieve subscription tier, entitlements, limits & usage |
@@ -1860,13 +1892,14 @@
 - [ ] Sarvam AI audio integration (`services/sarvam_client.py`)
 
 ### 🟡 MEDIUM PRIORITY
-- [x] **Smart Meal Planning** — 7-day revolving meal plans + multi-provider quick-commerce grocery export (Blinkit, Zepto, Instamart, BigBasket, Amazon Fresh)
+- [x] **Smart Meal Planning** — 7-day revolving meal plans + multi-provider quick-commerce grocery export (Blinkit, Zepto, Instamart)
 - [x] **Dietary Restriction Filters** — Auto-flag Keto/Vegan/Halal/Gluten-Free conflicts & clinical safety validations
 - [x] **Barcode Scanner** — Fast client-side barcode scanning via `@zxing/library` code-split chunk + crowdsourced OCR ingestion
 - [x] **Bundle Optimization** — Route/tab code-splitting with `React.lazy()` reducing entry chunk from 1,400 kB to 250.19 kB
 - [ ] **Advanced Analytics & Charts** — Macro trend graphs over weeks/months
 
 ### 🟢 FUTURE IDEAS
+- [ ] **Quick-Commerce Expansion** — BigBasket and Amazon Fresh export drivers
 - [ ] **Wearable Integration** — Google Fit / Apple Health sync
 - [ ] **Community Challenges** — Share meals, join health challenges
 - [ ] **Voice Input** — Sarvam AI speech-to-text for hands-free food logging (Elite tier)

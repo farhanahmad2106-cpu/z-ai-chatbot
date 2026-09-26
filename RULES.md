@@ -62,13 +62,13 @@
 
 ## 3. 🤖 AI Model Boundaries & Fallback Chain
 
-### Current AI Fallback Order (Free Tier — All Users)
+### Verified Production AI Vision / OCR Fallback Order (`backend/services/ocr_service.py`)
 ```
-Scan:       1. Ollama (local) → 2. NVIDIA (multi-key) → 3. Gemini 2.0 Flash
-Search:     1. Ollama          → 2. NVIDIA             → 3. Gemini 2.0 Flash
-Translate:  1. Ollama          → 2. NVIDIA             → 3. Gemini 2.0 Flash
-Macros:     1. Ollama          → 2. NVIDIA             → 3. Gemini 2.0 Flash
+1. Sarvam AI Vision (or local edge model)
+2. NVIDIA NIM 5-Key Pool — 60s SLA (multi-key rotation across NVIDIA_API_KEY[_1..5], 429 backoff, fast fail on 401/403)
+3. Google Gemini Flash fallback (when NVIDIA pool is exhausted or fails)
 ```
+*Note: The vision/OCR pipeline is strictly bounded by `OCR_GLOBAL_TIMEOUT_SECONDS = 60.0`. Ollama is not in the production vision/OCR path.*
 
 ### Future Tier-Based AI Routing (Freemium — Planned)
 ```
@@ -78,15 +78,16 @@ Starter(₹366): 1. NVIDIA LLaMA      → 2. Gemini Flash
 Free   (₹0):   1. Gemini Flash only (20 scans/month limit enforced)
 ```
 
-### AI Coding Rules
-- Every AI function MUST be wrapped in `try/except` and return `None` on failure
+### AI Coding & Fallback Rules
+- Every AI function MUST be wrapped in `try/except` and return `None` (or fallback) on failure
 - Every AI call MUST have an explicit `timeout` — never leave open-ended connections
-  - Vision calls → `timeout=60.0`
+  - Vision calls → `timeout=60.0` (with 10.0s connect timeout)
   - Text/translation calls → `timeout=30.0`
-- JSON responses from AI MUST always pass through `clean_json_response()` helper in `main.py`
-- Never trust raw AI output without basic structure validation (check for required keys)
-- If ALL AI models fail, return a safe hardcoded fallback (e.g., `{"calories": 250, ...}`)
-- NVIDIA keys must be rotated via `get_nvidia_keys()` — never call a single key directly
+- JSON responses from AI MUST always pass through structured validation helpers (`_parse_llm_json` or `clean_json_response`)
+- Never trust raw AI output without schema/structure validation (check for required keys)
+- If ALL AI models fail, return safe closed fallback with review flags (`requires_user_review: true`) or raise controlled HTTPException
+- NVIDIA keys must be rotated across the verified key pool (`_get_nvidia_keys()`) with exponential backoff on HTTP 429 (capped at 5s) and immediate failover on non-retryable statuses (400, 401, 403, 404, 422)
+- Provider credentials must be loaded exclusively from environment variables (`.env`) and never logged or exposed to clients
 
 ---
 

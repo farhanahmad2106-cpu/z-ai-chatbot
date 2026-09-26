@@ -15,18 +15,16 @@
 ### B. Smart Meal Planning & Revolving 7-Day Scheduler
 - **7-Day Dynamic Meal Plan**: Fully interactive weekly meal scheduler (`WeeklyMealPlanner.tsx`, `MealPlanner.tsx`, `backend/routes/meals.py`) with breakfast, lunch, snack, and dinner meal allocations.
 - **Macro Optimization & Clinical Safety**: Automatic calculation of daily calories, protein, carbs, and fats matching user profile targets (`macroCalculator.ts`). Automatically flags clinical allergen and dietary conflicts (Keto, Vegan, Halal, Gluten-Free, Diabetic-friendly, Low-Sodium).
-- **Slot Operations**: Instant slot swapping (`/api/meals/weekly-plan/swap-day-slot`), single-day meal regeneration (`/api/meals/weekly-plan/regenerate-day`), and meal locking (`/api/meals/weekly-plan/lock-slot`).
-- **Regional Indian Language Translation**: Instant meal translation across 6 languages: English, Hindi (हिन्दी), Marathi (मराठी), Tamil (தமிழ்), Bengali (বাংলা), and Telugu (తెలుగు) via `POST /api/meals/translate`.
-- **Custom User Recipes**: Full CRUD functionality for personal custom recipes via `GET, POST, DELETE /api/meals/custom-recipes`.
+- **Slot Operations**: Instant slot swapping via `POST /api/meals/weekly-plan/swap-day-slot`.
+- **Regional Indian Language Translation**: Instant meal translation across 6 languages: English, Hindi (हिन्दी), Marathi (मराठी), Tamil (தமிழ்), Bengali (বাংলা), and Telugu (తెలుగు) via `POST /api/meals/translate-plan`.
+- **Custom User Recipes**: Full CRUD functionality for personal custom recipes via `GET, POST, DELETE /api/meals/custom`.
 
 ### C. Multi-Provider Quick-Commerce Grocery Export
 - **One-Click Grocery Aggregation**: Aggregates all recipe ingredients across the active 7-day meal plan into consolidated shopping lists with category groupings.
-- **Direct Store Deep-Linking**: Generates direct deep-links to 5 major quick-commerce delivery services across India:
+- **Direct Store Deep-Linking**: Generates direct deep-links to 3 major quick-commerce delivery services across India:
   - **Blinkit** (`https://blinkit.com/s/?q=...`)
   - **Zepto** (`https://www.zeptonow.com/search?query=...`)
   - **Instamart / Swiggy** (`https://www.swiggy.com/instamart/search?custom_back=true&query=...`)
-  - **BigBasket** (`https://www.bigbasket.com/ps/?q=...`)
-  - **Amazon Fresh** (`https://www.amazon.in/s?k=...&i=nowstore`)
 - **Security & XSS Defense**: Strict URL validation enforcing HTTP/HTTPS schemes, punycode domain whitelisting, and query sanitization to eliminate script and data URI injection vectors.
 
 ### D. Freemium Subscription Engine & Entitlement Gating
@@ -99,6 +97,9 @@ All test counts reflect executed test runs verified in the repository:
 
 ## 🔮 4. Planned / Future Roadmap
 
+- **Single-Day Meal Plan Regeneration**: Dedicated route for regenerating individual day slots (`POST /api/meals/weekly-plan/regenerate-day`).
+- **Weekly Plan Slot Locking**: Pinning specific favorite meals across plan generations (`POST /api/meals/weekly-plan/lock-slot`).
+- **Quick-Commerce Provider Expansion**: Adding deep-link export drivers for BigBasket (`https://www.bigbasket.com`) and Amazon Fresh (`https://www.amazon.in/fresh`).
 - **Sarvam AI Voice Input**: Regional speech-to-text integration for hands-free meal logging and search (Elite tier).
 - **Advanced Macro Trend Charts**: Interactive long-term macro trend visual graphs over weekly and monthly periods.
 - **Wearable Device Synchronization**: Bi-directional calorie and activity synchronization with Google Health Connect / Apple HealthKit.
