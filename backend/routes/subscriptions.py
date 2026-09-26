@@ -140,12 +140,37 @@ async def get_subscription_status(uid: str = Depends(_get_current_user_id)):
 
     quota = await get_user_quota_status(uid, users_collection)
     features = get_tier_features(tier)
+    
+    from middleware.quota_check import IST
+    from datetime import datetime
+    today_dt = datetime.now(IST)
+    reset_date_str = quota.get("reset_date")
+    
+    days_until_reset = 0
+    if reset_date_str:
+        try:
+            # Parse reset_date (YYYY-MM-DD)
+            # Create timezone-aware datetime for the reset date at midnight IST
+            reset_dt_naive = datetime.strptime(reset_date_str, "%Y-%m-%d")
+            reset_dt_ist = IST.localize(reset_dt_naive) if hasattr(IST, "localize") else reset_dt_naive.replace(tzinfo=IST)
+            
+            # Simple calendar day difference or ceiling of 24-hr difference
+            delta = reset_dt_ist - today_dt
+            days_until_reset = delta.days
+            if days_until_reset < 0:
+                days_until_reset = 0
+        except Exception:
+            days_until_reset = 30
 
     return {
         "tier": tier,
         "scans_used": quota["scans_used"],
         "scan_limit": quota["scan_limit"],
         "reset_date": quota["reset_date"],
+        "scans_used_this_month": quota["scans_used"],
+        "monthly_scan_limit": quota["scan_limit"],
+        "scan_period": quota["scan_period"],
+        "days_until_reset": days_until_reset,
         "features": features,
         "limits": {
             "monthly_scans": quota["scan_limit"]

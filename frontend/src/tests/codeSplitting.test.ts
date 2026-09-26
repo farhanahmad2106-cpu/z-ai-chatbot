@@ -17,8 +17,8 @@ describe('ViewErrorBoundary & Lazy Code-Splitting Architecture', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     mockStorage = new MockStorage();
-    (globalThis as any).sessionStorage = mockStorage;
-    (globalThis as any).window = (globalThis as any).window || {
+    (globalThis as unknown as { sessionStorage: unknown }).sessionStorage = mockStorage;
+    (globalThis as unknown as { window: unknown }).window = (globalThis as unknown as { window: unknown }).window || {
       location: { reload: vi.fn() },
       alert: vi.fn(),
       confirm: vi.fn(),
@@ -63,7 +63,7 @@ describe('ViewErrorBoundary & Lazy Code-Splitting Architecture', () => {
       isRepeatedFailure: false,
     };
 
-    const rendered = boundary.render() as any;
+    const rendered = boundary.render() as Record<string, unknown> & { type: string, props: Record<string, unknown> & { className: string, children: unknown, role: string, 'aria-live': string } };
     expect(rendered).toBeDefined();
     expect(rendered.type).toBe('div');
     expect(rendered.props.className).toContain('min-h-[400px]');
@@ -82,7 +82,7 @@ describe('ViewErrorBoundary & Lazy Code-Splitting Architecture', () => {
       isRepeatedFailure: false,
     };
 
-    const rendered = boundary.render() as any;
+    const rendered = boundary.render() as Record<string, unknown> & { type: string, props: Record<string, unknown> & { className: string, children: unknown, role: string, 'aria-live': string } };
     expect(rendered.props.role).toBe('alert');
     expect(rendered.props['aria-live']).toBe('assertive');
   });
@@ -101,7 +101,7 @@ describe('ViewErrorBoundary & Lazy Code-Splitting Architecture', () => {
       isRepeatedFailure: false,
     };
 
-    const rendered = boundary.render() as any;
+    const rendered = boundary.render() as Record<string, unknown> & { type: string, props: Record<string, unknown> & { className: string, children: unknown, role: string, 'aria-live': string } };
     const card = rendered.props.children;
     const buttonContainer = card.props.children[card.props.children.length - 1];
     const buttons = buttonContainer.props.children;
@@ -132,7 +132,7 @@ describe('ViewErrorBoundary & Lazy Code-Splitting Architecture', () => {
 
     expect(boundary.state.isRepeatedFailure).toBe(true);
 
-    const rendered = boundary.render() as any;
+    const rendered = boundary.render() as Record<string, unknown> & { type: string, props: Record<string, unknown> & { className: string, children: unknown, role: string, 'aria-live': string } };
     const card = rendered.props.children;
     const overline = card.props.children[2];
     const heading = card.props.children[3];
@@ -153,7 +153,7 @@ describe('ViewErrorBoundary & Lazy Code-Splitting Architecture', () => {
     };
 
     // When props differ:
-    (boundary as any).props = {
+    (boundary as unknown as { props: unknown }).props = {
       children: 'Dashboard Content',
       viewName: 'dashboard',
     };
@@ -182,7 +182,7 @@ describe('ViewErrorBoundary & Lazy Code-Splitting Architecture', () => {
       isRepeatedFailure: true,
     };
 
-    (boundary as any).handleGoHome();
+    (boundary as unknown as { handleGoHome: () => void }).handleGoHome();
 
     expect(boundary.state.hasError).toBe(false);
     expect(onResetMock).toHaveBeenCalledTimes(1);
@@ -192,8 +192,8 @@ describe('ViewErrorBoundary & Lazy Code-Splitting Architecture', () => {
   it('never uses native window.alert, window.confirm, or window.prompt', () => {
     const alertSpy = vi.fn();
     const confirmSpy = vi.fn();
-    (globalThis as any).window.alert = alertSpy;
-    (globalThis as any).window.confirm = confirmSpy;
+    (globalThis as unknown as { window: Record<string, unknown> }).window.alert = alertSpy;
+    (globalThis as unknown as { window: Record<string, unknown> }).window.confirm = confirmSpy;
 
     const boundary = new ViewErrorBoundary({
       children: 'Normal View Content',
@@ -214,7 +214,7 @@ describe('ViewErrorBoundary & Lazy Code-Splitting Architecture', () => {
 
   it('Scenario A: first failure handleRetry records session marker and reloads window', () => {
     const reloadSpy = vi.fn();
-    (globalThis as any).window.location = { reload: reloadSpy };
+    (globalThis as unknown as { window: Record<string, unknown> }).window.location = { reload: reloadSpy };
 
     const boundary = new ViewErrorBoundary({
       children: 'Normal View Content',
@@ -227,7 +227,7 @@ describe('ViewErrorBoundary & Lazy Code-Splitting Architecture', () => {
       isRepeatedFailure: false,
     };
 
-    (boundary as any).handleRetry();
+    (boundary as unknown as { handleRetry: () => void }).handleRetry();
 
     expect(mockStorage.getItem('z_chunk_retry_planner')).toBe('1');
     expect(reloadSpy).toHaveBeenCalledTimes(1);
@@ -236,7 +236,7 @@ describe('ViewErrorBoundary & Lazy Code-Splitting Architecture', () => {
 
   it('Scenario E: force reload on repeated failure clears session marker and reloads window', () => {
     const reloadSpy = vi.fn();
-    (globalThis as any).window.location = { reload: reloadSpy };
+    (globalThis as unknown as { window: Record<string, unknown> }).window.location = { reload: reloadSpy };
 
     const boundary = new ViewErrorBoundary({
       children: 'Normal View Content',
@@ -250,7 +250,7 @@ describe('ViewErrorBoundary & Lazy Code-Splitting Architecture', () => {
       isRepeatedFailure: true,
     };
 
-    (boundary as any).handleRetry();
+    (boundary as unknown as { handleRetry: () => void }).handleRetry();
 
     expect(mockStorage.getItem('z_chunk_retry_planner')).toBeNull();
     expect(reloadSpy).toHaveBeenCalledTimes(1);
@@ -263,7 +263,7 @@ describe('ViewErrorBoundary & Lazy Code-Splitting Architecture', () => {
       setItem: vi.fn(() => { throw new Error('QuotaExceededError'); }),
       removeItem: vi.fn(() => { throw new Error('SecurityError'); }),
     };
-    (globalThis as any).sessionStorage = throwingStorage;
+    (globalThis as unknown as { sessionStorage: unknown }).sessionStorage = throwingStorage;
 
     const boundary = new ViewErrorBoundary({
       children: 'Normal View Content',
@@ -281,7 +281,7 @@ describe('ViewErrorBoundary & Lazy Code-Splitting Architecture', () => {
       error: new Error('Chunk failure'),
       isRepeatedFailure: false,
     };
-    const rendered = boundary.render() as any;
+    const rendered = boundary.render() as Record<string, unknown> & { type: string, props: Record<string, unknown> & { className: string, children: unknown, role: string, 'aria-live': string } };
     expect(rendered).toBeDefined();
     expect(rendered.props.role).toBe('alert');
   });
@@ -299,7 +299,7 @@ describe('ViewErrorBoundary & Lazy Code-Splitting Architecture', () => {
       isRepeatedFailure: true,
     };
 
-    const rendered = boundary.render() as any;
+    const rendered = boundary.render() as Record<string, unknown> & { type: string, props: Record<string, unknown> & { className: string, children: unknown, role: string, 'aria-live': string } };
     expect(rendered.props.role).toBe('alert');
     expect(rendered.props['aria-live']).toBe('assertive');
 

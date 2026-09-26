@@ -4,7 +4,7 @@ import babel from '@rolldown/plugin-babel'
 import path from 'path'
 import { VitePWA } from 'vite-plugin-pwa'
 
-// @ts-ignore
+// @ts-expect-error - No types available for mjs script
 import { copyLegalDocs } from './scripts/copy-legal-docs.mjs'
 
 function legalDocsPlugin() {
@@ -20,7 +20,7 @@ function legalDocsPlugin() {
 export default defineConfig({
   build: {
     rollupOptions: {
-      // @ts-ignore - Rolldown specific option to disable plugin timings warning
+      // @ts-expect-error - Rolldown specific option to disable plugin timings warning
       checks: {
         pluginTimings: false
       },

@@ -126,7 +126,7 @@ export function roundMacroTargets(targets: MacroTargets): MacroTargets {
   };
 }
 
-export function mapProfileToMetrics(profile: any): PhysicalMetrics | null {
+export function mapProfileToMetrics(profile: Record<string, unknown> | null | undefined): PhysicalMetrics | null {
   if (!profile) return null;
 
   const age = Number(profile.age);
@@ -135,8 +135,8 @@ export function mapProfileToMetrics(profile: any): PhysicalMetrics | null {
 
   if (!age || !heightCm || !weightKg || age <= 0 || heightCm <= 0 || weightKg <= 0) return null;
 
-  let gender: Gender = "female"; // default fallback
-  if (profile.gender) {
+  let gender: Gender;
+  if (profile?.gender) {
     const g = profile.gender.toString().toLowerCase();
     if (g === "male" || g === "m") gender = "male";
     else if (g === "female" || g === "f") gender = "female";
@@ -145,8 +145,8 @@ export function mapProfileToMetrics(profile: any): PhysicalMetrics | null {
     return null;
   }
 
-  let activityLevel: ActivityLevel = "sedentary";
-  if (profile.activityLevel) {
+  let activityLevel: ActivityLevel;
+  if (profile?.activityLevel) {
     const act = profile.activityLevel.toString().toLowerCase().trim();
     if (act.includes("sedentary") || act.includes("not active")) activityLevel = "sedentary";
     else if (act.includes("light")) activityLevel = "light";
@@ -158,8 +158,8 @@ export function mapProfileToMetrics(profile: any): PhysicalMetrics | null {
     return null;
   }
 
-  let healthGoal: HealthGoal = "maintenance";
-  if (profile.healthGoal) {
+  let healthGoal: HealthGoal;
+  if (profile?.healthGoal) {
     const goal = profile.healthGoal.toString().toLowerCase().trim();
     if (goal.includes("loss") || goal.includes("lose")) healthGoal = "weight_loss";
     else if (goal.includes("gain") || goal.includes("build") || goal.includes("muscle")) healthGoal = "muscle_gain";

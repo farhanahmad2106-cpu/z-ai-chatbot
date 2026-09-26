@@ -170,9 +170,15 @@ def get_tier_quota(tier: Optional[str], quota_name: str = "monthly_scans") -> Op
     return t_info.get(quota_name, 20)
 
 
-def get_current_period() -> str:
-    """Returns the current calendar billing period as YYYY-MM."""
-    return datetime.now(timezone.utc).strftime("%Y-%m")
+from zoneinfo import ZoneInfo
+IST = ZoneInfo("Asia/Kolkata")
+
+def get_current_period(now: Optional[datetime] = None) -> str:
+    """Returns the current calendar billing period as YYYY-MM in IST."""
+    dt = now or datetime.now(IST)
+    if dt.tzinfo is None:
+        dt = dt.astimezone(IST)
+    return dt.astimezone(IST).strftime("%Y-%m")
 
 
 def get_tiers_for_feature(feature_name: str) -> List[str]:
@@ -183,13 +189,16 @@ def get_tiers_for_feature(feature_name: str) -> List[str]:
     ]
 
 
-def get_next_reset_date() -> str:
-    """Returns the 1st day of next month as YYYY-MM-DD string."""
-    today = datetime.now(timezone.utc)
-    if today.month == 12:
-        next_month = date_type(today.year + 1, 1, 1)
+def get_next_reset_date(now: Optional[datetime] = None) -> str:
+    """Returns the 1st day of next month as YYYY-MM-DD string in IST."""
+    dt = now or datetime.now(IST)
+    if dt.tzinfo is None:
+        dt = dt.astimezone(IST)
+    ist_now = dt.astimezone(IST)
+    if ist_now.month == 12:
+        next_month = date_type(ist_now.year + 1, 1, 1)
     else:
-        next_month = date_type(today.year, today.month + 1, 1)
+        next_month = date_type(ist_now.year, ist_now.month + 1, 1)
     return next_month.strftime("%Y-%m-%d")
 
 
@@ -349,11 +358,12 @@ async def reserve_scan_quota(uid: str, users_collection) -> bool:
     usage = user.get("usage", {})
     scans_used = usage.get("scans_used_this_month", 0)
     reset_date_str = usage.get("reset_date", "")
-    today_dt = datetime.now(timezone.utc)
+    
+    today_dt = datetime.now(IST)
     today_str = today_dt.strftime("%Y-%m-%d")
     current_period = today_dt.strftime("%Y-%m")
     stored_period = usage.get("scan_period", "")
-    new_reset_date = get_next_reset_date()
+    new_reset_date = get_next_reset_date(today_dt)
 
     # Monthly rollover: reset if scan_period rolled over or reset_date passed
     needs_reset = (stored_period and stored_period != current_period) or (reset_date_str and reset_date_str <= today_str)
@@ -489,10 +499,10 @@ async def get_user_quota_status(uid: str, users_collection) -> Dict[str, Any]:
     reset_date = usage.get("reset_date", get_next_reset_date())
     stored_period = usage.get("scan_period", "")
 
-    today_dt = datetime.now(timezone.utc)
+    today_dt = datetime.now(IST)
     today_str = today_dt.strftime("%Y-%m-%d")
     current_period = today_dt.strftime("%Y-%m")
-    new_reset_date = get_next_reset_date()
+    new_reset_date = get_next_reset_date(today_dt)
 
     if (stored_period and stored_period != current_period) or (reset_date and reset_date <= today_str):
         scans_used = 0

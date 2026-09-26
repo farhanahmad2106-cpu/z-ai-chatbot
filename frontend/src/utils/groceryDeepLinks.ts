@@ -428,7 +428,7 @@ export function sanitizeIngredientForSearch(rawName: string | null | undefined):
   // 11. Fallback safety: if text became empty, fallback to trimmed normalized input if letters exist
   if (!text) {
     const strippedRaw = normalizedRaw.replace(/\s*\([^)]*\)\s*/g, '').trim();
-    if (!strippedRaw || !/[a-zA-Z\u0900-\u097F]/.test(strippedRaw)) {
+    if (!strippedRaw || !(/[a-zA-Z]/.test(strippedRaw) || /[\u0900-\u097F]/.test(strippedRaw))) {
       return '';
     }
     return normalizeTitleCase(strippedRaw);

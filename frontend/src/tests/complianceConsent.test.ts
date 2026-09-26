@@ -9,7 +9,7 @@ describe('UI Compliance & Consent Logic', () => {
         version: '1.0',
         timestamp: '2026-09-22T12:00:00.000Z',
       };
-      const isValid = (record: any) =>
+      const isValid = (record: Record<string, unknown> | null | undefined) =>
         record?.status === 'granted' && record?.version === HEALTH_VAULT_CONSENT_VERSION;
 
       expect(isValid(validRecord)).toBe(true);

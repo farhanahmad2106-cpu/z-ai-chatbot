@@ -155,8 +155,8 @@ export function openOfflineDB(): Promise<IDBDatabase> {
     const idb: IDBFactory | undefined =
       typeof window !== 'undefined' && window.indexedDB
         ? window.indexedDB
-        : typeof globalThis !== 'undefined' && (globalThis as any).indexedDB
-        ? (globalThis as any).indexedDB
+        : typeof globalThis !== 'undefined' && (globalThis as unknown as { indexedDB: IDBFactory }).indexedDB
+        ? (globalThis as unknown as { indexedDB: IDBFactory }).indexedDB
         : undefined;
 
     if (!idb) {
@@ -538,9 +538,9 @@ export async function syncQueuedMealsToServer(): Promise<SyncResult> {
   }
 
   // 1. Primary mechanism: Web Locks API if supported
-  if (typeof navigator !== 'undefined' && 'locks' in navigator && (navigator as any).locks?.request) {
+  if (typeof navigator !== 'undefined' && 'locks' in navigator && (navigator as unknown as { locks?: { request: (...args: unknown[]) => unknown } }).locks?.request) {
     try {
-      return await (navigator as any).locks.request('z_sehealth_sync_lock', { ifAvailable: true }, async (lock: any) => {
+      return await (navigator as unknown as { locks: { request: (name: string, options: unknown, callback: (lock: unknown) => Promise<unknown>) => Promise<unknown> } }).locks.request('z_sehealth_sync_lock', { ifAvailable: true }, async (lock: unknown) => {
         if (!lock) {
           // Another tab is actively syncing via Web Locks
           return { synced: 0, failed: 0, pending: 0, requiresAuth: 0 };

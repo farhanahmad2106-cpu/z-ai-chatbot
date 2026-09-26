@@ -7,6 +7,16 @@
 
 ## 🗓️ Last Session Summary
 **Date:** 2026-09-26
+**Work Done — Deterministic FSSAI Additive Registry & Compliance Pipeline:**
+- **Implemented Deterministic FSSAI Additive Registry & Compliance Pipeline**: Created `backend/schemas/fssai.py` (Pydantic v2 schemas), `backend/data/fssai_master_additives.json` (canonical JSON registry with metadata), and `backend/services/fssai_service.py` (normalization and resolution).
+- **Integrated FSSAI Resolver**: Updated `backend/routes/scan.py` and `backend/main.py` (Open Food Facts fallback) to route all detected additives and parsed ingredients through the deterministic safety resolver. Replaces hardcoded strings with calculated `safety_score` deductions based on regulatory severity.
+- **Updated AI Schema Validation**: Modified `backend/schemas/scan.py` and `backend/services/ocr_service.py` to remove `risk` from LLM extraction, ensuring LLMs extract components but no longer guess regulatory risk tiers.
+- **Testing**: Implemented regression tests in `tests/test_fssai_compliance.py`. Tests passed.
+
+---
+
+## 🗓️ Last Session Summary
+**Date:** 2026-09-26
 **Work Done — Master Prompt 4: Documentation Synchronization, Dependency Hygiene & Local Script Alignment:**
 - **Frontend Dependency Hygiene (`frontend/package.json`, `frontend/package-lock.json`)**:
   - Audited frontend source code, build scripts, tests, and configuration for `axios` and `react-router-dom`.

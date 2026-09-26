@@ -25,14 +25,14 @@ vi.mock('../firebase', () => ({
 
 describe('offlineSync - IndexedDB Offline Queue and Synchronization', () => {
   let memoryStore: Map<string, QueuedMealLog>;
-  let leaseStore: Map<string, any>;
+  let leaseStore: Map<string, SyncLeaseRecord>;
 
   beforeEach(() => {
     memoryStore = new Map<string, QueuedMealLog>();
-    leaseStore = new Map<string, any>();
+    leaseStore = new Map<string, SyncLeaseRecord>();
 
-    const createMockReq = (result: any, tx?: any) => {
-      const req: any = {
+    const createMockReq = (result: unknown, tx?: unknown) => {
+      const req: Record<string, unknown> = {
         result,
         error: null,
         onsuccess: null,
@@ -45,7 +45,7 @@ describe('offlineSync - IndexedDB Offline Queue and Synchronization', () => {
       return req;
     };
 
-    let currentTx: any = null;
+    let currentTx: unknown = null;
 
     const mockObjectStore = {
       add: vi.fn((item: QueuedMealLog) => {
@@ -76,11 +76,11 @@ describe('offlineSync - IndexedDB Offline Queue and Synchronization', () => {
     };
 
     const mockLeaseStore = {
-      add: vi.fn((lease: any) => {
+      add: vi.fn((lease: SyncLeaseRecord) => {
         leaseStore.set(lease.name, lease);
         return createMockReq(lease.name, currentTx);
       }),
-      put: vi.fn((lease: any) => {
+      put: vi.fn((lease: SyncLeaseRecord) => {
         leaseStore.set(lease.name, lease);
         return createMockReq(lease.name, currentTx);
       }),
@@ -119,7 +119,7 @@ describe('offlineSync - IndexedDB Offline Queue and Synchronization', () => {
 
     const mockIndexedDB = {
       open: vi.fn(() => {
-        const req: any = {
+        const req: Record<string, unknown> = {
           result: mockDB,
           error: null,
           onsuccess: null,
@@ -245,7 +245,7 @@ describe('offlineSync - IndexedDB Offline Queue and Synchronization', () => {
 
     // Mock Web Locks where lock is contested by another tab (lock callback passed null)
     const mockContestedLocks = {
-      request: vi.fn(async (_name: string, _options: any, callback: any) => {
+      request: vi.fn(async (_name: string, _options: unknown, callback: (arg: unknown) => Promise<unknown>) => {
         return await callback(null); // Contested: another tab holds lock
       }),
     };
@@ -269,7 +269,7 @@ describe('offlineSync - IndexedDB Offline Queue and Synchronization', () => {
     vi.stubGlobal('fetch', mockFetch);
 
     const mockGrantedLocks = {
-      request: vi.fn(async (_name: string, _options: any, callback: any) => {
+      request: vi.fn(async (_name: string, _options: unknown, callback: (arg: unknown) => Promise<unknown>) => {
         return await callback({ name: 'z_sehealth_sync_lock' }); // Granted
       }),
     };
@@ -428,7 +428,7 @@ describe('offlineSync - IndexedDB Offline Queue and Synchronization', () => {
     // Mock auth with user-beta
     const { auth } = await import('../firebase');
     const originalUser = auth.currentUser;
-    (auth as any).currentUser = {
+    (auth as unknown as { currentUser: unknown }).currentUser = {
       uid: 'user-beta-456',
       getIdToken: vi.fn().mockResolvedValue('token-beta'),
     };
@@ -444,7 +444,7 @@ describe('offlineSync - IndexedDB Offline Queue and Synchronization', () => {
     expect(result.pending).toBe(1);
 
     // Restore user
-    (auth as any).currentUser = originalUser;
+    (auth as unknown as { currentUser: unknown }).currentUser = originalUser;
   });
 
   it('stops retry cycle and flags requiresAuth when server returns 401 Unauthorized', async () => {

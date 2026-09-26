@@ -48,12 +48,39 @@ async def lifespan(app_instance: FastAPI):
     app_instance.state.mongo_client = mongo_client
     app_instance.state.db = db
     app_instance.state.db_init_task = asyncio.create_task(background_db_init())
+    
+    from services.quota_worker import quota_rollover_worker_loop
+    
+    quota_worker_stop = asyncio.Event()
+    app_instance.state.quota_worker_stop = quota_worker_stop
+    is_testing = os.getenv("TESTING", "").lower() in ["true", "1", "yes"]
+    if not is_testing:
+        app_instance.state.quota_worker_task = asyncio.create_task(
+            quota_rollover_worker_loop(users_collection, stop_event=quota_worker_stop)
+        )
+    else:
+        app_instance.state.quota_worker_task = None
+        
     print("Z-SeHealth API started instantly with modern lifespan.")
     try:
         yield
     finally:
         # Shutdown: clean up background tasks and resources
         print("Z-SeHealth API shutting down...")
+        
+        quota_worker_task = getattr(app_instance.state, "quota_worker_task", None)
+        quota_worker_stop_event = getattr(app_instance.state, "quota_worker_stop", None)
+        
+        if quota_worker_stop_event:
+            quota_worker_stop_event.set()
+            
+        if quota_worker_task and not quota_worker_task.done():
+            quota_worker_task.cancel()
+            try:
+                await quota_worker_task
+            except asyncio.CancelledError:
+                pass
+                
         init_task = getattr(app_instance.state, "db_init_task", None)
         if init_task and not init_task.done():
             init_task.cancel()
@@ -373,11 +400,48 @@ async def get_food_by_barcode(barcode: str):
                         "sodium": float(nutriments.get("sodium_100g", 0))
                     }
 
+                    from services.fssai_service import fssai_resolver
+
                     additives = product.get("additives_tags", [])
-                    detected_ins_additives = []
+                    resolved_additives = []
                     for add in additives:
                         clean_add = add.replace("en:e", "")
-                        detected_ins_additives.append({"code": f"INS {clean_add}", "name": f"Additive {clean_add}", "risk": "low"})
+                        # Try to resolve by INS code
+                        resolved = fssai_resolver.resolve_additive_safety(raw_code=f"INS {clean_add}", additive_name=None)
+                        resolved_additives.append(resolved)
+                        
+                    for ing in parsed_ingredients:
+                        resolved = fssai_resolver.resolve_additive_safety(raw_code=None, additive_name=ing)
+                        if resolved.matched and not any(r.normalized_ins_code == resolved.normalized_ins_code for r in resolved_additives if r.normalized_ins_code):
+                            resolved_additives.append(resolved)
+                            
+                    detected_ins_additives = [
+                        {
+                            "code": r_add.normalized_ins_code, 
+                            "name": r_add.canonical_name or r_add.input_name or r_add.input_code, 
+                            "risk": r_add.application_risk_tier,
+                            "regulatory_status": r_add.regulatory_status,
+                            "provenance": r_add.provenance
+                        }
+                        for r_add in resolved_additives
+                    ]
+                    
+                    formatted_additives = []
+                    for r_add in resolved_additives:
+                        name_str = r_add.canonical_name or r_add.input_name or "Unknown Additive"
+                        code_str = r_add.normalized_ins_code or ""
+                        status_str = r_add.application_risk_tier
+                        
+                        formatted = f"{code_str}: {name_str} ({status_str})" if code_str else f"{name_str} ({status_str})"
+                        if formatted not in formatted_additives:
+                            formatted_additives.append(formatted)
+                            
+                    warnings = product.get("allergens_tags", [])
+                    for r_add in resolved_additives:
+                        warnings.extend(r_add.warnings)
+                    warnings = list(set(warnings))
+                    
+                    safety_score = fssai_resolver.calculate_food_safety_score(resolved_additives, warnings)
                     
                     new_food = {
                         "name": name,
@@ -391,12 +455,13 @@ async def get_food_by_barcode(barcode: str):
                         "parsed_ingredients": parsed_ingredients,
                         "ingredients": [{"name": ing, "safety": "Safe", "description": ""} for ing in parsed_ingredients],
                         "detected_ins_additives": detected_ins_additives,
-                        "additives": [a["code"] for a in detected_ins_additives],
+                        "additives": formatted_additives,
                         "allergens": product.get("allergens_tags", []),
                         "flagged_allergens": product.get("allergens_tags", []),
                         "nutrition_per_100g": nutrition,
                         "estimated_macros": nutrition,
-                        "safety_score": 75,
+                        "safety_score": safety_score,
+                        "warnings": warnings,
                         "created_at": datetime.now(timezone.utc).isoformat()
                     }
                     

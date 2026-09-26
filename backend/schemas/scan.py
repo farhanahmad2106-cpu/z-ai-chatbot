@@ -5,9 +5,9 @@ class OCRAnalysisResponse(BaseModel):
     product_name: Optional[str] = Field(default="Packaged Food Item", description="Name of the product extracted from the image.")
     raw_ocr_text: str = Field(default="", description="Complete unformatted OCR string.")
     parsed_ingredients: List[str] = Field(default_factory=list, description="Array of parsed clean ingredients.")
-    detected_ins_additives: List[Dict[str, str]] = Field(
+    detected_ins_additives: List[Dict[str, Any]] = Field(
         default_factory=list,
-        description="Extracted International Numbering System (INS) codes. e.g., [{'code': 'INS 621', 'name': 'MSG', 'risk': 'moderate'}]"
+        description="Extracted International Numbering System (INS) codes. e.g., [{'code': 'INS 621', 'name': 'MSG'}]"
     )
     flagged_allergens: List[str] = Field(default_factory=list, description="Detected common allergen triggers.")
     nutrition_per_100g: Dict[str, float] = Field(

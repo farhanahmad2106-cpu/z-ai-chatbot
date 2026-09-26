@@ -423,7 +423,7 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
 
   const scheduleDailyNotification = () => {
     const now = new Date();
-    let targetTime = new Date();
+    const targetTime = new Date();
     targetTime.setHours(21, 0, 0, 0);
 
     if (now > targetTime) {

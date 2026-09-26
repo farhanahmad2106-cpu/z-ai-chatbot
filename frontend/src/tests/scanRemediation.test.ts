@@ -108,10 +108,10 @@ describe('Scan Pipeline Remediation & Canonical Contract', () => {
       };
 
       // Normalization check
-      const normalizeScanResult = (res: any) => ({
+      const normalizeScanResult = (res: Record<string, unknown>) => ({
         food_id: String(res.food_id),
         is_verified: Boolean(res.is_verified),
-        product_name: res.product_name || res.name || 'Unknown Product',
+        product_name: String(res.product_name || res.name || 'Unknown Product'),
         requires_moderation: !res.is_verified,
         ingredients: res.ingredients || [],
         allergens: res.allergens || [],
@@ -165,7 +165,7 @@ describe('Scan Pipeline Remediation & Canonical Contract', () => {
         json: async () => ({ detail: message }),
       };
 
-      let userErrorMessage = '';
+      let userErrorMessage: string;
       if (response.status === 400) {
         userErrorMessage = 'Invalid image or malformed scan request.';
       } else if (response.status === 401) {

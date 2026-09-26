@@ -159,7 +159,7 @@ const MealPlanner: React.FC = () => {
       if (saved && ['en', 'hi', 'mr', 'ta', 'bn', 'te'].includes(saved)) {
         return saved as MealLanguage;
       }
-    } catch (e) {}
+    } catch (e) { /* empty */ }
     return 'en';
   });
   const [translationCache, setTranslationCache] = useState<Record<string, Record<string, TranslatedMealItem>>>({});
@@ -266,7 +266,7 @@ const MealPlanner: React.FC = () => {
     setSelectedLang(lang);
     try {
       localStorage.setItem('z_sehealth_preferred_meal_lang', lang);
-    } catch (e) {}
+    } catch (e) { /* empty */ }
     if (lang !== 'en' && plan && plan.meals.length > 0) {
       ensureTranslations(plan.meals, lang);
     }

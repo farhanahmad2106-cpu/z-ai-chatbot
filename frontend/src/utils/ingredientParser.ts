@@ -23,7 +23,7 @@ export interface ParsedIngredient {
  */
 function sanitizeIngredientName(raw: string): string {
   let name = raw
-    .replace(/^[*•\-\s\d\.\:]+/g, '') // Strip leading bullet points *, -, •, numbers
+    .replace(/^[*•\-\s\d.:]+/g, '') // Strip leading bullet points *, -, •, numbers
     .replace(/[*_]+/g, '')            // Strip markdown bold/italic asterisks
     .trim();
 
@@ -53,7 +53,7 @@ function isMetadataRow(text: string): boolean {
 /**
  * Enriches ingredient object with Medical Knowledge Vault or Fallback Definitions
  */
-function enrichIngredient(name: string, rawDesc?: string, _rawSafety?: any): ParsedIngredient | null {
+function enrichIngredient(name: string, rawDesc?: string): ParsedIngredient | null {
   const cleanName = sanitizeIngredientName(name);
   if (!cleanName || isMetadataRow(cleanName)) return null;
 
@@ -117,7 +117,7 @@ export function parseScannedIngredients(input: unknown): ParsedIngredient[] {
       for (const item of input) {
         const name = String(item.name || item.Name || '');
         const rawDesc = String(item.description || item.Description || item.details || '');
-        const ing = enrichIngredient(name, rawDesc, item.safety ?? item.Safety ?? item.score);
+        const ing = enrichIngredient(name, rawDesc);
         if (ing) results.push(ing);
       }
       return results;
@@ -143,7 +143,7 @@ export function parseScannedIngredients(input: unknown): ParsedIngredient[] {
     try {
       const parsed = JSON.parse(cleanedJson);
       return parseScannedIngredients(parsed);
-    } catch (_) {}
+    } catch { /* ignore parsing errors */ }
 
     // Parse bulleted list / line-separated text (e.g. "* Whey Protein Blend\n* Cocoa\n* Salt")
     const lines = trimmed.split(/\n|,/).map(l => l.trim()).filter(l => l.length > 0);

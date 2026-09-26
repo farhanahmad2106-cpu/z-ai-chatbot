@@ -48,7 +48,7 @@ Output MUST be valid JSON matching the OCRAnalysisResponse schema exactly:
   "brand": "string",
   "raw_ocr_text": "string (full OCR text read)",
   "parsed_ingredients": ["ing1", "ing2", ...],
-  "detected_ins_additives": [{"code": "INS 627", "name": "Disodium guanylate", "risk": "low|moderate|high"}, ...],
+  "detected_ins_additives": [{"code": "INS 627", "name": "Disodium guanylate"}, ...],
   "flagged_allergens": ["allergen1", ...],
   "nutrition_per_100g": {"calories": 0.0, "protein": 0.0, "carbs": 0.0, "fat": 0.0, "sodium": 0.0, "sugar": 0.0},
   "estimated_macros": {"calories": 0.0, "protein": 0.0, "carbs": 0.0, "fat": 0.0, "sodium": 0.0, "sugar": 0.0},
