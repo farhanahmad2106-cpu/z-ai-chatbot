@@ -38,3 +38,20 @@ backend/firebase-admin-key.json
 admin-dashboard/.next/
 convex/_generated/
 data/db/
+
+# Android / Mobile signing credentials
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.key
+
+# Private-key material
+*.pem
+
+# Android / Apple provisioning credentials
+*.mobileprovision
+
+# Common local Android signing artifacts
+release.keystore
+debug.keystore

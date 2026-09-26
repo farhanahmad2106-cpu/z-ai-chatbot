@@ -175,6 +175,21 @@ fetch(`${API_BASE}/api/foods`).then(r => r.json()); // Missing .catch()
 
 ## 6. 🔐 Security Rules
 
+### Cryptographic Keys & Mobile Signing Policy (ZS-002)
+- **NEVER** commit signing credentials or private keys:
+  - Keystores / Certificates: `*.keystore`, `*.jks`, `*.p12`, `*.pfx`, `release.keystore`, `debug.keystore`
+  - Private key files: `*.key`, `*.pem`
+  - Provisioning profiles: `*.mobileprovision`
+- **Store Securely**: Production signing credentials must reside in CI/CD secret managers (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, or EAS Credentials). Never embed plaintext passwords in `build.gradle` or configuration files.
+- **Incident Response Policy (Compromised Signing Credential)**:
+  1. Treat the exposed credential as immediately **COMPROMISED**.
+  2. Remove from Git tracking and purge from complete repository history using `git-filter-repo`.
+  3. Rotate/reset the credential using the appropriate distribution-platform procedure (e.g., Google Play Console Upload Key Reset or EAS Credentials rotation).
+  4. Update CI/CD secret stores and verify the old key is decommissioned.
+  5. Enforce `.gitignore` and run the `tests/test_secret_leak_guard.py` regression suite.
+  6. Invalidate build artifacts, cache references, and notify collaborators to re-clone rewritten history.
+
+### General Security
 - **NEVER** commit `.env` — it is in `.gitignore`. Use `.env.example` for templates
 - **NEVER** expose backend secrets (`RAZORPAY_KEY_SECRET`, `SARVAM_API_KEY`, `GEMINI_API_KEY`) to the frontend
 - Frontend only uses `VITE_` prefixed env variables (Vite exposes these safely)

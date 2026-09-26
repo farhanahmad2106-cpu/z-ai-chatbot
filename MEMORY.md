@@ -1,11 +1,40 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-26 (Session: ZS-001 Clinical Nutrient Scaling, Candidate Rejection & FastAPI Event-Loop Safety)
+> **Last Updated:** 2026-09-26 (Session: ZS-002 Cryptographic Secrets Purge & Android Keystore Sanitation — P0 Security Incident)
 
 ---
 
 ## 🗓️ Last Session Summary
+**Date:** 2026-09-26
+**Work Done — ZS-002 Cryptographic Secrets Purge & Android Keystore Sanitation (P0 Incident):**
+- **Git History Cryptographic Secrets Purge (`git-filter-repo`)**:
+  - Identified exposed release keystore `release.keystore` (4,372 bytes, introduced in `2533d89`).
+  - Created complete cold backup of `.git` repository prior to rewriting.
+  - Executed `git-filter-repo --invert-paths --path release.keystore --force` across all commits.
+  - Purged stale remote tracking refs, expired reflogs (`git reflog expire --expire=now --all`), and pruned unreachable objects (`git gc --prune=now`).
+  - Verified 0 remaining occurrences across history: `git log --all --full-history -- release.keystore` (0 commits), `git rev-list --all --objects` (0 matching blobs), `git ls-files` (0 matching files).
+  - Validated clean-clone verification via fresh temporary clone without credential leakage.
+- **Repository `.gitignore` Hardening (`.gitignore`)**:
+  - Enforced strict exclusion of Android / mobile signing credentials: `*.keystore`, `*.jks`, `*.p12`, `*.pfx`, `*.key`, `*.pem`, `*.mobileprovision`, `release.keystore`, and `debug.keystore`.
+- **Deterministic Secret-Leak Regression Guard (`tests/test_secret_leak_guard.py`)**:
+  - Implemented 5 automated security tests:
+    - Test A: Fails if Git tracks prohibited credential extensions (`.keystore`, `.jks`, `.p12`, `.pfx`, `.key`, `.mobileprovision`).
+    - Test B: Binary-safe byte-level scan across all tracked files for private-key markers (`-----BEGIN PRIVATE KEY-----`, RSA, EC, OPENSSH, etc.).
+    - Test C: Inspects build configurations and scripts for committed keystore references and hardcoded `storePassword`/`keyPassword` values.
+    - Test D: Verifies root `.gitignore` contains mandatory mobile credential exclusion patterns.
+    - Test E: Specifically asserts absence of `release.keystore` from both Git index and filesystem.
+- **Continuous Integration Pipeline Security (`.github/workflows/security-guard.yml`)**:
+  - Added dedicated GitHub Actions workflow executing `python -m pytest tests/test_secret_leak_guard.py -v` on all pushes and pull requests.
+- **Mobile Signing Credential Governance & Policy (`RULES.md`)**:
+  - Formalized cryptographic key and mobile signing policy, storage guidelines (EAS Credentials / CI secret stores), and a 6-step compromised-credential incident response procedure.
+- **Automated Verification Matrix**:
+  - Full Backend Pytest suite (`python -m pytest -W error::RuntimeWarning`): **216/216 passed (100%)** across 16 test files.
+  - Total automated tests: **364/364 passed (100%)**.
+
+---
+
+## 🗓️ Previous Session Summary (ZS-001 Clinical Nutrient Scaling, Candidate Rejection & FastAPI Event-Loop Safety)
 **Date:** 2026-09-26
 **Work Done — ZS-001 Clinical Nutrient Scaling, Candidate Rejection & FastAPI Event-Loop Safety:**
 - **Clinical Defect ZS-001 Remediation (`backend/services/meal_planner/planner.py`)**:
