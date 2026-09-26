@@ -20,7 +20,6 @@ function legalDocsPlugin() {
 export default defineConfig({
   build: {
     rollupOptions: {
-      // @ts-expect-error - Rolldown specific option to disable plugin timings warning
       checks: {
         pluginTimings: false
       },

@@ -123,7 +123,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
     return { bmi, category, color };
   };
 
-  const calculatedMetrics = mapProfileToMetrics(localHealth);
+  const calculatedMetrics = mapProfileToMetrics(localHealth as unknown as Record<string, unknown>);
   let calculatedMacros: MacroTargets | null = null;
   try {
     if (calculatedMetrics) {

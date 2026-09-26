@@ -11,6 +11,7 @@ import {
   releaseIndexedDBLease,
   getBackoffDelayMs,
   type QueuedMealLog,
+  type SyncLeaseRecord,
 } from './offlineSync';
 
 // Mock Firebase auth
@@ -39,8 +40,8 @@ describe('offlineSync - IndexedDB Offline Queue and Synchronization', () => {
         onerror: null,
       };
       queueMicrotask(() => {
-        if (req.onsuccess) req.onsuccess({ target: req });
-        if (tx && tx.oncomplete) tx.oncomplete();
+        if (req.onsuccess) (req.onsuccess as any)({ target: req });
+        if (tx && (tx as any).oncomplete) (tx as any).oncomplete();
       });
       return req;
     };
@@ -128,7 +129,7 @@ describe('offlineSync - IndexedDB Offline Queue and Synchronization', () => {
         };
         queueMicrotask(() => {
           if (req.onsuccess) {
-            req.onsuccess({ target: req });
+            (req.onsuccess as any)({ target: req });
           }
         });
         return req;

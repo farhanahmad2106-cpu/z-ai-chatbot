@@ -63,7 +63,7 @@ describe('ViewErrorBoundary & Lazy Code-Splitting Architecture', () => {
       isRepeatedFailure: false,
     };
 
-    const rendered = boundary.render() as Record<string, unknown> & { type: string, props: Record<string, unknown> & { className: string, children: unknown, role: string, 'aria-live': string } };
+    const rendered = boundary.render() as unknown as Record<string, unknown> & { type: string, props: Record<string, unknown> & { className: string, children: unknown, role: string, 'aria-live': string } };
     expect(rendered).toBeDefined();
     expect(rendered.type).toBe('div');
     expect(rendered.props.className).toContain('min-h-[400px]');
@@ -82,7 +82,7 @@ describe('ViewErrorBoundary & Lazy Code-Splitting Architecture', () => {
       isRepeatedFailure: false,
     };
 
-    const rendered = boundary.render() as Record<string, unknown> & { type: string, props: Record<string, unknown> & { className: string, children: unknown, role: string, 'aria-live': string } };
+    const rendered = boundary.render() as unknown as Record<string, unknown> & { type: string, props: Record<string, unknown> & { className: string, children: unknown, role: string, 'aria-live': string } };
     expect(rendered.props.role).toBe('alert');
     expect(rendered.props['aria-live']).toBe('assertive');
   });
@@ -101,10 +101,10 @@ describe('ViewErrorBoundary & Lazy Code-Splitting Architecture', () => {
       isRepeatedFailure: false,
     };
 
-    const rendered = boundary.render() as Record<string, unknown> & { type: string, props: Record<string, unknown> & { className: string, children: unknown, role: string, 'aria-live': string } };
-    const card = rendered.props.children;
-    const buttonContainer = card.props.children[card.props.children.length - 1];
-    const buttons = buttonContainer.props.children;
+    const rendered = boundary.render() as unknown as Record<string, unknown> & { type: string, props: Record<string, unknown> & { className: string, children: unknown, role: string, 'aria-live': string } };
+    const card = rendered.props.children as any;
+    const buttonContainer = card.props.children[card.props.children.length - 1] as any;
+    const buttons = buttonContainer.props.children as any;
 
     // Primary retry button
     const retryButton = buttons[0];
@@ -132,10 +132,10 @@ describe('ViewErrorBoundary & Lazy Code-Splitting Architecture', () => {
 
     expect(boundary.state.isRepeatedFailure).toBe(true);
 
-    const rendered = boundary.render() as Record<string, unknown> & { type: string, props: Record<string, unknown> & { className: string, children: unknown, role: string, 'aria-live': string } };
-    const card = rendered.props.children;
-    const overline = card.props.children[2];
-    const heading = card.props.children[3];
+    const rendered = boundary.render() as unknown as Record<string, unknown> & { type: string, props: Record<string, unknown> & { className: string, children: unknown, role: string, 'aria-live': string } };
+    const card = rendered.props.children as any;
+    const overline = card.props.children[2] as any;
+    const heading = card.props.children[3] as any;
     expect(overline.props.children).toBe('Persistent Load Error');
     expect(heading.props.children).toBe('Unable to load section');
   });
@@ -281,7 +281,7 @@ describe('ViewErrorBoundary & Lazy Code-Splitting Architecture', () => {
       error: new Error('Chunk failure'),
       isRepeatedFailure: false,
     };
-    const rendered = boundary.render() as Record<string, unknown> & { type: string, props: Record<string, unknown> & { className: string, children: unknown, role: string, 'aria-live': string } };
+    const rendered = boundary.render() as unknown as Record<string, unknown> & { type: string, props: Record<string, unknown> & { className: string, children: unknown, role: string, 'aria-live': string } };
     expect(rendered).toBeDefined();
     expect(rendered.props.role).toBe('alert');
   });
@@ -299,13 +299,13 @@ describe('ViewErrorBoundary & Lazy Code-Splitting Architecture', () => {
       isRepeatedFailure: true,
     };
 
-    const rendered = boundary.render() as Record<string, unknown> & { type: string, props: Record<string, unknown> & { className: string, children: unknown, role: string, 'aria-live': string } };
+    const rendered = boundary.render() as unknown as Record<string, unknown> & { type: string, props: Record<string, unknown> & { className: string, children: unknown, role: string, 'aria-live': string } };
     expect(rendered.props.role).toBe('alert');
     expect(rendered.props['aria-live']).toBe('assertive');
 
-    const card = rendered.props.children;
-    const buttonContainer = card.props.children[card.props.children.length - 1];
-    const [forceReloadBtn, dashboardBtn] = buttonContainer.props.children;
+    const card = rendered.props.children as any;
+    const buttonContainer = card.props.children[card.props.children.length - 1] as any;
+    const [forceReloadBtn, dashboardBtn] = buttonContainer.props.children as any;
 
     expect(forceReloadBtn.props.type).toBe('button');
     expect(forceReloadBtn.props.children[1]).toBe('Force Reload');
