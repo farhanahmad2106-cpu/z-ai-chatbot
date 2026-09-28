@@ -1,7 +1,56 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-28 (Session: Zero-Warning Frontend ESLint & TypeScript Remediation)
+> **Last Updated:** 2026-09-28 (Session: FSSAI Authoritative Deterministic Additive Safety Engine — Hardening & Comprehensive Tests)
+
+---
+
+## 🗓️ Last Session Summary
+**Date:** 2026-09-28
+**Work Done — FSSAI Authoritative Deterministic Additive Safety Engine (ZS-004 Elimination):**
+
+- **FSSAI Registry Expansion (`backend/data/fssai_master_additives.json`)**:
+  - Expanded from 20 → **53 authoritative records** covering: colorants (INS 100–150), preservatives (INS 200–252), antioxidants (INS 300–321), sweeteners (INS 420–960), emulsifiers (INS 322–475), thickeners (INS 401–466), acidity regulators (INS 270–385), flavour enhancers (INS 620–635), anti-caking agents (INS 170–551).
+  - Added `registry_metadata` block with explicit `authority`, `title`, `disclaimer`, `dataset_version`, `last_verified_at`.
+  - All 53 records carry `source_authority`, `source_document`, `source_version_or_date`, `last_verified_at` provenance fields.
+  - Registry indexes: **119 aliases** for O(1) lookup.
+
+- **FSSAI Schema Hardening (`backend/schemas/fssai.py`)**:
+  - Added explicit `RegulatoryStatus` and `ApplicationRiskTier` type aliases with documentation.
+  - Added `'unknown'` to `RegulatoryStatus` for unresolved additives.
+  - Comprehensive docstrings clarifying the critical distinction between official FSSAI classifications and Z-SeHealth application risk tiers.
+
+- **FSSAI Service Complete Rewrite (`backend/services/fssai_service.py`)**:
+  - Architecture: OCR/Open Food Facts → raw candidates only → normalization → local registry → resolution → risk tier → penalty. **Zero LLM participation in regulatory resolution.**
+  - Startup registry validation: duplicate INS codes, alias collisions, malformed codes, negative ADI, missing provenance → FAIL CLOSED (`RegistryValidationError`).
+  - 4-priority resolution chain: INS code → canonical name → alias → embedded INS extraction from name string.
+  - Unknown ≠ Hazardous: unresolved → `regulatory_status="unknown"`, `application_risk_tier="unclassified"`, `requires_review=True`, `penalty=0`.
+  - Deterministic penalty table (Z-SeHealth heuristics, explicitly NOT official FSSAI scores): safe=0, moderate=-5, high=-18, restricted=-18, hazardous=-35, unclassified=0.
+  - `calculate_food_safety_score()` deduplicates by canonical INS code, clamped to [1, 100].
+  - `resolve_and_deduplicate()` unified pipeline for both scan and barcode paths, with ingredient ingredient scanning and warning aggregation.
+  - Module-level singleton `fssai_resolver` fails closed if registry is corrupt.
+
+- **Scan Route & Barcode Route Integration**:
+  - `backend/routes/scan.py`: Replaced 26 lines of inline resolution/dedup logic with `fssai_resolver.resolve_and_deduplicate()`.
+  - `backend/main.py` (Open Food Facts path): Replaced inline OFF additive tag parsing with centralized `resolve_and_deduplicate()`.
+
+- **Comprehensive Test Suite (`tests/test_fssai_compliance.py`)**:
+  - Expanded from 4 tests → **79 tests** across 9 sections:
+    - `TestRegistryIntegrity` (8): min 50 records, alias count, no duplicate INS, canonical names, provenance, ADI positivity, functional class coverage, metadata fields.
+    - `TestINSNormalization` (23): all documented variants — INS/E prefix, hyphen, space, numeric-only, roman numeral suffix, letter suffix, edge cases (None, whitespace, plain names).
+    - `TestResolutionPipeline` (13): INS match, E-number, numeric-only, sodium nitrite, MSG, canonical name, case-insensitive name, alias, alias case-insensitive, MSG alias, embedded INS, INS priority over name, provenance populated, functional_classes populated.
+    - `TestUnresolvedHandling` (8): unknown INS code, unknown regulatory_status, unclassified tier, requires_review, warning message, None inputs, empty strings, unresolved penalty=0.
+    - `TestDeterministicScoring` (10): zero-additives=100, safe=0 deduction, high deduction, moderate deduction, combined, min clamp=1, max clamp=100, determinism (3 identical calls), penalty table completeness, penalty table non-positive values.
+    - `TestDeduplication` (4): same additive via INS+name, E-number vs INS, resolve_and_deduplicate deduplication, different additives not collapsed.
+    - `TestResolveAndDeduplicate` (6): ingredient scanning, ignores non-additives, warnings collected, empty inputs, string items in list, warnings unique.
+    - `TestMandatoryWarnings` (3): sodium nitrite emits warning, warnings always list, unresolved warnings always list.
+    - `TestZS004Invariant` (4): no LLM risk field, matched tier is registry-sourced, unmatched=unclassified not 'low'/'safe', unknown score=100.
+
+- **Automated Verification Matrix**:
+  - Backend Pytest suite (`python -m pytest -W error::RuntimeWarning`): **363/363 passed (100%)** across 18 test files.
+  - Total automated tests: **363/363 passed (100%)**.
+
+---
 
 ---
 

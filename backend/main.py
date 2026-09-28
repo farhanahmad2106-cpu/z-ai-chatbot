@@ -406,46 +406,20 @@ async def get_food_by_barcode(barcode: str):
 
                     from services.fssai_service import fssai_resolver
 
-                    additives = product.get("additives_tags", [])
-                    resolved_additives = []
-                    for add in additives:
-                        clean_add = add.replace("en:e", "")
-                        # Try to resolve by INS code
-                        resolved = fssai_resolver.resolve_additive_safety(raw_code=f"INS {clean_add}", additive_name=None)
-                        resolved_additives.append(resolved)
-                        
-                    for ing in parsed_ingredients:
-                        resolved = fssai_resolver.resolve_additive_safety(raw_code=None, additive_name=ing)
-                        if resolved.matched and not any(r.normalized_ins_code == resolved.normalized_ins_code for r in resolved_additives if r.normalized_ins_code):
-                            resolved_additives.append(resolved)
-                            
-                    detected_ins_additives = [
-                        {
-                            "code": r_add.normalized_ins_code, 
-                            "name": r_add.canonical_name or r_add.input_name or r_add.input_code, 
-                            "risk": r_add.application_risk_tier,
-                            "regulatory_status": r_add.regulatory_status,
-                            "provenance": r_add.provenance
-                        }
-                        for r_add in resolved_additives
-                    ]
-                    
-                    formatted_additives = []
-                    for r_add in resolved_additives:
-                        name_str = r_add.canonical_name or r_add.input_name or "Unknown Additive"
-                        code_str = r_add.normalized_ins_code or ""
-                        status_str = r_add.application_risk_tier
-                        
-                        formatted = f"{code_str}: {name_str} ({status_str})" if code_str else f"{name_str} ({status_str})"
-                        if formatted not in formatted_additives:
-                            formatted_additives.append(formatted)
-                            
-                    warnings = product.get("allergens_tags", [])
-                    for r_add in resolved_additives:
-                        warnings.extend(r_add.warnings)
-                    warnings = list(set(warnings))
-                    
-                    safety_score = fssai_resolver.calculate_food_safety_score(resolved_additives, warnings)
+                    # Normalize OFF additive tags to candidate INS codes
+                    off_additive_candidates = []
+                    for add in product.get("additives_tags", []):
+                        clean_add = add.replace("en:e", "").replace("en:", "")
+                        off_additive_candidates.append({"code": f"INS {clean_add}", "name": None})
+
+                    # Deterministic FSSAI resolution — OFF data is untrusted candidate input
+                    resolved_additives, additive_warnings = fssai_resolver.resolve_and_deduplicate(
+                        detected_additives=off_additive_candidates,
+                        parsed_ingredients=parsed_ingredients,
+                    )
+
+                    warnings = list(set(product.get("allergens_tags", []) + additive_warnings))
+                    safety_score = fssai_resolver.calculate_food_safety_score(resolved_additives, [])
                     
                     new_food = {
                         "name": name,

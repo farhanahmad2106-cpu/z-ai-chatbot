@@ -211,29 +211,14 @@ async def analyze_back_of_pack(
 
         from services.fssai_service import fssai_resolver
 
-        resolved_additives = []
-        for add_input in (analysis_result.detected_ins_additives or []):
-            code = add_input.get("code") if isinstance(add_input, dict) else None
-            name = add_input.get("name") if isinstance(add_input, dict) else str(add_input)
-            
-            resolved = fssai_resolver.resolve_additive_safety(raw_code=code, additive_name=name)
-            resolved_additives.append(resolved)
-        
-        # Check parsed ingredients for additives
-        for ing in (analysis_result.parsed_ingredients or []):
-            resolved = fssai_resolver.resolve_additive_safety(raw_code=None, additive_name=ing)
-            if resolved.matched:
-                # To prevent duplicates from both lists
-                if not any(r.normalized_ins_code == resolved.normalized_ins_code for r in resolved_additives if r.normalized_ins_code):
-                    resolved_additives.append(resolved)
-        
-        warnings = analysis_result.flagged_allergens or []
-        for r_add in resolved_additives:
-            warnings.extend(r_add.warnings)
-            
-        warnings = list(set(warnings))
-        
-        analysis_result.safety_score = fssai_resolver.calculate_food_safety_score(resolved_additives, warnings)
+        # Deterministic FSSAI resolution — no LLM participates
+        resolved_additives, additive_warnings = fssai_resolver.resolve_and_deduplicate(
+            detected_additives=analysis_result.detected_ins_additives or [],
+            parsed_ingredients=analysis_result.parsed_ingredients or [],
+        )
+
+        warnings = list(set((analysis_result.flagged_allergens or []) + additive_warnings))
+        analysis_result.safety_score = fssai_resolver.calculate_food_safety_score(resolved_additives, [])
         analysis_result.warnings = warnings
 
         formatted_additives = []

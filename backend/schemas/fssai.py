@@ -1,28 +1,45 @@
+"""
+FSSAI Additive Registry Schemas — Pydantic v2
+
+NOTE: These schemas define Z-SeHealth's *application-level* risk model.
+- `regulatory_status` reflects the additive's standing under FSSAI regulations.
+- `application_risk_tier` is Z-SeHealth's heuristic classification, NOT an official FSSAI score.
+- `requires_review` indicates the system could not conclusively resolve the additive.
+- Unknown ≠ Hazardous. Unresolved additives are "unclassified", not "hazardous".
+"""
 from pydantic import BaseModel, Field
 from typing import List, Literal, Optional, Dict, Any
 
+
+RegulatoryStatus = Literal[
+    "permitted",
+    "restricted",
+    "prohibited",
+    "unverified",
+    "requires_review",
+    "unknown",
+]
+
+ApplicationRiskTier = Literal[
+    "safe",
+    "moderate",
+    "high",
+    "restricted",
+    "hazardous",
+    "unclassified",
+]
+
+
 class FSSAIAdditive(BaseModel):
+    """Authoritative registry record. Loaded from fssai_master_additives.json."""
     ins_code: str
     canonical_name: str
     aliases: List[str] = Field(default_factory=list)
     functional_classes: List[str] = Field(default_factory=list)
 
-    regulatory_status: Literal[
-        "permitted",
-        "restricted",
-        "prohibited",
-        "unverified",
-        "requires_review"
-    ]
+    regulatory_status: RegulatoryStatus
 
-    application_risk_tier: Literal[
-        "safe",
-        "moderate",
-        "high",
-        "restricted",
-        "hazardous",
-        "unclassified"
-    ]
+    application_risk_tier: ApplicationRiskTier
 
     risk_description: str
 
@@ -38,6 +55,7 @@ class FSSAIAdditive(BaseModel):
 
     schedule_reference: Optional[str] = None
 
+    # Provenance
     source_authority: str
     source_document: str
     source_version_or_date: Optional[str] = None
@@ -47,12 +65,19 @@ class FSSAIAdditive(BaseModel):
         "verified",
         "partially_verified",
         "requires_review",
-        "unverified"
+        "unverified",
     ]
 
     last_verified_at: Optional[str] = None
 
+
 class ResolvedAdditive(BaseModel):
+    """
+    Result of resolving a raw additive input against the FSSAI registry.
+
+    This is what the API returns. The `application_risk_tier` is a Z-SeHealth
+    heuristic tier, NOT an official FSSAI safety score.
+    """
     input_code: Optional[str] = None
     input_name: Optional[str] = None
 
@@ -64,11 +89,11 @@ class ResolvedAdditive(BaseModel):
         "ins_code",
         "alias",
         "canonical_name",
-        "unmatched"
+        "unmatched",
     ]
 
-    regulatory_status: str
-    application_risk_tier: str
+    regulatory_status: RegulatoryStatus
+    application_risk_tier: ApplicationRiskTier
 
     functional_classes: List[str] = Field(default_factory=list)
 
