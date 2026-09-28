@@ -1,0 +1,17 @@
+node_modules/
+.expo/
+dist/
+build/
+.env
+.env.local
+.env.production
+*.keystore
+*.jks
+*.p12
+*.mobileprovision
+*.pem
+*.p8
+*.cer
+*.gguf
+*.bin
+*.safetensors

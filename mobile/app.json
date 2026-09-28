@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "Z-SeHealth Companion",
+    "slug": "z-sehealth-companion",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#020617"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.zsehealth.companion",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Scanner requires camera access to scan barcodes."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#020617"
+      },
+      "package": "com.zsehealth.companion",
+      "permissions": ["CAMERA"]
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    }
+  }
+}
