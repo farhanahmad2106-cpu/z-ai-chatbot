@@ -40,6 +40,7 @@ from middleware.quota_check import check_scan_quota, get_user_quota_status, Feat
 from services.ai_router import route_scan_by_tier
 from services.ocr_engine import extract_text_from_image
 from models import ParsedIngredients
+from routes.biomarkers import router as biomarkers_router
 
 
 @asynccontextmanager
@@ -108,6 +109,7 @@ app.include_router(scan_router)
 app.include_router(admin_router)
 app.include_router(meals_router)
 app.include_router(custom_meals_router)
+app.include_router(biomarkers_router)
 
 
 # --- CORS SETUP ---
@@ -157,6 +159,7 @@ weekly_plans_collection = db["weekly_plans"]
 meal_translations_collection = db["meal_translations"]
 custom_meals_collection = db["custom_meals"]
 admin_audit_logs_collection = db["admin_audit_logs"]
+user_biometrics_collection = db["user_biometrics"]
 
 # --- FIREBASE SETUP ---
 try:
@@ -216,6 +219,7 @@ async def background_db_init():
         await transactions_collection.create_index([("payment_id", 1)], background=True)
         await transactions_collection.create_index([("subscription_id", 1)], background=True)
         await transactions_collection.create_index([("lease_until", 1)], background=True)
+        await user_biometrics_collection.create_index([("uid", 1), ("recorded_date", 1)], unique=True, background=True)
 
 
         count = await foods_collection.count_documents({})
