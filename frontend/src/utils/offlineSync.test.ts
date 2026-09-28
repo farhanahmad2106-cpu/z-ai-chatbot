@@ -40,8 +40,8 @@ describe('offlineSync - IndexedDB Offline Queue and Synchronization', () => {
         onerror: null,
       };
       queueMicrotask(() => {
-        if (req.onsuccess) (req.onsuccess as any)({ target: req });
-        if (tx && (tx as any).oncomplete) (tx as any).oncomplete();
+        if (req.onsuccess) (req.onsuccess as (arg: { target: typeof req }) => void)({ target: req });
+        if (tx && (tx as { oncomplete?: () => void }).oncomplete) ((tx as { oncomplete: () => void }).oncomplete)();
       });
       return req;
     };
@@ -129,7 +129,7 @@ describe('offlineSync - IndexedDB Offline Queue and Synchronization', () => {
         };
         queueMicrotask(() => {
           if (req.onsuccess) {
-            (req.onsuccess as any)({ target: req });
+            (req.onsuccess as (arg: { target: typeof req }) => void)({ target: req });
           }
         });
         return req;

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Quote } from '../quotesData';
 import {
   getNextQuote,
@@ -12,7 +12,7 @@ import { Heart, Sparkles, Bookmark, ArrowRight, X, Flame } from 'lucide-react';
 
 // Helper to calculate dynamic quote display duration:
 // 8 seconds for short/single line quotes, 15 seconds for long or comma-separated/multi-sentence quotes.
-export const getQuoteDurationSeconds = (quoteText?: string): number => {
+const getQuoteDurationSeconds = (quoteText?: string): number => {
   if (!quoteText) return 8;
   const trimmed = quoteText.trim();
   const isLongOrMultiClause =
@@ -53,7 +53,10 @@ export const InteractiveQuoteCard: React.FC<InteractiveQuoteCardProps> = ({
   const currentDurationSec = getQuoteDurationSeconds(currentQuote?.text);
 
   useEffect(() => {
-    loadNextQuote();
+    const timer = setTimeout(() => {
+      loadNextQuote();
+    }, 0);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

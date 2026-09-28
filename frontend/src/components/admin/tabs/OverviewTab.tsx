@@ -87,7 +87,10 @@ export default function OverviewTab({ onNavigateTab }: OverviewTabProps) {
   }, [getAdminAuthHeader]);
 
   useEffect(() => {
-    fetchOverview();
+    const timer = setTimeout(() => {
+      fetchOverview();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [fetchOverview]);
 
   return (

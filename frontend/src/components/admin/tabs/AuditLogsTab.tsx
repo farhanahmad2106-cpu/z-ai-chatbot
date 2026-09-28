@@ -238,7 +238,10 @@ export default function AuditLogsTab() {
   }, [getAdminAuthHeader, currentPage, actionFilter, emailFilter, debouncedSearch]);
 
   useEffect(() => {
-    fetchAuditLogs();
+    const timer = setTimeout(() => {
+      fetchAuditLogs();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [fetchAuditLogs]);
 
   // Handle CSV Export

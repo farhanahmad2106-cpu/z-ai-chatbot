@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useUserStats } from '../context/UserStatsContext';
 import { useToast } from '../context/ToastContext';
@@ -366,16 +366,16 @@ const QuickCommerceExportModal: React.FC<QuickCommerceExportModalProps> = ({
     }
   };
 
-  if (!isOpen) return null;
-
-  const currentItem = exportableItems[runnerIndex] || null;
-  const currentProviderConfig = PROVIDER_CONFIG[selectedProvider];
-
   // Calculate raw rows count across all categories
   const rawRowsCount = useMemo(() => {
     if (!groceryList) return 0;
     return groceryList.categories.reduce((acc, cat) => acc + cat.items.length, 0);
   }, [groceryList]);
+
+  if (!isOpen) return null;
+
+  const currentItem = exportableItems[runnerIndex] || null;
+  const currentProviderConfig = PROVIDER_CONFIG[selectedProvider];
 
   const progressPercent = exportableItems.length > 0
     ? Math.min(100, Math.round((openedItemIds.size / exportableItems.length) * 100))
@@ -804,14 +804,20 @@ const WeeklyMealPlanner: React.FC<WeeklyMealPlannerProps> = ({
   const orderPopoverRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    setActiveSubView(initialSubView);
+    const timer = setTimeout(() => {
+      setActiveSubView(initialSubView);
+    }, 0);
+    return () => clearTimeout(timer);
   }, [initialSubView]);
 
   // Set today's day of week on mount
   useEffect(() => {
-    const jsDay = new Date().getDay(); // 0 is Sunday, 1 is Monday
-    const mappedIndex = jsDay === 0 ? 6 : jsDay - 1;
-    setSelectedDayIndex(mappedIndex);
+    const timer = setTimeout(() => {
+      const jsDay = new Date().getDay(); // 0 is Sunday, 1 is Monday
+      const mappedIndex = jsDay === 0 ? 6 : jsDay - 1;
+      setSelectedDayIndex(mappedIndex);
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   // Close popovers and modal on Escape or outside click
@@ -861,8 +867,31 @@ const WeeklyMealPlanner: React.FC<WeeklyMealPlannerProps> = ({
     }
   }, [weeklyPlan, selectedLang, onEnsureTranslations]);
 
+  const fetchGroceryList = useCallback(async () => {
+    if (!currentUser) return;
+    setGroceryLoading(true);
+    try {
+      const token = await currentUser.getIdToken();
+      const res = await fetch(`${API_BASE}/api/meals/grocery-list`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (res.ok) {
+        const data: GroceryListResponse = await res.json();
+        setGroceryList(data);
+      }
+    } catch (e) {
+      console.error('Failed to load grocery list:', e);
+    } finally {
+      setGroceryLoading(false);
+    }
+  }, [currentUser]);
+
   // Fetch or load active weekly plan
-  const fetchWeeklyPlan = async (forceRegenerate: boolean = false) => {
+  const fetchWeeklyPlan = useCallback(async (forceRegenerate: boolean = false) => {
     if (!currentUser) return;
     setLoading(true);
     setError(null);
@@ -899,36 +928,17 @@ const WeeklyMealPlanner: React.FC<WeeklyMealPlannerProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentUser, dailyGoals.calories, fetchGroceryList]);
 
-  const fetchGroceryList = async () => {
-    if (!currentUser) return;
-    setGroceryLoading(true);
-    try {
-      const token = await currentUser.getIdToken();
-      const res = await fetch(`${API_BASE}/api/meals/grocery-list`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (res.ok) {
-        const data: GroceryListResponse = await res.json();
-        setGroceryList(data);
-      }
-    } catch (e) {
-      console.error('Failed to load grocery list:', e);
-    } finally {
-      setGroceryLoading(false);
-    }
-  };
 
   useEffect(() => {
     if (currentUser) {
-      fetchWeeklyPlan(false);
+      const timer = setTimeout(() => {
+        fetchWeeklyPlan(false);
+      }, 0);
+      return () => clearTimeout(timer);
     }
-  }, [currentUser]);
+  }, [currentUser, fetchWeeklyPlan]);
 
   // Swap slot handler
   const handleSwapMeal = async (day: string, slot: string) => {
@@ -962,7 +972,7 @@ const WeeklyMealPlanner: React.FC<WeeklyMealPlannerProps> = ({
         const msg = typeof errData.detail === 'object' ? errData.detail.message : errData.detail;
         showToast(msg || 'No compatible alternative found preserving clinical rules.', 'error');
       }
-    } catch (e) {
+    } catch (_e) {
       showToast('Network error while swapping meal.', 'error');
     } finally {
       setSwappingSlot(null);

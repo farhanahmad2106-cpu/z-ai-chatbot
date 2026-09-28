@@ -46,6 +46,7 @@ const defaultPermissions: AdminPermissions = {
 
 const AdminAuthContext = createContext<AdminAuthContextType | undefined>(undefined);
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAdminAuth() {
   const context = useContext(AdminAuthContext);
   if (!context) {
@@ -126,9 +127,13 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   }, [currentUser, getAdminAuthHeader]);
 
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
     if (!authLoading) {
-      verifyAdmin();
+      timer = setTimeout(() => {
+        verifyAdmin();
+      }, 0);
     }
+    return () => { if (timer) clearTimeout(timer); };
   }, [currentUser, authLoading, verifyAdmin]);
 
   const value: AdminAuthContextType = {

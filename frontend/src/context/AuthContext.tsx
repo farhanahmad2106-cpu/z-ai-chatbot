@@ -3,8 +3,10 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, updateProfile } from 'firebase/auth';
 import { auth } from '../firebase';
 
+export type FirebaseUser = NonNullable<typeof auth.currentUser>;
+
 interface AuthContextType {
-  currentUser: any | null;
+  currentUser: FirebaseUser | null;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
@@ -15,6 +17,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
@@ -24,7 +27,7 @@ export function useAuth() {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [currentUser, setCurrentUser] = useState<any | null>(null);
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [showLoginModal, setShowLoginModal] = useState(false);
 
@@ -32,7 +35,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const unsubscribe = onAuthStateChanged(
         auth, 
-        async (user: any | null) => {
+        async (user: FirebaseUser | null) => {
           setCurrentUser(user);
           setLoading(false);
           
@@ -62,7 +65,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return unsubscribe;
     } catch (e) {
       console.warn("[AuthContext] Unable to initialize auth listener:", e);
-      setLoading(false);
+      const timer = setTimeout(() => {
+        setLoading(false);
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, []);
 
@@ -89,7 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await updateProfile(auth.currentUser, data);
       // Force refresh user state in app
-      setCurrentUser({ ...auth.currentUser } as any);
+      setCurrentUser({ ...auth.currentUser } as unknown as FirebaseUser);
       
       const token = await auth.currentUser.getIdToken();
       const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';

@@ -102,9 +102,9 @@ describe('ViewErrorBoundary & Lazy Code-Splitting Architecture', () => {
     };
 
     const rendered = boundary.render() as unknown as Record<string, unknown> & { type: string, props: Record<string, unknown> & { className: string, children: unknown, role: string, 'aria-live': string } };
-    const card = rendered.props.children as any;
-    const buttonContainer = card.props.children[card.props.children.length - 1] as any;
-    const buttons = buttonContainer.props.children as any;
+    const card = rendered.props.children as { props: Record<string, unknown> & { children: unknown[] } };
+    const buttonContainer = card.props.children[card.props.children.length - 1] as { props: Record<string, unknown> & { children: unknown[] } };
+    const buttons = buttonContainer.props.children as Array<{ props: Record<string, unknown> & { type: string, children: unknown[] } }>;
 
     // Primary retry button
     const retryButton = buttons[0];
@@ -133,9 +133,9 @@ describe('ViewErrorBoundary & Lazy Code-Splitting Architecture', () => {
     expect(boundary.state.isRepeatedFailure).toBe(true);
 
     const rendered = boundary.render() as unknown as Record<string, unknown> & { type: string, props: Record<string, unknown> & { className: string, children: unknown, role: string, 'aria-live': string } };
-    const card = rendered.props.children as any;
-    const overline = card.props.children[2] as any;
-    const heading = card.props.children[3] as any;
+    const card = rendered.props.children as { props: Record<string, unknown> & { children: unknown[] } };
+    const overline = card.props.children[2] as { props: Record<string, unknown> & { children: string } };
+    const heading = card.props.children[3] as { props: Record<string, unknown> & { children: string } };
     expect(overline.props.children).toBe('Persistent Load Error');
     expect(heading.props.children).toBe('Unable to load section');
   });
@@ -303,9 +303,9 @@ describe('ViewErrorBoundary & Lazy Code-Splitting Architecture', () => {
     expect(rendered.props.role).toBe('alert');
     expect(rendered.props['aria-live']).toBe('assertive');
 
-    const card = rendered.props.children as any;
-    const buttonContainer = card.props.children[card.props.children.length - 1] as any;
-    const [forceReloadBtn, dashboardBtn] = buttonContainer.props.children as any;
+    const card = rendered.props.children as { props: Record<string, unknown> & { children: unknown[] } };
+    const buttonContainer = card.props.children[card.props.children.length - 1] as { props: Record<string, unknown> & { children: unknown[] } };
+    const [forceReloadBtn, dashboardBtn] = buttonContainer.props.children as Array<{ props: Record<string, unknown> & { type: string, children: unknown[] } }>;
 
     expect(forceReloadBtn.props.type).toBe('button');
     expect(forceReloadBtn.props.children[1]).toBe('Force Reload');

@@ -28,9 +28,9 @@ export default function LoginModal() {
         await createUserWithEmailAndPassword(auth, email, password);
       }
       setShowLoginModal(false);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setError(err.message || 'An error occurred during authentication.');
+      setError((err as Error).message || 'An error occurred during authentication.');
     } finally {
       setIsEmailLoading(false);
     }
@@ -42,9 +42,9 @@ export default function LoginModal() {
     try {
       await signInWithGoogle();
       setShowLoginModal(false);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setError(err.message || 'Failed to sign in with Google.');
+      setError((err as Error).message || 'Failed to sign in with Google.');
     } finally {
       setIsGoogleLoading(false);
     }

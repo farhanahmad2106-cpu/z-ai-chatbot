@@ -20,9 +20,13 @@ export default function HealthConsentModal({
 
   // Reset checkbox state when modal opens
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
     if (isOpen) {
-      setConsentChecked(false);
+      timer = setTimeout(() => {
+        setConsentChecked(false);
+      }, 0);
     }
+    return () => { if (timer) clearTimeout(timer); };
   }, [isOpen]);
 
   // Focus management: Trap focus inside modal & listen for Escape key

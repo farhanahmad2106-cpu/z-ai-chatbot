@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useUserProfile } from '../context/UserProfileContext';
 import { useUserStats } from '../context/UserStatsContext';
@@ -92,6 +92,7 @@ export const MacroMetricCard: React.FC<MacroMetricCardProps> = ({
 
 
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const MEAL_LANGUAGES: { code: MealLanguage; label: string; native: string }[] = [
   { code: 'en', label: 'English', native: 'English' },
   { code: 'hi', label: 'Hindi', native: 'हिन्दी' },
@@ -159,7 +160,7 @@ const MealPlanner: React.FC = () => {
       if (saved && ['en', 'hi', 'mr', 'ta', 'bn', 'te'].includes(saved)) {
         return saved as MealLanguage;
       }
-    } catch (e) { /* empty */ }
+    } catch (_) { /* empty */ }
     return 'en';
   });
   const [translationCache, setTranslationCache] = useState<Record<string, Record<string, TranslatedMealItem>>>({});
@@ -176,15 +177,17 @@ const MealPlanner: React.FC = () => {
     if (isProfileIncomplete) {
       const lastPrompt = localStorage.getItem('z_health_vault_prompt_date');
       const now = new Date();
+      let timer: ReturnType<typeof setTimeout>;
       if (!lastPrompt) {
-        setShowReminder(true);
+        timer = setTimeout(() => setShowReminder(true), 0);
       } else {
         const lastDate = new Date(lastPrompt);
         const diffDays = (now.getTime() - lastDate.getTime()) / (1000 * 3600 * 24);
         if (diffDays >= 30) {
-          setShowReminder(true);
+          timer = setTimeout(() => setShowReminder(true), 0);
         }
       }
+      return () => { if (timer) clearTimeout(timer); };
     }
   }, [healthProfile, preferences]);
 
@@ -194,7 +197,7 @@ const MealPlanner: React.FC = () => {
   };
 
   // Translation fetcher with in-memory caching and deduplication
-  const ensureTranslations = async (mealsToTranslate: TranslatableMealItem[], targetLang?: MealLanguage) => {
+  const ensureTranslations = useCallback(async (mealsToTranslate: TranslatableMealItem[], targetLang?: MealLanguage) => {
     const lang = targetLang || selectedLang;
     if (!currentUser || lang === 'en' || mealsToTranslate.length === 0) return;
 
@@ -203,18 +206,21 @@ const MealPlanner: React.FC = () => {
     const uncached = mealsToTranslate.filter(m => !existingMap[m.meal_id]);
     if (uncached.length === 0) return;
 
-    const payloadMeals = uncached.map(m => ({
-      ...m,
-      calories: (m as any).calories || 250,
-      protein_g: (m as any).protein_g || 10,
-      carbs_g: (m as any).carbs_g || 30,
-      fat_g: (m as any).fat_g || 5,
-      sodium_mg: (m as any).sodium_mg || 100,
-      sugar_g: (m as any).sugar_g || 0,
-      safety_score: (m as any).safety_score || 90,
-      safety_class: (m as any).safety_class || 'safe',
-      conflict: m.conflict || { is_safe: true, conflict_severity: 'none', warning_reasons: [] }
-    }));
+    const payloadMeals = uncached.map(m => {
+      const mr = m as unknown as Record<string, unknown>;
+      return {
+        ...m,
+        calories: mr.calories || 250,
+        protein_g: mr.protein_g || 10,
+        carbs_g: mr.carbs_g || 30,
+        fat_g: mr.fat_g || 5,
+        sodium_mg: mr.sodium_mg || 100,
+        sugar_g: mr.sugar_g || 0,
+        safety_score: mr.safety_score || 90,
+        safety_class: mr.safety_class || 'safe',
+        conflict: m.conflict || { is_safe: true, conflict_severity: 'none', warning_reasons: [] }
+      };
+    });
 
     setIsTranslating(true);
     try {
@@ -253,20 +259,23 @@ const MealPlanner: React.FC = () => {
     } finally {
       setIsTranslating(false);
     }
-  };
+  }, [currentUser, selectedLang, translationCache]);
 
   // Trigger translation when single-day plan is loaded
   useEffect(() => {
     if (plan && plan.meals.length > 0 && selectedLang !== 'en') {
-      ensureTranslations(plan.meals, selectedLang);
+      const timer = setTimeout(() => {
+        ensureTranslations(plan.meals, selectedLang);
+      }, 0);
+      return () => clearTimeout(timer);
     }
-  }, [plan, selectedLang]);
+  }, [plan, selectedLang, ensureTranslations]);
 
   const handleLanguageSelect = (lang: MealLanguage) => {
     setSelectedLang(lang);
     try {
       localStorage.setItem('z_sehealth_preferred_meal_lang', lang);
-    } catch (e) { /* empty */ }
+    } catch (_) { /* empty */ }
     if (lang !== 'en' && plan && plan.meals.length > 0) {
       ensureTranslations(plan.meals, lang);
     }
@@ -296,7 +305,7 @@ const MealPlanner: React.FC = () => {
         const err = await res.json();
         setError(err.detail || 'Failed to generate plan.');
       }
-    } catch (e) {
+    } catch (_) {
       setError('Network error while generating plan.');
     } finally {
       setLoading(false);
@@ -340,7 +349,7 @@ const MealPlanner: React.FC = () => {
         const err = await res.json();
         showToast(err.detail || 'No compatible alternative found.', 'error');
       }
-    } catch (e) {
+    } catch (_) {
       showToast('Network error while swapping meal.', 'error');
     } finally {
       setSwapping(null);

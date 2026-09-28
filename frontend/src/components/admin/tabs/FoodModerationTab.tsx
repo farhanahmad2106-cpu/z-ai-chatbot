@@ -82,7 +82,10 @@ export default function FoodModerationTab() {
   }, [getAdminAuthHeader, selectedFood]);
 
   useEffect(() => {
-    fetchPendingFoods();
+    const timer = setTimeout(() => {
+      fetchPendingFoods();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [fetchPendingFoods]);
 
   const handleSelectFood = (food: FoodItem) => {

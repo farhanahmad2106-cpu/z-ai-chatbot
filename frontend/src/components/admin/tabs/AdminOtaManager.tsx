@@ -58,7 +58,10 @@ export default function AdminOtaManager() {
   }, [channel, getAdminAuthHeader]);
 
   useEffect(() => {
-    fetchUpdates();
+    const timer = setTimeout(() => {
+      fetchUpdates();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [fetchUpdates]);
 
   const triggerDispatch = async (action: 'publish' | 'rollback' = 'publish') => {

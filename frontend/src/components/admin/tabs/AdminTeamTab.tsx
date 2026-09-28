@@ -67,7 +67,10 @@ export default function AdminTeamTab() {
   }, [getAdminAuthHeader, isSuperAdmin]);
 
   useEffect(() => {
-    fetchTeam();
+    const timer = setTimeout(() => {
+      fetchTeam();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [fetchTeam]);
 
   // Guard for non-super admins

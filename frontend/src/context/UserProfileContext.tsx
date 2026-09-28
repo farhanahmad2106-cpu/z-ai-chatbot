@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useMemo } from 'react';
+import { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { API_BASE } from '../config';
 import { HEALTH_VAULT_CONSENT_KEY, HEALTH_VAULT_CONSENT_VERSION } from '../constants/compliance';
@@ -66,6 +66,7 @@ const defaultSettings: Settings = { notificationsEnabled: true, darkMode: true, 
 
 const UserProfileContext = createContext<UserProfileContextType | undefined>(undefined);
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useUserProfile() {
   const context = useContext(UserProfileContext);
   if (context === undefined) {
@@ -105,21 +106,7 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
     return false;
   }, [consentRecord]);
 
-  useEffect(() => {
-    if (currentUser) {
-      fetchProfile();
-    } else {
-      setHealthProfile(defaultHealth);
-      setPreferences(defaultPreferences);
-      setSettings(defaultSettings);
-      setConsentRecord(null);
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem(HEALTH_VAULT_CONSENT_KEY);
-      }
-    }
-  }, [currentUser]);
-
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     if (!currentUser) return;
     setLoadingProfile(true);
     try {
@@ -156,7 +143,27 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
     } finally {
       setLoadingProfile(false);
     }
-  };
+  }, [currentUser]);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    if (currentUser) {
+      timer = setTimeout(() => {
+        fetchProfile();
+      }, 0);
+    } else {
+      timer = setTimeout(() => {
+        setHealthProfile(defaultHealth);
+        setPreferences(defaultPreferences);
+        setSettings(defaultSettings);
+        setConsentRecord(null);
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem(HEALTH_VAULT_CONSENT_KEY);
+        }
+      }, 0);
+    }
+    return () => { if (timer) clearTimeout(timer); };
+  }, [currentUser, fetchProfile]);
 
   const recordConsent = async (action: 'granted' | 'withdrawn', mechanism: string = 'health_vault_modal_checkbox'): Promise<boolean> => {
     if (!currentUser) return false;
@@ -228,7 +235,7 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
     }
   };
 
-  const updateProfileData = async (payload: any): Promise<boolean> => {
+  const updateProfileData = async (payload: Record<string, unknown>): Promise<boolean> => {
     if (!currentUser) return false;
     try {
       const token = await currentUser.getIdToken();

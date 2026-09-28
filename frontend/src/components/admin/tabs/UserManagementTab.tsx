@@ -87,7 +87,10 @@ export default function UserManagementTab() {
   }, [getAdminAuthHeader, page, searchQuery, tierFilter, bannedFilter]);
 
   useEffect(() => {
-    fetchUsers();
+    const timer = setTimeout(() => {
+      fetchUsers();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [fetchUsers]);
 
   const handleResetQuota = (user: UserRecord) => {
@@ -165,7 +168,7 @@ export default function UserManagementTab() {
     try {
       const headers = await getAdminAuthHeader();
       
-      const payload: any = {
+      const payload: Record<string, unknown> = {
         payment_id: refundPaymentId.trim(),
         reason: refundReason
       };

@@ -1,4 +1,5 @@
 import React from 'react';
+import { type FirebaseUser } from '../context/AuthContext';
 import { 
   UserCircle, 
   Settings as SettingsIcon, 
@@ -16,7 +17,7 @@ import {
 interface ProfileDropdownProps {
   isOpen: boolean;
   onClose: () => void;
-  currentUser: any;
+  currentUser: FirebaseUser | null;
   tier?: string;
   streak?: number;
   isAdmin?: boolean;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { createCustomMeal, getUserCustomMeals, deleteCustomMeal } from "../services/customMeals";
@@ -54,25 +54,28 @@ export const CustomRecipeModal: React.FC<CustomRecipeModalProps> = ({
   const [myRecipes, setMyRecipes] = useState<CustomMealResponse[]>([]);
   const [loadingRecipes, setLoadingRecipes] = useState(false);
 
-  useEffect(() => {
-    if (isOpen && activeTab === "my_recipes" && currentUser) {
-      loadMyRecipes();
-    }
-  }, [isOpen, activeTab, currentUser]);
-
-  const loadMyRecipes = async () => {
+  const loadMyRecipes = useCallback(async () => {
     if (!currentUser) return;
     setLoadingRecipes(true);
     try {
       const token = await currentUser.getIdToken();
       const res = await getUserCustomMeals(token);
       setMyRecipes(res);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
     } finally {
       setLoadingRecipes(false);
     }
-  };
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (isOpen && activeTab === "my_recipes" && currentUser) {
+      const timer = setTimeout(() => {
+        loadMyRecipes();
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, activeTab, currentUser, loadMyRecipes]);
 
   if (!isOpen) return null;
 
@@ -85,12 +88,12 @@ export const CustomRecipeModal: React.FC<CustomRecipeModalProps> = ({
     setIngredients(ingredients.filter((_, i) => i !== index));
   };
 
-  const handleIngredientChange = (index: number, field: keyof IngredientItemInput, value: any) => {
+  const handleIngredientChange = (index: number, field: keyof IngredientItemInput, value: string | number) => {
     const updated = [...ingredients];
     if (field === "quantity_grams") {
-      updated[index].quantity_grams = Math.max(1, parseFloat(value) || 0);
+      updated[index].quantity_grams = Math.max(1, parseFloat(String(value)) || 0);
     } else {
-      updated[index].name = value;
+      updated[index].name = String(value);
     }
     setIngredients(updated);
   };
@@ -136,8 +139,12 @@ export const CustomRecipeModal: React.FC<CustomRecipeModalProps> = ({
       if (onRecipeSaved) {
         onRecipeSaved(result);
       }
-    } catch (err: any) {
-      setErrorMessage(err.message || "Failed to analyze and save recipe.");
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setErrorMessage(err.message || "Failed to analyze and save recipe.");
+      } else {
+        setErrorMessage("Failed to analyze and save recipe.");
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -152,8 +159,12 @@ export const CustomRecipeModal: React.FC<CustomRecipeModalProps> = ({
       setMyRecipes((prev) => prev.filter((r) => r.id !== recipeToDelete.id));
       showToast(`Recipe "${recipeToDelete.name}" deleted.`, "success");
       setRecipeToDelete(null);
-    } catch (err: any) {
-      showToast("Failed to delete recipe: " + (err.message || "An unexpected error occurred"), "error");
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        showToast("Failed to delete recipe: " + (err.message || "An unexpected error occurred"), "error");
+      } else {
+        showToast("Failed to delete recipe: An unexpected error occurred", "error");
+      }
     } finally {
       setIsDeletingRecipe(false);
     }

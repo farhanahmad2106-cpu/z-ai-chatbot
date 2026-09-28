@@ -49,8 +49,10 @@ export function LegalViewer({ activeDoc, onNavigate, onBackToApp }: LegalViewerP
     let isMounted = true;
     document.title = docConfig.pageTitle;
 
-    setLoading(true);
-    setError(null);
+    setTimeout(() => {
+      setLoading(true);
+      setError(null);
+    }, 0);
 
     fetch(docConfig.source)
       .then(async (response) => {
@@ -210,31 +212,31 @@ export function LegalViewer({ activeDoc, onNavigate, onBackToApp }: LegalViewerP
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
-                h1: ({ node, ...props }) => (
+                h1: ({ node: _node, ...props }) => (
                   <h1 className="text-2xl sm:text-3xl md:text-4xl font-outfit font-bold text-white mb-6 pb-4 border-b border-slate-800 tracking-tight" {...props} />
                 ),
-                h2: ({ node, ...props }) => (
+                h2: ({ node: _node, ...props }) => (
                   <h2 className="text-xl sm:text-2xl font-outfit font-bold text-slate-100 mt-10 mb-4 tracking-tight" {...props} />
                 ),
-                h3: ({ node, ...props }) => (
+                h3: ({ node: _node, ...props }) => (
                   <h3 className="text-lg sm:text-xl font-outfit font-semibold text-slate-200 mt-8 mb-3 tracking-tight" {...props} />
                 ),
-                h4: ({ node, ...props }) => (
+                h4: ({ node: _node, ...props }) => (
                   <h4 className="text-base sm:text-lg font-outfit font-semibold text-slate-300 mt-6 mb-2" {...props} />
                 ),
-                p: ({ node, ...props }) => (
+                p: ({ node: _node, ...props }) => (
                   <p className="text-slate-300 leading-relaxed mb-4 text-[14px] sm:text-[15px]" {...props} />
                 ),
-                ul: ({ node, ...props }) => (
+                ul: ({ node: _node, ...props }) => (
                   <ul className="list-disc list-outside ml-5 text-slate-300 mb-6 space-y-2 text-[14px] sm:text-[15px]" {...props} />
                 ),
-                ol: ({ node, ...props }) => (
+                ol: ({ node: _node, ...props }) => (
                   <ol className="list-decimal list-outside ml-5 text-slate-300 mb-6 space-y-2 text-[14px] sm:text-[15px]" {...props} />
                 ),
-                li: ({ node, ...props }) => (
+                li: ({ node: _node, ...props }) => (
                   <li className="pl-1 leading-relaxed" {...props} />
                 ),
-                a: ({ node, href, children, ...props }) => {
+                a: ({ node: _node, href, children, ...props }) => {
                   const isExternal = href?.startsWith('http://') || href?.startsWith('https://');
                   return (
                     <a
@@ -249,30 +251,31 @@ export function LegalViewer({ activeDoc, onNavigate, onBackToApp }: LegalViewerP
                     </a>
                   );
                 },
-                blockquote: ({ node, ...props }) => (
+                blockquote: ({ node: _node, ...props }) => (
                   <blockquote className="border-l-4 border-emerald-500 bg-emerald-500/10 rounded-r-xl p-4 my-6 text-slate-300 text-sm italic" {...props} />
                 ),
-                hr: ({ node, ...props }) => (
+                hr: ({ node: _node, ...props }) => (
                   <hr className="my-8 border-slate-800" {...props} />
                 ),
-                table: ({ node, ...props }) => (
+                table: ({ node: _node, ...props }) => (
                   <div className="overflow-x-auto w-full my-6 rounded-xl border border-slate-800 bg-slate-950/60 shadow-inner">
                     <table className="w-full text-left border-collapse text-sm min-w-[540px]" {...props} />
                   </div>
                 ),
-                thead: ({ node, ...props }) => (
+                thead: ({ node: _node, ...props }) => (
                   <thead className="bg-slate-800/80 text-slate-200 border-b border-slate-700 font-mono text-xs uppercase tracking-wider" {...props} />
                 ),
-                th: ({ node, ...props }) => (
+                th: ({ node: _node, ...props }) => (
                   <th className="py-3 px-4 font-bold border-r border-slate-800 last:border-r-0" {...props} />
                 ),
-                tbody: ({ node, ...props }) => (
+                tbody: ({ node: _node, ...props }) => (
                   <tbody className="divide-y divide-slate-800/80 font-sans" {...props} />
                 ),
-                td: ({ node, ...props }) => (
+                td: ({ node: _node, ...props }) => (
                   <td className="py-3 px-4 border-r border-slate-800/50 last:border-r-0 text-slate-300 align-top text-xs sm:text-sm" {...props} />
                 ),
-                code: ({ node, className, children, ...props }: any) => {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                code: ({ node: _node, className, children, ...props }: any) => {
                   const isMultiline = typeof children === 'string' && children.includes('\n');
                   return !isMultiline && !className ? (
                     <code className="bg-slate-800 text-emerald-300 px-1.5 py-0.5 rounded font-mono text-[13px] border border-slate-700/50" {...props}>
@@ -284,7 +287,7 @@ export function LegalViewer({ activeDoc, onNavigate, onBackToApp }: LegalViewerP
                     </pre>
                   );
                 },
-                strong: ({ node, ...props }) => (
+                strong: ({ node: _node, ...props }) => (
                   <strong className="text-white font-semibold" {...props} />
                 ),
               }}

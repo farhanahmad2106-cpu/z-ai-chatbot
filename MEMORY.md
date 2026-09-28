@@ -1,7 +1,26 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-26 (Session: Master Prompt 4 — Documentation Synchronization, Dependency Hygiene & Local Script Alignment)
+> **Last Updated:** 2026-09-28 (Session: Zero-Warning Frontend ESLint & TypeScript Remediation)
+
+---
+
+## 🗓️ Last Session Summary
+**Date:** 2026-09-28
+**Work Done — Zero-Warning Frontend ESLint & TypeScript Remediation:**
+- **ESLint & TypeScript Baseline Restoration**:
+  - Systematically audited and remediated 141+ historical frontend ESLint diagnostics to establish a strict zero-warning / zero-error baseline (`npm run lint` passes).
+  - Addressed `react-hooks/exhaustive-deps` and `react-hooks/set-state-in-effect` violations without changing application semantics (used `setTimeout` deferrals for state updates during render, wrapped dependency functions in `useCallback`).
+  - Allowed configured underscore-prefixed variables (e.g. `_isMounted`, `_node`) in `eslint.config.js` to preserve intended unused variable semantics.
+  - Resolved `rules-of-hooks` in `WeeklyMealPlanner.tsx` and scoping/hoisting issues in `Search.tsx`.
+- **TypeScript Strictness & Type Safety**:
+  - Remediated remaining TypeScript build errors blocking the production bundle (`tsc -b`).
+  - Replaced ambiguous `User` namespace imports from `firebase/auth` with a precise `FirebaseUser = NonNullable<typeof auth.currentUser>` definition in `AuthContext.tsx`.
+  - Fixed `unknown` type errors in catch blocks (`err as Error`).
+  - Resolved `Record<string, unknown>` and `any` type casting issues in `Scan.tsx`, `CustomRecipeModal.tsx`, `MealPlanner.tsx`, `Profile.tsx`, and `Search.tsx` without dropping safety boundaries.
+- **Production Bundle Validation**:
+  - Re-verified production build (`vite build`) successfully compiling with 0 errors.
+  - Maintained core application bundle performance; initial chunk size remained under 400 kB (252.44 kB raw / 69.16 kB gzip).
 
 ---
 

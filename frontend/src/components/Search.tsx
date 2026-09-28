@@ -5,6 +5,18 @@ import { useUserProfile } from '../context/UserProfileContext';
 import { useToast } from '../context/ToastContext';
 import { API_BASE } from '../config';
 
+// UI Component for disabled "Coming Soon" features
+const ComingSoonOption = ({ title }: { title: string }) => (
+  <div className="relative group">
+    <div className="absolute top-0 right-4 -translate-y-1/2 bg-slate-800 text-[9px] font-black px-2 py-1 rounded border border-slate-700 text-emerald-500/80 tracking-tighter z-10">
+      COMING SOON
+    </div>
+    <button className="w-full p-6 bg-slate-900/40 border border-slate-800/60 rounded-4xl text-gray-500 font-bold text-left cursor-default pointer-events-none">
+      {title}
+    </button>
+  </div>
+);
+
 /** * INTERFACES
  * Define the structure of our data to ensure Type Safety across the app.
  */
@@ -384,7 +396,7 @@ export default function Search({ onNavigateToDashboard }: { onNavigateToDashboar
     setIsSubmittingBatch(true);
     try {
       const countLogged = totalSelectedCount;
-      const success = await logMultipleMeals(items);
+      const success = await logMultipleMeals(items as unknown as { food: Record<string, unknown>; count: number; }[]);
       if (success) {
         showToast(`Successfully logged ${countLogged} meal${countLogged > 1 ? 's' : ''}!`);
         clearAllSelectedMeals();
@@ -405,17 +417,44 @@ export default function Search({ onNavigateToDashboard }: { onNavigateToDashboar
 
   // --- API CALLS ---
 
-  // Fetch initial data on mount
-  useEffect(() => { 
-    fetchInitialFoods(); 
-    const savedRecents = localStorage.getItem('recentSearchedFoods');
-    if (savedRecents) {
-      try {
-        setRecentItems(JSON.parse(savedRecents));
-      } catch (e) {
-        console.error("Failed to parse recent items", e);
-      }
+  async function fetchInitialFoods() {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setIsOfflineCatalog(true);
+      return;
     }
+    setIsRevalidating(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/foods?search=`);
+      if (response.ok) {
+        const data = await response.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setFoods(data);
+          setIsOfflineCatalog(false);
+          localStorage.setItem('z_sehealth_cached_search_foods', JSON.stringify(data));
+        }
+      }
+    } catch (err) {
+      console.warn("Background search fetch failed, keeping local catalog:", err);
+      setIsOfflineCatalog(true);
+    } finally {
+      setIsRevalidating(false);
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { 
+    const timer = setTimeout(() => {
+      fetchInitialFoods();
+      const savedRecents = localStorage.getItem('recentSearchedFoods');
+      if (savedRecents) {
+        try {
+          setRecentItems(JSON.parse(savedRecents));
+        } catch (e) {
+          console.error("Failed to parse recent items", e);
+        }
+      }
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   const getOfflineCatalog = (): FoodItem[] => {
@@ -484,30 +523,6 @@ export default function Search({ onNavigateToDashboard }: { onNavigateToDashboar
     });
   };
 
-  const fetchInitialFoods = async () => {
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      setIsOfflineCatalog(true);
-      return;
-    }
-    setIsRevalidating(true);
-    try {
-      const response = await fetch(`${API_BASE}/api/foods?search=`);
-      if (response.ok) {
-        const data = await response.json();
-        if (Array.isArray(data) && data.length > 0) {
-          setFoods(data);
-          setIsOfflineCatalog(false);
-          localStorage.setItem('z_sehealth_cached_search_foods', JSON.stringify(data));
-        }
-      }
-    } catch (err) {
-      console.warn("Background search fetch failed, keeping local catalog:", err);
-      setIsOfflineCatalog(true);
-    } finally {
-      setIsRevalidating(false);
-      setLoading(false);
-    }
-  };
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -596,18 +611,6 @@ export default function Search({ onNavigateToDashboard }: { onNavigateToDashboar
     const countToShow = 6 + (6 * showMoreClicks);
     return filtered.slice(0, countToShow);
   }, [showMoreClicks, langSearchTerm, isSearchingLang]);
-
-  // UI Component for disabled "Coming Soon" features
-  const ComingSoonOption = ({ title }: { title: string }) => (
-    <div className="relative group">
-      <div className="absolute top-0 right-4 -translate-y-1/2 bg-slate-800 text-[9px] font-black px-2 py-1 rounded border border-slate-700 text-emerald-500/80 tracking-tighter z-10">
-        COMING SOON
-      </div>
-      <button className="w-full p-6 bg-slate-900/40 border border-slate-800/60 rounded-4xl text-gray-500 font-bold text-left cursor-default pointer-events-none">
-        {title}
-      </button>
-    </div>
-  );
 
   return (
     <div className="min-h-screen bg-slate-950 text-white p-6 font-outfit pb-36 relative">

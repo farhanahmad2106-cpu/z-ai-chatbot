@@ -34,8 +34,8 @@ interface UserStatsContextType {
   setShowUpgradeModal: (show: boolean) => void;
   upgradePlan: (planId: string) => Promise<void>;
   refreshSubscription: () => Promise<void>;
-  logMeal: (foodItem: any, options?: { silent?: boolean }) => Promise<boolean>;
-  logMultipleMeals: (items: Array<{ food: any; count: number }>) => Promise<boolean>;
+  logMeal: (foodItem: Record<string, unknown>, options?: { silent?: boolean }) => Promise<boolean>;
+  logMultipleMeals: (items: Array<{ food: Record<string, unknown>; count: number }>) => Promise<boolean>;
   syncQueuedMeals: () => Promise<SyncResult>;
   loadingStats: boolean;
   requestNotificationPermission: () => void;
@@ -59,6 +59,7 @@ const dummyGoals: DailyGoals = {
 
 const UserStatsContext = createContext<UserStatsContextType | undefined>(undefined);
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useUserStats() {
   const context = useContext(UserStatsContext);
   if (context === undefined) {
@@ -161,17 +162,23 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
   }, [currentUser]);
 
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
     if (currentUser) {
       // Revalidate in background without blocking initial instant cached/dummy render
-      Promise.all([fetchStats(), fetchSubscriptionStatus()]);
+      timer = setTimeout(() => {
+        Promise.all([fetchStats(), fetchSubscriptionStatus()]);
+      }, 0);
     } else {
-      setStats(dummyStats);
-      setStreak(1);
-      setDailyGoals(dummyGoals);
-      setTier('free');
-      setScansUsed(0);
-      setScanLimit(20);
+      timer = setTimeout(() => {
+        setStats(dummyStats);
+        setStreak(1);
+        setDailyGoals(dummyGoals);
+        setTier('free');
+        setScansUsed(0);
+        setScanLimit(20);
+      }, 0);
     }
+    return () => { if (timer) clearTimeout(timer); };
   }, [currentUser, fetchStats, fetchSubscriptionStatus]);
 
   // --- FREEMIUM: Upgrade plan (create Razorpay subscription) ---
@@ -206,6 +213,7 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
       }
 
       await new Promise<void>((resolve, reject) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if ((window as any).Razorpay) { resolve(); return; }
         const script = document.createElement('script');
         script.src = 'https://checkout.razorpay.com/v1/checkout.js';
@@ -227,7 +235,7 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
         description: `${planNames[planId] ?? planId} Premium Subscription`,
         image: '/icon.svg',
         theme: { color: '#10b981' },
-        handler: async (response: any) => {
+        handler: async (response: Record<string, unknown>) => {
           await fetchSubscriptionStatus();
           window.dispatchEvent(new CustomEvent('z-payment-success', {
             detail: {
@@ -242,18 +250,19 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
         },
       };
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       new (window as any).Razorpay(options).open();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Upgrade plan failed:', error);
       window.dispatchEvent(new CustomEvent('z-payment-failure', {
-        detail: { planName: planId, error: error.message }
+        detail: { planName: planId, error: (error as Error).message }
       }));
     } finally {
       setLoadingUpgrade(false);
     }
-  }, [currentUser, fetchSubscriptionStatus]);
+  }, [currentUser, fetchSubscriptionStatus, setShowLoginModal]);
 
-  const logMeal = async (foodItem: any, options?: { silent?: boolean }): Promise<boolean> => {
+  const logMeal = async (foodItem: Record<string, unknown>, options?: { silent?: boolean }): Promise<boolean> => {
     if (!currentUser) {
       showToast("Please log in to log a meal.");
       setShowLoginModal(true);
@@ -271,7 +280,7 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       try {
         await queueOfflineMeal({
-          name: foodItem?.name || 'Meal',
+          name: (foodItem?.name as string) || 'Meal',
           ingredients: Array.isArray(foodItem?.ingredients) ? foodItem.ingredients : [],
           userId: currentUser.uid,
           ...estimatedMacros,
@@ -329,7 +338,7 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
       console.warn("Failed to log meal online, falling back to offline queue:", error);
       try {
         await queueOfflineMeal({
-          name: foodItem?.name || 'Meal',
+          name: (foodItem?.name as string) || 'Meal',
           ingredients: Array.isArray(foodItem?.ingredients) ? foodItem.ingredients : [],
           userId: currentUser.uid,
           ...estimatedMacros,
@@ -400,7 +409,7 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const logMultipleMeals = async (items: Array<{ food: any; count: number }>): Promise<boolean> => {
+  const logMultipleMeals = async (items: Array<{ food: Record<string, unknown>; count: number }>): Promise<boolean> => {
     if (!currentUser) {
       showToast("Please log in to log meals.");
       setShowLoginModal(true);
@@ -421,7 +430,7 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
     return overallSuccess;
   };
 
-  const scheduleDailyNotification = () => {
+  const scheduleDailyNotification = useCallback(() => {
     const now = new Date();
     const targetTime = new Date();
     targetTime.setHours(21, 0, 0, 0);
@@ -446,9 +455,9 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
         }
       }, 24 * 60 * 60 * 1000);
     }, timeUntil9PM);
-  };
+  }, []);
 
-  const requestNotificationPermission = () => {
+  const requestNotificationPermission = useCallback(() => {
     if (!('Notification' in window)) {
       console.log('This browser does not support desktop notification');
       return;
@@ -462,13 +471,13 @@ export function UserStatsProvider({ children }: { children: React.ReactNode }) {
         }
       });
     }
-  };
+  }, [scheduleDailyNotification]);
 
   useEffect(() => {
     if (currentUser) {
       requestNotificationPermission();
     }
-  }, [currentUser]);
+  }, [currentUser, requestNotificationPermission]);
 
   // Automatically reconcile authoritative user stats whenever queued meals are synced
   useEffect(() => {

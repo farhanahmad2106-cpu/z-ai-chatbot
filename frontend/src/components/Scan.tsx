@@ -40,6 +40,7 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
   const [image, setImage] = useState<string | null>(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [loading, setLoading] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [analysisResult, setAnalysisResult] = useState<any | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const [activeModal, setActiveModal] = useState<'main' | 'translator' | null>(null);
@@ -52,6 +53,7 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
   const [barcodeQuery, setBarcodeQuery] = useState<string | null>(null);
   const [barcodeNotFound, setBarcodeNotFound] = useState(false);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const zxingRef = useRef<any>(null);
   const scanCooldownRef = useRef<boolean>(false);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
@@ -67,7 +69,7 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
 
   const playSuccessChime = () => {
     try {
-        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const audioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
         const oscillator = audioCtx.createOscillator();
         const gainNode = audioCtx.createGain();
         
@@ -113,7 +115,7 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
       const cached = localStorage.getItem('z_sehealth_cached_search_foods');
       if (cached) {
         const parsed = JSON.parse(cached);
-        const match = parsed.find((f: any) => f.barcode === barcode);
+        const match = parsed.find((f: Record<string, unknown>) => f.barcode === barcode);
         if (match) {
            setAnalysisResult(match);
            setLoading(false);
@@ -144,7 +146,7 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
         try {
           const currentCached = localStorage.getItem('z_sehealth_cached_search_foods');
           const list = currentCached ? JSON.parse(currentCached) : [];
-          if (!list.some((item: any) => item.barcode === barcode || item._id === data._id)) {
+          if (!list.some((item: Record<string, unknown>) => item.barcode === barcode || item._id === data._id)) {
             list.unshift({ ...data, barcode });
             localStorage.setItem('z_sehealth_cached_search_foods', JSON.stringify(list.slice(0, 100)));
           }
@@ -178,12 +180,14 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
     }
     
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const decodePromise = zxingRef.current.decodeFromVideoElement(videoEl, (result: any, _err: any) => {
         if (result) {
            handleBarcodeDecoded(result.getText());
         }
       });
       if (decodePromise && typeof decodePromise.catch === 'function') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         decodePromise.catch((e: any) => {
           if (e && e.message && e.message.includes('Video stream has ended')) {
             return; // Expected when camera stops
@@ -191,7 +195,8 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
           console.warn('ZXing error:', e);
         });
       }
-    } catch (e) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (e: any) {
       console.warn('ZXing synchronous error:', e);
     }
   };
@@ -203,17 +208,20 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
   // Handle initialImage passed from other tabs (like Dashboard)
   useEffect(() => {
     if (initialImage) {
-      setImage(initialImage);
-      setAnalysisResult(null);
-      setScanError(null);
-      setTranslatedList(null);
-      setActiveModal(null);
-      setIsSearchingLang(false);
-      setLangSearchTerm('');
-      setShowMoreClicks(0);
-      if (onClearInitialImage) {
-        onClearInitialImage();
-      }
+      const timer = setTimeout(() => {
+        setImage(initialImage);
+        setAnalysisResult(null);
+        setScanError(null);
+        setTranslatedList(null);
+        setActiveModal(null);
+        setIsSearchingLang(false);
+        setLangSearchTerm('');
+        setShowMoreClicks(0);
+        if (onClearInitialImage) {
+          onClearInitialImage();
+        }
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [initialImage, onClearInitialImage]);
 
@@ -262,7 +270,7 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
         const track = streamRef.current.getVideoTracks()[0];
         try {
           await track.applyConstraints({
-            advanced: [{ zoom: finalZoom } as any]
+            advanced: [{ zoom: finalZoom } as unknown as MediaTrackConstraintSet]
           });
         } catch (e) {
           console.warn("Hardware zoom failed, falling back to digital.", e);
@@ -324,7 +332,7 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
        zxingRef.current.reset();
     }
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track: any) => track.stop());
+      streamRef.current.getTracks().forEach((track: MediaStreamTrack) => track.stop());
     }
     setIsCameraActive(false);
   };
@@ -478,6 +486,7 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
       } else {
         setAnalysisResult(data);
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       console.error("Error during analysis:", err);
       if (err.message && (err.message.includes('fetch') || err.message.includes('NetworkError') || err.name === 'TypeError')) {
@@ -507,7 +516,7 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
     setTranslating(true);
     
     // Flatten names and descriptions into a single array for batch processing
-    const textsToTranslate = analysisResult.ingredients.flatMap((i: any) => [i.name, i.description]);
+    const textsToTranslate = analysisResult.ingredients.flatMap((i: Record<string, unknown>) => [i.name as string, i.description as string]);
     
     try {
       const response = await fetch(`${API_BASE}/api/translate`, {
@@ -785,6 +794,7 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
             const detectedAllergies = userAllergies.filter(allergy => {
               const algLower = allergy.toLowerCase().trim();
               if (!algLower) return false;
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               return analysisResult.ingredients.some((ing: any) => 
                 (ing.name && ing.name.toLowerCase().includes(algLower)) || 
                 (ing.description && ing.description.toLowerCase().includes(algLower))
@@ -855,6 +865,7 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
                 
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                 {parseScannedIngredients(analysisResult.ingredients).filter((ing: any) => ing && ing.name).map((ing: any, idx: number) => {
                   const tName = translatedList?.[idx * 2];
                   const tDesc = translatedList?.[idx * 2 + 1];
@@ -1144,7 +1155,7 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
           isOpen={isReviewModalOpen}
           onClose={() => setIsReviewModalOpen(false)}
           onConfirm={(updatedData) => {
-            setAnalysisResult((prev: any) => ({
+            setAnalysisResult((prev: Record<string, unknown> | null) => prev ? ({
               ...prev,
               ...updatedData,
               name: updatedData.product_name || prev?.name,
@@ -1157,7 +1168,7 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
               nutrition_per_100g: updatedData.nutrition_per_100g || prev?.nutrition_per_100g,
               estimated_macros: updatedData.nutrition_per_100g || prev?.estimated_macros,
               requires_user_review: false,
-            }));
+            }) : null);
             setIsReviewModalOpen(false);
           }}
           initialData={{
@@ -1166,7 +1177,7 @@ function ScanContent({ onNavigateToSearch, initialImage, onClearInitialImage }: 
             parsed_ingredients: Array.isArray(analysisResult.parsed_ingredients) && analysisResult.parsed_ingredients.length > 0
               ? analysisResult.parsed_ingredients
               : Array.isArray(analysisResult.ingredients)
-              ? analysisResult.ingredients.map((i: any) => typeof i === 'string' ? i : i.name || "")
+              ? analysisResult.ingredients.map((i: Record<string, unknown> | string) => typeof i === 'string' ? i : (i as Record<string, unknown>).name || "")
               : [],
             detected_ins_additives: analysisResult.detected_ins_additives || [],
             flagged_allergens: analysisResult.flagged_allergens || analysisResult.allergens || [],

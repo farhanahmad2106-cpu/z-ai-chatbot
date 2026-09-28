@@ -94,8 +94,8 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
 
   // --- Consent & Health Deletion State ---
   const [isConsentModalOpen, setIsConsentModalOpen] = useState(false);
-  const [pendingHealthSave, setPendingHealthSave] = useState<any>(null);
-  const [pendingDietSave, setPendingDietSave] = useState<any>(null);
+  const [pendingHealthSave, setPendingHealthSave] = useState<Record<string, unknown> | null>(null);
+  const [pendingDietSave, setPendingDietSave] = useState<Record<string, unknown> | null>(null);
   const [isRecordingConsent, setIsRecordingConsent] = useState(false);
   const [isDeleteHealthModalOpen, setIsDeleteHealthModalOpen] = useState(false);
   const [isDeletingHealth, setIsDeletingHealth] = useState(false);
@@ -106,7 +106,10 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
-    setLocalHealth(healthProfile);
+    const timer = setTimeout(() => {
+      setLocalHealth(healthProfile);
+    }, 0);
+    return () => clearTimeout(timer);
   }, [healthProfile]);
 
   const calculateBMI = (heightCm: number | string, weightKg: number | string) => {
@@ -114,8 +117,8 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
     const w = Number(weightKg);
     if (!h || !w || h <= 0 || w <= 0) return null;
     const bmi = Number((w / (h * h)).toFixed(1));
-    let category = 'Normal';
-    let color = 'text-emerald-400';
+    let category: string;
+    let color: string;
     if (bmi < 18.5) { category = 'Underweight'; color = 'text-amber-400'; }
     else if (bmi < 25) { category = 'Healthy Weight'; color = 'text-emerald-400'; }
     else if (bmi < 30) { category = 'Overweight'; color = 'text-amber-400'; }
@@ -150,7 +153,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
       } else {
         showToast('Failed to update daily goals.', 'error');
       }
-    } catch (e) {
+    } catch (_) {
       showToast('Failed to update daily goals.', 'error');
     } finally {
       setIsApplyingGoals(false);
@@ -221,7 +224,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
 
     // Consent gate: if user is newly saving medical conditions without valid 1.0 consent
     if (hasMedicalConditions && !hasValidHealthConsent) {
-      setPendingHealthSave(localHealth);
+      setPendingHealthSave(localHealth as unknown as Record<string, unknown>);
       setIsConsentModalOpen(true);
       return;
     }
@@ -294,8 +297,11 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
   const [isSavingDiet, setIsSavingDiet] = useState(false);
 
   useEffect(() => {
-    setSelectedDiet(preferences.diet || 'None');
-    setSelectedAllergies(preferences.allergies || []);
+    const timer = setTimeout(() => {
+      setSelectedDiet(preferences.diet || 'None');
+      setSelectedAllergies(preferences.allergies || []);
+    }, 0);
+    return () => clearTimeout(timer);
   }, [preferences]);
 
   const toggleAllergy = (allergy: string) => {
@@ -436,7 +442,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
     );
   }
 
-  const getValidationClass = (value: any) => {
+  const getValidationClass = (value: unknown) => {
     if (saveAttemptCount === 0) return 'border-slate-700 focus:border-emerald-500';
     const isFilled = !!value;
     const baseClass = isFilled ? 'border-emerald-500' : 'border-rose-500';
@@ -497,7 +503,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, onGoToPricing }) => {
             <div className="text-center w-full">
               <p className="text-gray-400 mb-1">Joined</p>
               <p className="font-bold text-white flex items-center justify-center gap-1">
-                <Calendar className="w-4 h-4 text-blue-400" /> {new Date(currentUser.metadata.creationTime || Date.now()).getFullYear()}
+                <Calendar className="w-4 h-4 text-blue-400" /> {currentUser.metadata.creationTime ? new Date(currentUser.metadata.creationTime).getFullYear() : 'N/A'}
               </p>
             </div>
           </div>

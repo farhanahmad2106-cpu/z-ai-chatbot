@@ -35,7 +35,10 @@ export default function IngredientReviewModal({
   const [data, setData] = useState<OCRAnalysisResponse>(initialData);
 
   useEffect(() => {
-    setData(initialData);
+    const timer = setTimeout(() => {
+      setData(initialData);
+    }, 0);
+    return () => clearTimeout(timer);
   }, [initialData]);
 
   useEffect(() => {

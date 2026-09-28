@@ -52,6 +52,8 @@ interface State {
 }
 
 export class ViewErrorBoundary extends Component<Props, State> {
+  private _isMounted: boolean = false;
+
   public state: State = {
     hasError: false,
     error: null,
@@ -67,11 +69,11 @@ export class ViewErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidMount() {
-    (this as any)._isMounted = true;
+    this._isMounted = true;
   }
 
   public componentWillUnmount() {
-    (this as any)._isMounted = false;
+    this._isMounted = false;
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
@@ -83,7 +85,7 @@ export class ViewErrorBoundary extends Component<Props, State> {
     const viewKey = this.props.viewName || 'unknown';
     if (hasRetryMarker(viewKey)) {
       this.state = { ...this.state, isRepeatedFailure: true };
-      if ((this as any)._isMounted) {
+      if (this._isMounted) {
         this.setState({ isRepeatedFailure: true });
       }
     }
@@ -93,7 +95,7 @@ export class ViewErrorBoundary extends Component<Props, State> {
     // If the active view changed while in error state, reset error to allow normal view rendering
     if (prevProps.viewName !== this.props.viewName && this.state.hasError) {
       this.state = { hasError: false, error: null, isRepeatedFailure: false };
-      if ((this as any)._isMounted) {
+      if (this._isMounted) {
         this.setState({ hasError: false, error: null, isRepeatedFailure: false });
       }
     }
@@ -106,7 +108,7 @@ export class ViewErrorBoundary extends Component<Props, State> {
     if (this.state.isRepeatedFailure) {
       clearRetryMarker(viewKey);
       this.state = { hasError: false, error: null, isRepeatedFailure: false };
-      if ((this as any)._isMounted) {
+      if (this._isMounted) {
         this.setState({ hasError: false, error: null, isRepeatedFailure: false });
       }
       if (typeof window !== 'undefined') {
@@ -120,7 +122,7 @@ export class ViewErrorBoundary extends Component<Props, State> {
 
     // Clear state
     this.state = { hasError: false, error: null, isRepeatedFailure: false };
-    if ((this as any)._isMounted) {
+    if (this._isMounted) {
       this.setState({ hasError: false, error: null, isRepeatedFailure: false });
     }
 
@@ -134,7 +136,7 @@ export class ViewErrorBoundary extends Component<Props, State> {
     const viewKey = this.props.viewName || 'unknown';
     clearRetryMarker(viewKey);
     this.state = { hasError: false, error: null, isRepeatedFailure: false };
-    if ((this as any)._isMounted) {
+    if (this._isMounted) {
       this.setState({ hasError: false, error: null, isRepeatedFailure: false });
     }
     if (this.props.onReset) {

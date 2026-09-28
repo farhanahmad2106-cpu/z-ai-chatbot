@@ -48,7 +48,10 @@ export default function SystemLogsTab() {
   }, [getAdminAuthHeader, levelFilter, searchQuery]);
 
   useEffect(() => {
-    fetchLogs();
+    const timer = setTimeout(() => {
+      fetchLogs();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [fetchLogs]);
 
   // Auto-refresh interval
