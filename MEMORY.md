@@ -1,13 +1,38 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-29 (Session: FSSAI Engine v2.0.0 — Registry Upgrade, Schema Migration, 133-test compliance suite, full 417/417 regression)
+> **Last Updated:** 2026-09-30 (Session: Mobile Offline Sync Engine & Mutation Queue, Hardware Camera/Barcode Integration, Unified Tokens & 15/15 Tests)
 
 ---
 
 ## 🗓️ Last Session Summary
-**Date:** 2026-09-29
-**Work Done — FSSAI Deterministic Engine v2.0.0 (ZS-004 Elimination, Phase 4–9):**
+**Date:** 2026-09-30
+**Work Done — Mobile Offline Sync Engine, Hardware Scanner & Unified Design System:**
+
+### Files Modified & Created
+| File | Change |
+|---|---|
+| `mobile/src/services/db.ts` | **Created SQLite database & versioned migration engine** (`z_sehealth_mobile_offline.db`), creating `offline_mutation_queue`, `offline_food_cache`, and `offline_user_stats_cache` with indexes and seeded regional Indian foods. |
+| `mobile/src/services/offlineQueue.ts` | **Authoritative Offline Mutation Queue**: Durable-before-send transactional SQLite persistence, RFC 4122 UUID v4 `client_sync_id`, crash recovery (stale processing lease recovery), bounded exponential backoff with jitter, HTTP status classification (2xx/409 idempotent success, 401 pause, 400/422/403 quarantine, 429 Retry-After, 5xx backoff), Firebase user isolation, and in-memory replay mutex. |
+| `mobile/src/stores/useOfflineSyncStore.ts` | **Zustand Offline Sync Store**: NetInfo network event listener, AppState lifecycle resume synchronization, observable counts (`pending`, `failed`, `quarantined`), manual retry, dead-letter quarantine manager, and auth boundary handler. |
+| `mobile/src/stores/useAuthStore.ts` | **Enhanced Auth Store**: Token and Firebase UID management with user-switch sync triggers. |
+| `mobile/src/api/client.ts` & `endpoints.ts` | **Hardened API Client**: Canonical backend endpoint paths, token injection, timeout handling, and multipart support. |
+| `mobile/src/services/mealService.ts` | **Durable-before-send Meal Logging**: Transactional enqueueing to `/api/user/log_meal` with client_sync_id, optimistic local stats cache update, and background drain. |
+| `mobile/src/services/biometricsSync.ts` | **Durable Biometrics Sync**: Enqueuing daily wearables metrics (`step_count`, `active_energy_burned_kcal`, `resting_heart_rate_bpm`) to `/api/user/biometrics/sync`. |
+| `mobile/src/services/foodCacheService.ts` | **Offline Food & Stats Cache**: Barcode queries with SQLite cache and fallback data for instant offline launch. |
+| `mobile/src/services/scanService.ts` | **Multipart OCR Dispatch**: Form-data dispatch to `/api/scan/analyze` with type-safe schema mapping. |
+| `mobile/src/constants/theme.ts` | **Unified Design Tokens**: Slate surface hierarchy (`#020617`, `#0f172a`, `#1e293b`), accents (`#34d399`, `#f43f5e`, `#fbbf24`, `#38bdf8`), and semantic tokens. |
+| `mobile/app/(tabs)/scan.tsx` | **Hardware Barcode & Camera Screen**: `expo-camera` live barcode scanner, non-blocking cache lookup, back-of-pack photo capture with `expo-image-manipulator` JPEG compression ($\le 1\text{ MB}$), FSSAI additive safety display, and durable meal log action. |
+| `mobile/app/(tabs)/index.tsx`, `planner.tsx`, `profile.tsx`, `_layout.tsx` | **App Navigation & Diagnostics**: Root layout sync initialization, Dashboard macro telemetry & sync status, and Profile dead-letter quarantine manager. |
+| `mobile/src/tests/offlineSyncEngine.test.ts` | **15 Automated Unit & Integration Tests**: 100% pass covering UUID idempotency, backoff calculation, HTTP error classification, crash recovery, user isolation, and dead-letter quarantine. |
+
+### Test Verification
+- **Mobile Vitest Suite:** `npm --prefix mobile test` — **15/15 passed (100%)**
+- **Mobile TypeScript Typecheck:** `npx tsc --project mobile/tsconfig.json --noEmit` — **0 diagnostics (Clean)**
+- **Frontend Vitest Suite:** `npm --prefix frontend test` — **148/148 passed (100%)**
+- **Security Secret Leak Guard:** `pytest tests/test_secret_leak_guard.py` — **5/5 passed (100%)**
+
+---
 
 ### Files Modified
 | File | Change |

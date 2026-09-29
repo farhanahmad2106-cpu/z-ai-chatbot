@@ -1,26 +1,55 @@
-/**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
- */
-
-import '@/global.css';
-
 import { Platform } from 'react-native';
+
+/**
+ * Z-SeHealth Unified Design System & Theme Tokens
+ */
+export const Palette = {
+  // Surface / Dark Brutalist backgrounds
+  slate950: '#020617', // Root background
+  slate900: '#0f172a', // Cards, elevated containers, modals
+  slate800: '#1e293b', // Borders, separators, item backgrounds
+  slate700: '#334155', // Highlight borders / active borders
+  slate600: '#475569', // Muted borders
+  slate500: '#64748b', // Secondary muted text
+  slate400: '#94a3b8', // Primary body text / subtext
+  slate300: '#cbd5e1', // High contrast text
+  slate200: '#e2e8f0', // Soft white text
+  slate100: '#f1f5f9', // White / bright text
+
+  // Accents & Semantic Colorways
+  emerald400: '#34d399', // Primary accent, success, safe badge
+  emerald500: '#10b981', // Button fill, active indicators
+  rose400: '#f43f5e',    // Danger, critical allergen, high risk
+  rose500: '#e11d48',    // Error fill
+  amber400: '#fbbf24',   // Warning, streak, moderate risk
+  amber500: '#f59e0b',   // Warning fill
+  sky400: '#38bdf8',     // Info, protein indicators
+} as const;
 
 export const Colors = {
   light: {
-    text: '#000000',
+    text: '#020617',
     background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
+    backgroundElement: '#f1f5f9',
+    backgroundSelected: '#e2e8f0',
+    textSecondary: '#64748b',
+    border: '#cbd5e1',
+    primary: Palette.emerald500,
+    accent: Palette.emerald400,
+    danger: Palette.rose400,
+    warning: Palette.amber400,
   },
   dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
+    text: Palette.slate100,
+    background: Palette.slate950,
+    backgroundElement: Palette.slate900,
+    backgroundSelected: Palette.slate800,
+    textSecondary: Palette.slate400,
+    border: Palette.slate800,
+    primary: Palette.emerald400,
+    accent: Palette.emerald400,
+    danger: Palette.rose400,
+    warning: Palette.amber400,
   },
 } as const;
 
@@ -28,13 +57,9 @@ export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
 
 export const Fonts = Platform.select({
   ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
     sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
     serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
     rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
     mono: 'ui-monospace',
   },
   default: {
@@ -44,10 +69,10 @@ export const Fonts = Platform.select({
     mono: 'monospace',
   },
   web: {
-    sans: 'var(--font-display)',
-    serif: 'var(--font-serif)',
-    rounded: 'var(--font-rounded)',
-    mono: 'var(--font-mono)',
+    sans: 'var(--font-display, Inter, sans-serif)',
+    serif: 'var(--font-serif, Georgia, serif)',
+    rounded: 'var(--font-rounded, sans-serif)',
+    mono: 'var(--font-mono, monospace)',
   },
 });
 
