@@ -225,20 +225,32 @@ async def analyze_back_of_pack(
         for r_add in resolved_additives:
             name_str = r_add.canonical_name or r_add.input_name or "Unknown Additive"
             code_str = r_add.normalized_ins_code or ""
-            status_str = r_add.application_risk_tier
-            
+            # zsehealth_risk_tier is Z-SeHealth's application classification (NOT FSSAI statutory)
+            status_str = r_add.zsehealth_risk_tier
+
             formatted = f"{code_str}: {name_str} ({status_str})" if code_str else f"{name_str} ({status_str})"
             if formatted not in formatted_additives:
                 formatted_additives.append(formatted)
-                
-        # Format the actual objects for MongoDB matching schema
+
+        # Format resolved additive objects for MongoDB storage.
+        # Field naming:
+        #   risk / zsehealth_risk_tier  = Z-SeHealth application tier (NOT FSSAI statutory)
+        #   fssai_regulatory_status     = FSSAI regulatory determination
+        #   is_fssai_approved           = True only for verified_permitted (context-independent)
+        #   penalty_points              = Z-SeHealth deterministic scoring contribution
         analysis_result.detected_ins_additives = [
             {
-                "code": r_add.normalized_ins_code, 
-                "name": r_add.canonical_name, 
-                "risk": r_add.application_risk_tier,
-                "regulatory_status": r_add.regulatory_status,
-                "provenance": r_add.provenance
+                "code": r_add.normalized_ins_code,
+                "name": r_add.canonical_name,
+                # Backward-compat key consumed by frontend IngredientReviewModal
+                "risk": r_add.zsehealth_risk_tier,
+                # New canonical keys
+                "zsehealth_risk_tier": r_add.zsehealth_risk_tier,
+                "fssai_regulatory_status": r_add.fssai_regulatory_status,
+                "is_fssai_approved": r_add.is_fssai_approved,
+                "penalty_points": r_add.penalty_points,
+                "regulatory_conditions": r_add.regulatory_conditions,
+                "provenance": r_add.provenance,
             }
             for r_add in resolved_additives
         ]

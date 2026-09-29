@@ -1,12 +1,44 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-28 (Session: FSSAI Authoritative Deterministic Additive Safety Engine — Hardening & Comprehensive Tests)
+> **Last Updated:** 2026-09-29 (Session: FSSAI Engine v2.0.0 — Registry Upgrade, Schema Migration, 133-test compliance suite, full 417/417 regression)
 
 ---
 
 ## 🗓️ Last Session Summary
-**Date:** 2026-09-28
+**Date:** 2026-09-29
+**Work Done — FSSAI Deterministic Engine v2.0.0 (ZS-004 Elimination, Phase 4–9):**
+
+### Files Modified
+| File | Change |
+|---|---|
+| `backend/data/fssai_master_additives.json` | **v2.0.0 full registry rewrite** — new top-level metadata, all 56 records migrated to `regulatory_status` / `zsehealth_risk_tier` vocabulary, alias collision fix (removed `"soda ash"` from `INS 500(i)`) |
+| `backend/schemas/fssai.py` | Fixed Pydantic v2 deprecation: `class Config` → `model_config = {"frozen": False}` |
+| `backend/services/fssai_service.py` | **Full service rewrite**: 4-priority resolver, `_IS_APPROVED_MAP`, `PENALTY_TABLE`, `resolve_and_deduplicate()`, SHA-256 registry checksum, `RegistryValidationError` fail-closed startup |
+| `backend/routes/scan.py` | Output block: exposes `zsehealth_risk_tier`, `fssai_regulatory_status`, `is_fssai_approved`, `penalty_points`, `regulatory_conditions` alongside backward-compat `risk` key |
+| `backend/main.py` | OFF barcode block: replaced stale `detected_ins_additives`/`formatted_additives` vars with resolved equivalents; same canonical field names |
+| `tests/test_fssai_compliance.py` | **v2.0.0 suite** — 18 sections, **133 tests**, 100% pass |
+
+### Key Invariants Confirmed (test-verified)
+- `unknown ≠ safe`: `penalty_points=-2` for `unclassified`, never `0`
+- `is_fssai_approved=True` only for `verified_permitted`; `context_dependent` → `False`
+- `zsehealth_risk_tier` is a Z-SeHealth application heuristic, NOT an FSSAI statutory tier
+- OFF `"risk"` values never enter the resolution path — only INS codes are accepted as raw candidates
+- 100-iteration determinism: same input → identical `ResolvedAdditive` every time
+- Registry corruption → `RegistryValidationError` at startup, service does not start
+- Network independence: monkeypatching `httpx.AsyncClient` does not affect resolution
+
+### Test Verification
+- **Compliance suite:** `tests/test_fssai_compliance.py` — **133/133 passed** in 1.43s
+- **Full regression:** `python -m pytest -W error::RuntimeWarning` — **417/417 passed** in 167.5s (0 failures, 0 errors, 1 `StarletteDeprecationWarning` from httpx2 — not actionable)
+
+### Known Issues / Next Steps
+- `httpx2` deprecation warning from FastAPI `testclient.py` — upstream issue, not actionable in this codebase
+- FSSAI registry is at 56 records; target of 100+ records can be seeded in a future session if coverage gaps are identified
+
+---
+
+## 🗓️ Previous Session Summary (2026-09-28)
 **Work Done — FSSAI Authoritative Deterministic Additive Safety Engine (ZS-004 Elimination):**
 
 - **FSSAI Registry Expansion (`backend/data/fssai_master_additives.json`)**:
@@ -27,27 +59,12 @@
   - Unknown ≠ Hazardous: unresolved → `regulatory_status="unknown"`, `application_risk_tier="unclassified"`, `requires_review=True`, `penalty=0`.
   - Deterministic penalty table (Z-SeHealth heuristics, explicitly NOT official FSSAI scores): safe=0, moderate=-5, high=-18, restricted=-18, hazardous=-35, unclassified=0.
   - `calculate_food_safety_score()` deduplicates by canonical INS code, clamped to [1, 100].
-  - `resolve_and_deduplicate()` unified pipeline for both scan and barcode paths, with ingredient ingredient scanning and warning aggregation.
+  - `resolve_and_deduplicate()` unified pipeline for both scan and barcode paths, with ingredient scanning and warning aggregation.
   - Module-level singleton `fssai_resolver` fails closed if registry is corrupt.
-
-- **Scan Route & Barcode Route Integration**:
-  - `backend/routes/scan.py`: Replaced 26 lines of inline resolution/dedup logic with `fssai_resolver.resolve_and_deduplicate()`.
-  - `backend/main.py` (Open Food Facts path): Replaced inline OFF additive tag parsing with centralized `resolve_and_deduplicate()`.
-
-- **Comprehensive Test Suite (`tests/test_fssai_compliance.py`)**:
-  - Expanded from 4 tests → **79 tests** across 9 sections:
-    - `TestRegistryIntegrity` (8): min 50 records, alias count, no duplicate INS, canonical names, provenance, ADI positivity, functional class coverage, metadata fields.
-    - `TestINSNormalization` (23): all documented variants — INS/E prefix, hyphen, space, numeric-only, roman numeral suffix, letter suffix, edge cases (None, whitespace, plain names).
-    - `TestResolutionPipeline` (13): INS match, E-number, numeric-only, sodium nitrite, MSG, canonical name, case-insensitive name, alias, alias case-insensitive, MSG alias, embedded INS, INS priority over name, provenance populated, functional_classes populated.
-    - `TestUnresolvedHandling` (8): unknown INS code, unknown regulatory_status, unclassified tier, requires_review, warning message, None inputs, empty strings, unresolved penalty=0.
-    - `TestDeterministicScoring` (10): zero-additives=100, safe=0 deduction, high deduction, moderate deduction, combined, min clamp=1, max clamp=100, determinism (3 identical calls), penalty table completeness, penalty table non-positive values.
-    - `TestDeduplication` (4): same additive via INS+name, E-number vs INS, resolve_and_deduplicate deduplication, different additives not collapsed.
-    - `TestResolveAndDeduplicate` (6): ingredient scanning, ignores non-additives, warnings collected, empty inputs, string items in list, warnings unique.
-    - `TestMandatoryWarnings` (3): sodium nitrite emits warning, warnings always list, unresolved warnings always list.
-    - `TestZS004Invariant` (4): no LLM risk field, matched tier is registry-sourced, unmatched=unclassified not 'low'/'safe', unknown score=100.
 
 - **Automated Verification Matrix**:
   - Backend Pytest suite (`python -m pytest -W error::RuntimeWarning`): **363/363 passed (100%)** across 18 test files.
+
   - Total automated tests: **363/363 passed (100%)**.
 
 ---

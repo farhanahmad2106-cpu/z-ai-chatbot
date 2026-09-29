@@ -413,6 +413,8 @@ async def get_food_by_barcode(barcode: str):
                         off_additive_candidates.append({"code": f"INS {clean_add}", "name": None})
 
                     # Deterministic FSSAI resolution — OFF data is untrusted candidate input
+                    # Open Food Facts "risk" values are IGNORED; only the local FSSAI registry
+                    # determines regulatory status and Z-SeHealth risk tier.
                     resolved_additives, additive_warnings = fssai_resolver.resolve_and_deduplicate(
                         detected_additives=off_additive_candidates,
                         parsed_ingredients=parsed_ingredients,
@@ -420,7 +422,36 @@ async def get_food_by_barcode(barcode: str):
 
                     warnings = list(set(product.get("allergens_tags", []) + additive_warnings))
                     safety_score = fssai_resolver.calculate_food_safety_score(resolved_additives, [])
-                    
+
+                    # Build structured additive objects.
+                    # risk / zsehealth_risk_tier = Z-SeHealth application tier (NOT FSSAI statutory)
+                    # fssai_regulatory_status    = FSSAI regulatory determination
+                    # is_fssai_approved          = True only for verified_permitted (context-independent)
+                    # penalty_points             = Z-SeHealth deterministic scoring contribution
+                    detected_ins_additives_resolved = [
+                        {
+                            "code": r.normalized_ins_code,
+                            "name": r.canonical_name,
+                            "risk": r.zsehealth_risk_tier,  # backward-compat for frontend
+                            "zsehealth_risk_tier": r.zsehealth_risk_tier,
+                            "fssai_regulatory_status": r.fssai_regulatory_status,
+                            "is_fssai_approved": r.is_fssai_approved,
+                            "penalty_points": r.penalty_points,
+                            "regulatory_conditions": r.regulatory_conditions,
+                            "provenance": r.provenance,
+                        }
+                        for r in resolved_additives
+                    ]
+
+                    formatted_additives_resolved = []
+                    for r in resolved_additives:
+                        n = r.canonical_name or r.input_name or "Unknown Additive"
+                        c = r.normalized_ins_code or ""
+                        s = r.zsehealth_risk_tier
+                        fmt = f"{c}: {n} ({s})" if c else f"{n} ({s})"
+                        if fmt not in formatted_additives_resolved:
+                            formatted_additives_resolved.append(fmt)
+
                     new_food = {
                         "name": name,
                         "product_name": name,
@@ -432,8 +463,8 @@ async def get_food_by_barcode(barcode: str):
                         "source": "open_food_facts",
                         "parsed_ingredients": parsed_ingredients,
                         "ingredients": [{"name": ing, "safety": "Safe", "description": ""} for ing in parsed_ingredients],
-                        "detected_ins_additives": detected_ins_additives,
-                        "additives": formatted_additives,
+                        "detected_ins_additives": detected_ins_additives_resolved,
+                        "additives": formatted_additives_resolved,
                         "allergens": product.get("allergens_tags", []),
                         "flagged_allergens": product.get("allergens_tags", []),
                         "nutrition_per_100g": nutrition,
@@ -442,11 +473,12 @@ async def get_food_by_barcode(barcode: str):
                         "warnings": warnings,
                         "created_at": datetime.now(timezone.utc).isoformat()
                     }
-                    
+
                     # Insert to MongoDB
                     insert_res = await foods_collection.insert_one(new_food)
                     new_food["_id"] = str(insert_res.inserted_id)
                     return new_food
+
     except Exception as e:
         print(f"Barcode Open Food Facts lookup failed: {e}")
         
