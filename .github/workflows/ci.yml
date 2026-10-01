@@ -113,3 +113,45 @@ jobs:
           echo "Top JavaScript assets:"
           ls -lhS frontend/dist/assets/*.js | head -n 5
         shell: bash
+
+  mobile-validation:
+    name: Mobile App Validation
+    runs-on: ubuntu-latest
+    needs: [actionlint]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: mobile/package-lock.json
+      - name: Install Mobile Dependencies
+        working-directory: mobile
+        run: npm ci
+      - name: Mobile TypeScript Strict Compilation Check
+        working-directory: mobile
+        run: npx tsc --project tsconfig.json --noEmit
+      - name: Run Mobile Offline Sync Engine Tests
+        working-directory: mobile
+        run: npm test
+
+  ci-status:
+    name: CI Pipeline Status Gate
+    needs:
+      - backend-validation
+      - frontend-validation
+      - mobile-validation
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Overall Status
+        run: |
+          if [ "${{ needs.backend-validation.result }}" != "success" ] || \
+             [ "${{ needs.frontend-validation.result }}" != "success" ] || \
+             [ "${{ needs.mobile-validation.result }}" != "success" ]; then
+            echo "CI Validation Failed: One or more required validation suites did not pass."
+            exit 1
+          fi
+          echo "All validation suites (Backend, Web Frontend, Mobile) passed successfully."
+
