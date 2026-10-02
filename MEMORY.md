@@ -1,7 +1,71 @@
 # Z-SeHealth — MEMORY.md
 > **⚠️ MUST BE UPDATED after every session or feature change.**
 > This file is the living memory of the project — its current state, what's done, what's in progress, and what's next.
-> **Last Updated:** 2026-09-30 (Session: Mobile Offline Sync Engine & Mutation Queue, Hardware Camera/Barcode Integration, Unified Tokens & 15/15 Tests)
+> **Last Updated:** 2026-10-01 (Session: Track 3 CI/CD Pipeline Hardening - Mobile Validation)
+
+---
+
+## 🗓️ Last Session Summary
+**Date:** 2026-10-02
+**Work Done — Vernacular Voice Interaction Pipeline:**
+
+- **Voice Pipeline Core Schemas & Service (`backend/schemas/voice.py`, `backend/services/voice_service.py`)**:
+  - Implemented strictly typed `STTResponse` and `TTSRequest` schemas via Pydantic v2.
+  - Implemented async `VoiceService` with `transcribe_stream` and `synthesize_stream` utilizing `httpx.AsyncClient`.
+  - Enforced strict 30-second duration boundaries via pure Python `mutagen` without persisting audio to disk.
+  - Guaranteed fallback STT behaviors when the external voice provider is unavailable.
+
+- **Authenticated Fast-API Voice Routes (`backend/routes/voice.py`)**:
+  - Registered `POST /api/voice/transcribe` and `POST /api/voice/synthesize` to a new `router`.
+  - Added strict MIME-type allowlist validation (`audio/wav`, `audio/webm`, `audio/mpeg`, etc.).
+  - Added strict 10 MiB payload size hard limit enforcement using `MAX_AUDIO_SIZE`.
+  - Bound endpoints to standard `get_current_user_id` Firebase auth dependency, rejecting anonymous payload transmission.
+
+- **Registration & Zero-Disk Verifications (`backend/main.py`, `tests/test_voice_pipeline.py`)**:
+  - Hooked `voice_router` into `backend/main.py` under the `/api/voice` prefix.
+  - Implemented 11 extensive pipeline tests in `test_voice_pipeline.py` testing auth walls, missing keys, mocked provider failures, fallback structures, and rigorous file-system assertions to guarantee Ephemeral Audio Invariants (no disk write).
+
+### Files Modified & Created
+| File | Change |
+|---|---|
+| `backend/schemas/voice.py` | New: Voice data transfer objects (`STTResponse`, `TTSRequest`, `IndicLocale`). |
+| `backend/services/voice_service.py` | New: Isolated `httpx` logic handling Sarvam v3 requests and `mutagen` memory bounds checks. |
+| `backend/routes/voice.py` | New: Route controllers containing `auth_uid` dependencies, size/duration validations, and fallback JSON generation. |
+| `backend/main.py` | Updated: Included `voice_router`. |
+| `tests/test_voice_pipeline.py` | New: Comprehensive mocked `pytest` regression suite verifying safety constraints, fallback logic, and filesystem isolation. |
+| `backend/requirements.txt` | Updated: Pinned lightweight `mutagen` dependency. |
+
+### Test Verification
+- **Backend Pytest Suite:** `python -m pytest tests/test_voice_pipeline.py -v` — **11/11 passed (100%)**
+
+---
+
+## 🗓️ Last Session Summary
+**Date:** 2026-10-01
+**Work Done — Track 3 CI/CD Pipeline Hardening - Mobile Validation:**
+
+- **CI/CD Mobile Validation Pillar (`.github/workflows/ci.yml`)**:
+  - Implemented the mandatory `mobile-validation` GitHub Actions job ensuring the mobile stack is robustly tested.
+  - Enabled Node.js 20 environment and `npm ci` strictly referencing the `mobile/package-lock.json` dependency tree.
+  - Configured independent TypeScript compilation check (`npx tsc --project tsconfig.json --noEmit`) to enforce strict static types without requiring Expo/EAS credentials.
+  - Bound the automated tests explicitly to `npm test` running the `vitest run` script on `mobile/src/tests/offlineSyncEngine.test.ts`. Verified deterministic execution passing 15/15 tests successfully.
+
+- **Unified Aggregate Status Gate (`ci-status`)**:
+  - Enforced a central `ci-status` status gate executing across all validation suites.
+  - Designed the gate with conditional checks that aggregate results from `backend-validation`, `frontend-validation`, and `mobile-validation`.
+  - Used `if: always()` block assuring the gate strictly waits for all three operational pillars, failing entirely if any component flags regression.
+
+- **Security Posture (ZS-002 Compliance)**:
+  - Validated that the `mobile-validation` pipeline stays entirely functional without soliciting iOS certificates, Android SDKs, keystores, or exposing any production signing material within standard CI builds.
+
+### Files Modified & Created
+| File | Change |
+|---|---|
+| `.github/workflows/ci.yml` | Added `mobile-validation` job for TypeScript/Offline Sync tests and established the all-encompassing `ci-status` aggregate success gate. |
+
+### Test Verification
+- **Mobile Vitest Suite:** `npm --prefix mobile test` — **15/15 passed (100%)**
+- **Mobile TypeScript Typecheck:** `npx tsc --project mobile/tsconfig.json --noEmit` — **0 diagnostics (Clean)**
 
 ---
 

@@ -41,6 +41,7 @@ from services.ai_router import route_scan_by_tier
 from services.ocr_engine import extract_text_from_image
 from models import ParsedIngredients
 from routes.biomarkers import router as biomarkers_router
+from routes.voice import router as voice_router
 
 
 @asynccontextmanager
@@ -110,6 +111,7 @@ app.include_router(admin_router)
 app.include_router(meals_router)
 app.include_router(custom_meals_router)
 app.include_router(biomarkers_router)
+app.include_router(voice_router, prefix="/api/voice", tags=["Voice AI"])
 
 
 # --- CORS SETUP ---
